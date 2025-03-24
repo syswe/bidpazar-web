@@ -30,7 +30,7 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
   }, []);
 
   if (isLoading) {
-    return <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded-md w-full"></div>;
+    return <div className="animate-pulse h-10 bg-[var(--secondary)] rounded-md w-full"></div>;
   }
 
   if (error) {
@@ -39,13 +39,13 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
 
   return (
     <div className="mb-6">
-      <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">Kategoriler</h3>
+      <h3 className="text-lg font-semibold mb-3 text-[var(--foreground)]">Kategoriler</h3>
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => onCategoryChange(null)}
           className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategoryId === null
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+            ? 'bg-[var(--primary)] text-white'
+            : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--highlight)]'
             }`}
         >
           Tümü
@@ -56,8 +56,8 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
             key={category.id}
             onClick={() => onCategoryChange(category.id)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategoryId === category.id
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-[var(--primary)] text-white'
+              : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--highlight)]'
               }`}
           >
             {category.name}

@@ -10,7 +10,7 @@ export default function ProductGrid({ products, emptyMessage = 'Henüz ürün bu
   if (!products || products.length === 0) {
     return (
       <div className="flex justify-center items-center py-12">
-        <p className="text-gray-500 dark:text-gray-400 text-lg">{emptyMessage}</p>
+        <p className="text-[var(--secondary)] text-lg">{emptyMessage}</p>
       </div>
     );
   }

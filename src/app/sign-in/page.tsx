@@ -15,6 +15,9 @@ export default function SignIn() {
   const [verificationCode, setVerificationCode] = useState('');
   const [userId, setUserId] = useState('');
   const [isResending, setIsResending] = useState(false);
+  // Using 'any' type is acceptable here as this is for debugging purposes only
+  // and the structure may vary based on API responses
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const router = useRouter();
   const { login: setAuth } = useAuth();

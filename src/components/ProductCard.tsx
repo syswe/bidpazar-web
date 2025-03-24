@@ -19,7 +19,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   }).format(product.price);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden transition-transform hover:scale-105 hover:shadow-lg">
+    <div className="card hover:shadow-lg rounded-lg overflow-hidden">
       <Link href={`/products/${product.id}`}>
         <div className="relative h-48 w-full">
           <Image
@@ -30,19 +30,26 @@ export default function ProductCard({ product }: ProductCardProps) {
           />
         </div>
         <div className="p-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1 truncate">
-            {product.title}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2 line-clamp-2">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-lg font-semibold text-[var(--foreground)] truncate">
+              {product.title}
+            </h3>
+            <span className="text-xs bg-[var(--secondary)] text-[var(--foreground)] px-2 py-1 rounded-full whitespace-nowrap ml-1">
+              {product.category?.name || 'Kategori Yok'}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--muted-foreground)] mb-3 line-clamp-2">
             {product.description}
           </p>
           <div className="flex justify-between items-center">
-            <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+            <span className="text-lg font-bold text-[var(--primary)]">
               {formattedPrice}
             </span>
-            <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 px-2 py-1 rounded-full">
-              {product.category?.name || 'Kategori Yok'}
-            </span>
+            {product.user && (
+              <span className="text-xs text-[var(--muted-foreground)]">
+                {product.user.username}
+              </span>
+            )}
           </div>
         </div>
       </Link>

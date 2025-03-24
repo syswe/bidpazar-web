@@ -1,98 +1,110 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { getUser, validateToken, logout } from '@/lib/auth';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getAuth, setAuth, removeAuth } from '@/lib/auth';
 
-interface User {
+type User = {
   id: string;
-  email: string;
   username: string;
-  name?: string;
-  phoneNumber?: string;
-  isVerified?: boolean;
+  email?: string;
+  avatar?: string;
   isAdmin?: boolean;
-}
+  name?: string;
+};
 
 interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
   isAuthenticated: boolean;
-  isVerified: boolean;
+  isLoading: boolean;
+  user: User | null;
+  token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  refreshToken: () => string | null;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Create context with default values to avoid the undefined check
+const AuthContext = createContext<AuthContextType>({
+  isAuthenticated: false,
+  isLoading: true,
+  user: null,
+  token: null,
+  login: () => { },
+  logout: () => { },
+  refreshToken: () => null,
+});
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
 
+  // Initialize auth state on client side only
   useEffect(() => {
-    // Check if user is stored in localStorage
-    const storedUser = getUser();
-    if (storedUser) {
-      setUser(storedUser);
-    }
-
-    // Validate token with the backend
-    const checkAuth = async () => {
-      try {
-        const validatedUser = await validateToken();
-        if (validatedUser) {
-          setUser(validatedUser);
-        } else {
-          setUser(null);
-        }
-      } catch (error: unknown) {
-        console.error('Auth validation error:', error);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
+    try {
+      const { token: storedToken, user: storedUser } = getAuth();
+      if (storedToken && storedUser) {
+        setIsAuthenticated(true);
+        setUser(storedUser);
+        setToken(storedToken);
+        console.log("Auth initialized from localStorage");
+      } else {
+        console.warn("Auth data found but token or user is missing");
       }
-    };
-
-    checkAuth();
+    } catch (error) {
+      console.error('Failed to parse stored auth data:', error);
+      removeAuth();
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const handleLogin = (token: string, user: User) => {
-    if (!user) {
-      console.error('Login attempted with null user');
-      return;
-    }
+  const login = (authToken: string, authUser: User): void => {
+    setIsAuthenticated(true);
+    setUser(authUser);
+    setToken(authToken);
 
-    console.log('Setting user in AuthProvider:', user);
-    setUser(user);
+    // Store auth data in localStorage using the updated auth module
+    try {
+      setAuth(authToken, authUser);
+      console.log("Auth data stored in localStorage");
+    } catch (error) {
+      console.error('Failed to store auth data:', error);
+    }
   };
 
-  const handleLogout = () => {
-    logout();
-    setUser(null);
-    router.push('/sign-in');
+  const logout = () => {
+    try {
+      removeAuth();
+      setIsAuthenticated(false);
+      setUser(null);
+      setToken(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  // Function to get the latest token, useful for socket connections
+  const refreshToken = (): string | null => {
+    try {
+      const { token: freshToken } = getAuth();
+      if (freshToken && freshToken !== token) {
+        setToken(freshToken);
+      }
+      return freshToken;
+    } catch (error) {
+      console.error('Failed to refresh token:', error);
+      return token;
+    }
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        isVerified: user?.isVerified !== false,
-        login: handleLogin,
-        logout: handleLogout,
-      }}
-    >
+    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, token, login, logout, refreshToken }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 } 

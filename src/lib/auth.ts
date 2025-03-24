@@ -1,10 +1,11 @@
 interface User {
   id: string;
-  email: string;
+  email?: string;
   username: string;
   name?: string;
   phoneNumber?: string;
   isVerified?: boolean;
+  isAdmin?: boolean;
 }
 
 interface AuthResponse {
@@ -18,48 +19,45 @@ interface AuthResponse {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
 
-// Store token in localStorage (or you could use cookies in production)
-export const setToken = (token: string): void => {
+// Store auth data in localStorage (using a single key for both token and user)
+export const setAuth = (token: string, user: User): void => {
   if (typeof window !== "undefined") {
-    localStorage.setItem("bidpazar_token", token);
+    localStorage.setItem("auth", JSON.stringify({ token, user }));
   }
 };
 
-// Get token from localStorage
+// Get auth data from localStorage
+export const getAuth = (): { token: string | null; user: User | null } => {
+  if (typeof window !== "undefined") {
+    const authData = localStorage.getItem("auth");
+    if (authData) {
+      try {
+        return JSON.parse(authData);
+      } catch (error) {
+        console.error("Failed to parse auth data:", error);
+        localStorage.removeItem("auth");
+      }
+    }
+  }
+  return { token: null, user: null };
+};
+
+// Get token from localStorage (for compatibility with existing code)
 export const getToken = (): string | null => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("bidpazar_token");
-  }
-  return null;
+  const { token } = getAuth();
+  return token;
 };
 
-// Remove token from localStorage
-export const removeToken = (): void => {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("bidpazar_token");
-  }
-};
-
-// Store user in localStorage
-export const setUser = (user: User): void => {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("bidpazar_user", JSON.stringify(user));
-  }
-};
-
-// Get user from localStorage
+// Get user from localStorage (for compatibility with existing code)
 export const getUser = (): User | null => {
-  if (typeof window !== "undefined") {
-    const user = localStorage.getItem("bidpazar_user");
-    return user ? JSON.parse(user) : null;
-  }
-  return null;
+  const { user } = getAuth();
+  return user;
 };
 
-// Remove user from localStorage
-export const removeUser = (): void => {
+// Remove auth data from localStorage
+export const removeAuth = (): void => {
   if (typeof window !== "undefined") {
-    localStorage.removeItem("bidpazar_user");
+    localStorage.removeItem("auth");
   }
 };
 
@@ -108,10 +106,9 @@ export const login = async (
       throw new Error(data.message || "Login failed");
     }
 
-    // Only store token and user in localStorage if the user doesn't require verification
+    // Only store auth data in localStorage if the user doesn't require verification
     if (!data.requireVerification) {
-      setToken(data.token);
-      setUser(data.user);
+      setAuth(data.token, data.user);
     } else {
       console.log("User requires verification, not storing credentials yet");
     }
@@ -125,8 +122,7 @@ export const login = async (
 
 // Logout a user
 export const logout = (): void => {
-  removeToken();
-  removeUser();
+  removeAuth();
 };
 
 // Check if user is authenticated
@@ -151,8 +147,7 @@ export const validateToken = async (): Promise<User | null> => {
     });
 
     if (!response.ok) {
-      removeToken();
-      removeUser();
+      removeAuth();
       return null;
     }
 
@@ -160,8 +155,7 @@ export const validateToken = async (): Promise<User | null> => {
     return data.user;
   } catch (error: unknown) {
     console.error("Token validation error:", error);
-    removeToken();
-    removeUser();
+    removeAuth();
     return null;
   }
 };
@@ -185,9 +179,8 @@ export const verifyCode = async (
     throw new Error(data.message || "Verification failed");
   }
 
-  // Store token and user in localStorage
-  setToken(data.token);
-  setUser(data.user);
+  // Store auth data in localStorage
+  setAuth(data.token, data.user);
 
   return data;
 };

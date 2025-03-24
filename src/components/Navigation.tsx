@@ -25,15 +25,15 @@ export default function Navigation() {
   return (
     <nav
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled
-        ? 'bg-white dark:bg-gray-900 shadow-md py-2'
+        ? 'bg-white dark:bg-[var(--background)] shadow-md py-2'
         : 'bg-transparent py-4'
         }`}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold text-blue-600 flex items-center">
-            <span className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center mr-2">
+          <Link href="/" className="text-2xl font-bold text-[var(--primary)] flex items-center">
+            <span className="w-8 h-8 bg-[var(--primary)] rounded-full flex items-center justify-center mr-2">
               <span className="text-white text-sm">BP</span>
             </span>
             Bidpazar
@@ -43,25 +43,25 @@ export default function Navigation() {
           <div className="hidden md:flex items-center space-x-6">
             <Link
               href="/products"
-              className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Products
             </Link>
             <Link
               href="/categories"
-              className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Categories
             </Link>
             <Link
               href="/auctions"
-              className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Auctions
             </Link>
             <Link
               href="/about"
-              className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               About
             </Link>
@@ -69,7 +69,7 @@ export default function Navigation() {
             {isAuthenticated ? (
               <div className="relative group">
                 <button
-                  className="flex items-center text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="flex items-center text-[var(--foreground)] hover:text-[var(--primary)]"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                 >
                   <span className="mr-1">{user?.username || 'Account'}</span>
@@ -89,30 +89,30 @@ export default function Navigation() {
                   </svg>
                 </button>
                 <div
-                  className={`absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-10 ${isMenuOpen ? 'block' : 'hidden'
+                  className={`absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--background)] rounded-md shadow-lg py-1 z-10 ${isMenuOpen ? 'block' : 'hidden'
                     } group-hover:block`}
                 >
                   <Link
                     href="/dashboard"
-                    className="block px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
                     Dashboard
                   </Link>
                   <Link
                     href="/products/create"
-                    className="block px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
                     Create Listing
                   </Link>
                   <Link
                     href="/profile"
-                    className="block px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
                     Profile
                   </Link>
                   <button
                     onClick={logout}
-                    className="block w-full text-left px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="block w-full text-left px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
                     Logout
                   </button>
@@ -122,13 +122,13 @@ export default function Navigation() {
               <div className="flex items-center space-x-2">
                 <Link
                   href="/sign-in"
-                  className="px-4 py-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="px-4 py-2 rounded-md text-[var(--foreground)] hover:bg-[var(--secondary)]"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  className="px-4 py-2 bg-[var(--primary)] text-white rounded-md hover:bg-[var(--primary-hover)]"
                 >
                   Sign Up
                 </Link>
@@ -140,7 +140,7 @@ export default function Navigation() {
           <div className="md:hidden">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -174,25 +174,25 @@ export default function Navigation() {
           <div className="md:hidden mt-4 pb-4">
             <Link
               href="/products"
-              className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Products
             </Link>
             <Link
               href="/categories"
-              className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Categories
             </Link>
             <Link
               href="/auctions"
-              className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               Auctions
             </Link>
             <Link
               href="/about"
-              className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+              className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
               About
             </Link>
@@ -201,25 +201,25 @@ export default function Navigation() {
               <>
                 <Link
                   href="/dashboard"
-                  className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
                   Dashboard
                 </Link>
                 <Link
                   href="/products/create"
-                  className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
                   Create Listing
                 </Link>
                 <Link
                   href="/profile"
-                  className="block py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
                   Profile
                 </Link>
                 <button
                   onClick={logout}
-                  className="block w-full text-left py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="block w-full text-left py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
                   Logout
                 </button>
@@ -228,13 +228,13 @@ export default function Navigation() {
               <div className="flex flex-col space-y-2 mt-2">
                 <Link
                   href="/sign-in"
-                  className="px-4 py-2 rounded-md text-center bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  className="px-4 py-2 rounded-md text-center bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--secondary)]"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="px-4 py-2 rounded-md text-center bg-blue-600 text-white"
+                  className="px-4 py-2 rounded-md text-center bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
                 >
                   Sign Up
                 </Link>

@@ -55,6 +55,71 @@ export interface User {
   };
 }
 
+// LiveStream related types
+export interface LiveStream {
+  id: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  status: "SCHEDULED" | "LIVE" | "ENDED";
+  viewerCount: number;
+  startTime?: string;
+  endTime?: string;
+  userId: string;
+  user?: User;
+  _count?: {
+    listings: number;
+    viewers: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuctionListing {
+  id: string;
+  productId: string;
+  liveStreamId: string;
+  startPrice: number;
+  status: "PENDING" | "ACTIVE" | "COUNTDOWN" | "COMPLETED" | "CANCELLED";
+  countdownTime: number;
+  countdownStart?: string;
+  countdownEnd?: string;
+  winningBidId?: string;
+  product?: Product;
+  liveStream?: LiveStream;
+  bids?: Bid[];
+  winningBid?: Bid;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Bid {
+  id: string;
+  amount: number;
+  listingId: string;
+  userId: string;
+  isWinning: boolean;
+  isBackup: boolean;
+  backupForId?: string;
+  user?: {
+    username: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  message: string;
+  userId: string;
+  liveStreamId: string;
+  user?: {
+    username: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 // API istekleri için genel yardımcı fonksiyon
 const fetcher = async <T>(
   endpoint: string,
@@ -292,4 +357,116 @@ export const uploadProductVideos = async (
   }
 
   return data.media;
+};
+
+// LiveStream API functions
+export const getLiveStreams = async (): Promise<LiveStream[]> => {
+  const response = await fetch(`${API_URL}/live-streams`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch live streams");
+  }
+  return response.json();
+};
+
+export const getLiveStreamById = async (id: string): Promise<LiveStream> => {
+  const response = await fetch(`${API_URL}/live-streams/${id}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch live stream");
+  }
+  return response.json();
+};
+
+export const createLiveStream = async (
+  data: {
+    title: string;
+    description?: string;
+    thumbnailUrl?: string;
+    startTime?: string;
+  },
+  token: string
+): Promise<LiveStream> => {
+  const response = await fetch(`${API_URL}/live-streams`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to create live stream");
+  }
+
+  return response.json();
+};
+
+export const startLiveStream = async (
+  id: string,
+  token: string
+): Promise<LiveStream> => {
+  const response = await fetch(`${API_URL}/live-streams/${id}/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to start live stream");
+  }
+
+  return response.json();
+};
+
+export const endLiveStream = async (
+  id: string,
+  token: string
+): Promise<LiveStream> => {
+  const response = await fetch(`${API_URL}/live-streams/${id}/end`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to end live stream");
+  }
+
+  return response.json();
+};
+
+export const addListingToLiveStream = async (
+  liveStreamId: string,
+  data: {
+    productId: string;
+    startPrice: number;
+    countdownTime?: number;
+  },
+  token: string
+): Promise<AuctionListing> => {
+  const response = await fetch(
+    `${API_URL}/live-streams/${liveStreamId}/listings`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to add listing to live stream");
+  }
+
+  return response.json();
 };
