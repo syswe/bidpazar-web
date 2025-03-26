@@ -21,13 +21,20 @@ export default function SignUp() {
   const [tempToken, setTempToken] = useState('');
   const [isResending, setIsResending] = useState(false);
   const router = useRouter();
-  const { login: setAuth } = useAuth();
+  const { login: setAuth, isAuthenticated } = useAuth();
+
+  // Redirect if user is already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
 
   // Use effect to set authorization header if tempToken exists
   useEffect(() => {
     if (tempToken) {
       // This makes the tempToken "used" to satisfy the linter
-      console.log('Temporary token received for verification');
+      console.log('Doğrulama için geçici token alındı');
     }
   }, [tempToken]);
 
@@ -37,23 +44,23 @@ export default function SignUp() {
 
     // Validate password match
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Şifreler eşleşmiyor');
       return;
     }
 
     // Validate username
     if (!username) {
-      setError('Username is required');
+      setError('Kullanıcı adı gerekli');
       return;
     }
 
     if (username.length < 3 || username.length > 20) {
-      setError('Username must be between 3 and 20 characters');
+      setError('Kullanıcı adı 3 ile 20 karakter arasında olmalıdır');
       return;
     }
 
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-      setError('Username can only contain letters, numbers, underscores, and hyphens');
+      setError('Kullanıcı adı sadece harf, rakam, alt çizgi ve kısa çizgi içerebilir');
       return;
     }
 
@@ -75,7 +82,7 @@ export default function SignUp() {
         router.push('/dashboard');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(err instanceof Error ? err.message : 'Kayıt başarısız');
     } finally {
       setIsLoading(false);
     }
@@ -92,7 +99,7 @@ export default function SignUp() {
       setAuth(response.token, response.user);
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed');
+      setError(err instanceof Error ? err.message : 'Doğrulama başarısız');
     } finally {
       setIsLoading(false);
     }
@@ -104,36 +111,49 @@ export default function SignUp() {
 
     try {
       await resendVerificationCode(userId);
-      setError('Verification code has been resent');
+      setError('Doğrulama kodu tekrar gönderildi');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend code');
+      setError(err instanceof Error ? err.message : 'Doğrulama kodu gönderilemedi');
     } finally {
       setIsResending(false);
     }
   };
 
+  // If already authenticated, show loading while redirecting
+  if (isAuthenticated) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+        <div className="text-center">
+          <p className="text-[var(--foreground)]">Yönlendiriliyorsunuz...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (showVerification) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-lg shadow-md">
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+        <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">
           <div className="text-center">
-            <h1 className="text-4xl font-bold mb-2">Verify Your Phone</h1>
-            <p className="text-gray-600">
-              We&apos;ve sent a verification code to your phone. Please enter it below to complete your registration.
+            <h1 className="text-4xl font-bold mb-2 text-[var(--foreground)]">
+              <span className="bg-clip-text text-transparent premium-gradient">Telefonunuzu Doğrulayın</span>
+            </h1>
+            <p className="text-[var(--muted-foreground)]">
+              Telefonunuza bir doğrulama kodu gönderdik. Kaydınızı tamamlamak için lütfen kodu girin.
             </p>
           </div>
 
           {error && (
-            <div className={`p-4 rounded-md text-sm ${error.includes('resent') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+            <div className={`p-4 rounded-md text-sm ${error.includes('gönderildi') ? 'premium-success' : 'premium-error'}`}>
               {error}
             </div>
           )}
 
           <form className="mt-8 space-y-6" onSubmit={handleVerifyCode}>
-            <div className="space-y-4 rounded-md shadow-sm">
+            <div className="space-y-4 rounded-md">
               <div>
-                <label htmlFor="verificationCode" className="block text-sm font-medium text-gray-700 mb-1">
-                  Verification Code
+                <label htmlFor="verificationCode" className="premium-label">
+                  Doğrulama Kodu
                 </label>
                 <input
                   id="verificationCode"
@@ -142,8 +162,8 @@ export default function SignUp() {
                   required
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter verification code"
+                  className="premium-input"
+                  placeholder="Doğrulama kodunu girin"
                 />
               </div>
             </div>
@@ -152,9 +172,9 @@ export default function SignUp() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                className="premium-button premium-button-primary w-full"
               >
-                {isLoading ? 'Verifying...' : 'Verify Code'}
+                {isLoading ? 'Doğrulanıyor...' : 'Kodu Doğrula'}
               </button>
             </div>
           </form>
@@ -163,9 +183,9 @@ export default function SignUp() {
             <button
               onClick={handleResendCode}
               disabled={isResending}
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className="text-sm text-[var(--primary)] hover:text-[var(--accent)] transition-colors"
             >
-              {isResending ? 'Sending...' : 'Resend verification code'}
+              {isResending ? 'Gönderiliyor...' : 'Doğrulama kodunu tekrar gönder'}
             </button>
           </div>
         </div>
@@ -174,24 +194,26 @@ export default function SignUp() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-lg shadow-md">
+    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+      <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-2">Create an Account</h1>
-          <p className="text-gray-600">Fill in your details to create your Bidpazar account</p>
+          <h1 className="text-4xl font-bold mb-2 text-[var(--foreground)]">
+            <span className="bg-clip-text text-transparent premium-gradient">Hesap Oluştur</span>
+          </h1>
+          <p className="text-[var(--muted-foreground)]">Bidpazar hesabınızı oluşturmak için bilgilerinizi doldurun</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm">
+          <div className="premium-error">
             {error}
           </div>
         )}
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4 rounded-md shadow-sm">
+          <div className="space-y-4 rounded-md">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name
+              <label htmlFor="name" className="premium-label">
+                Ad Soyad
               </label>
               <input
                 id="name"
@@ -199,14 +221,14 @@ export default function SignUp() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Full Name"
+                className="premium-input"
+                placeholder="Ad Soyad"
               />
             </div>
 
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                Username
+              <label htmlFor="username" className="premium-label">
+                Kullanıcı Adı
               </label>
               <input
                 id="username"
@@ -215,14 +237,14 @@ export default function SignUp() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Choose a username"
+                className="premium-input"
+                placeholder="Kullanıcı adı seçin"
               />
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email address
+              <label htmlFor="email" className="premium-label">
+                E-posta Adresi
               </label>
               <input
                 id="email"
@@ -231,14 +253,14 @@ export default function SignUp() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Email address"
+                className="premium-input"
+                placeholder="E-posta adresi"
               />
             </div>
 
             <div>
-              <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number <span className="text-xs text-gray-500">(Optional for SMS verification)</span>
+              <label htmlFor="phoneNumber" className="premium-label">
+                Telefon Numarası <span className="text-xs text-[var(--muted-foreground)]">(SMS doğrulaması için isteğe bağlı)</span>
               </label>
               <input
                 id="phoneNumber"
@@ -246,14 +268,14 @@ export default function SignUp() {
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="premium-input"
                 placeholder="05XX XXX XX XX"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
+              <label htmlFor="password" className="premium-label">
+                Şifre
               </label>
               <input
                 id="password"
@@ -262,14 +284,14 @@ export default function SignUp() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Password"
+                className="premium-input"
+                placeholder="Şifre"
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                Confirm Password
+              <label htmlFor="confirmPassword" className="premium-label">
+                Şifreyi Onayla
               </label>
               <input
                 id="confirmPassword"
@@ -278,8 +300,8 @@ export default function SignUp() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Confirm Password"
+                className="premium-input"
+                placeholder="Şifreyi onaylayın"
               />
             </div>
           </div>
@@ -288,18 +310,18 @@ export default function SignUp() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="premium-button premium-button-primary w-full"
             >
-              {isLoading ? 'Creating account...' : 'Sign up'}
+              {isLoading ? 'Hesap oluşturuluyor...' : 'Kayıt Ol'}
             </button>
           </div>
         </form>
 
         <div className="text-center mt-4">
-          <p className="text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link href="/sign-in" className="text-blue-600 hover:text-blue-800">
-              Sign in
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Zaten hesabınız var mı?{' '}
+            <Link href="/sign-in" className="text-[var(--accent)] hover:underline transition-colors">
+              Giriş Yap
             </Link>
           </p>
         </div>

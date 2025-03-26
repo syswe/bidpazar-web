@@ -5,34 +5,34 @@
 @layer base {
   :root {
     --background: #ffffff;
-    --foreground: #18181b;
-    --primary: #007bff;
+    --foreground: #071739;
+    --primary: #4a6382;
     --primary-foreground: #ffffff;
-    --secondary: #f5f5f7;
-    --secondary-foreground: #18181b;
-    --accent: #ff4d4d;
+    --secondary: #cdd5d8;
+    --secondary-foreground: #071739;
+    --accent: #a68768;
     --accent-foreground: #ffffff;
     --muted: #e5e7eb;
-    --muted-foreground: #6b7280;
-    --border: #e2e8f0;
-    --input: #e2e8f0;
-    --ring: #007bff;
+    --muted-foreground: #4a6382;
+    --border: #cdd5d8;
+    --input: #cdd5d8;
+    --ring: #4a6382;
   }
 
   .dark {
-    --background: #121212;
-    --foreground: #f5f5f7;
-    --primary: #3b82f6;
+    --background: #071739;
+    --foreground: #cdd5d8;
+    --primary: #4a6382;
     --primary-foreground: #ffffff;
-    --secondary: #1f1f1f;
-    --secondary-foreground: #f5f5f7;
-    --accent: #f97316;
-    --accent-foreground: #ffffff;
-    --muted: #2a2a2a;
+    --secondary: #0d2450;
+    --secondary-foreground: #cdd5d8;
+    --accent: #e3c39d;
+    --accent-foreground: #071739;
+    --muted: #1a2d56;
     --muted-foreground: #a1a1aa;
-    --border: #2a2a2a;
-    --input: #2a2a2a;
-    --ring: #3b82f6;
+    --border: #1a2d56;
+    --input: #1a2d56;
+    --ring: #4a6382;
   }
 }
 
@@ -67,14 +67,100 @@
 .card {
   background-color: var(--background);
   border: 1px solid var(--border);
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   overflow: hidden;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 8px 0 rgba(7, 23, 57, 0.05);
   transition: box-shadow 200ms, transform 200ms;
 }
 
 .card:hover {
-  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px 0 rgba(7, 23, 57, 0.08);
+  transform: translateY(-2px);
+}
+
+/* Premium button styles */
+.btn-premium {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  box-shadow: 0 2px 4px rgba(166, 135, 104, 0.2);
+}
+
+.btn-premium:hover {
+  box-shadow: 0 4px 8px rgba(166, 135, 104, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Form element styling */
+.premium-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  transition: all 0.2s ease;
+}
+
+.premium-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(74, 99, 130, 0.15);
+}
+
+.premium-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
+.premium-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.375rem;
+  color: var(--foreground);
+}
+
+.premium-button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.625rem 1.25rem;
+  font-weight: 500;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.premium-button-primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.premium-button-accent {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.premium-button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.premium-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--primary);
+}
+
+.premium-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Line clamp utilities */
@@ -99,14 +185,45 @@
   overflow: hidden;
 }
 
-/* Test CSS class */
+/* Premium UI elements */
+.premium-border {
+  border: 1px solid var(--accent);
+}
+
+.premium-shadow {
+  box-shadow: 0 4px 12px rgba(166, 135, 104, 0.15);
+}
+
+.premium-gradient {
+  background: linear-gradient(135deg, var(--accent) 0%, #e3c39d 100%);
+  color: #071739;
+}
+
+/* Error and success messages */
+.premium-error {
+  background-color: rgba(220, 38, 38, 0.1);
+  color: rgb(220, 38, 38);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.premium-success {
+  background-color: rgba(166, 135, 104, 0.1);
+  color: var(--accent);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+/* Replace test blue background with our premium theme */
 .test-blue-bg {
-  background-color: blue;
-  color: white;
+  background-color: var(--accent);
+  color: var(--accent-foreground);
   padding: 1rem;
   margin-bottom: 2rem;
   border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(166, 135, 104, 0.2);
   text-align: center;
   font-weight: bold;
 }

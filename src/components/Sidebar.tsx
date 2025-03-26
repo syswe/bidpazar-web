@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTheme } from './ThemeProvider';
 import { useAuth } from './AuthProvider';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingBag, Tv, LayoutDashboard } from 'lucide-react';
+import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun } from 'lucide-react';
 
 const Sidebar = () => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -13,16 +13,11 @@ const Sidebar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const pathname = usePathname();
 
-  // Use a stable ID for guest users (with useEffect to prevent hydration mismatch)
-  const [guestId, setGuestId] = useState('');
+  // Close sidebar on mobile by default
   useEffect(() => {
-    // Generate or retrieve a unique identifier for guest users
-    let id = localStorage.getItem('guestId');
-    if (!id) {
-      id = 'guest_' + Math.random().toString(36).substring(2, 9);
-      localStorage.setItem('guestId', id);
+    if (window.innerWidth < 768) {
+      setIsExpanded(false);
     }
-    setGuestId(id);
   }, []);
 
   const toggleSidebar = () => {
@@ -37,84 +32,120 @@ const Sidebar = () => {
         onClick={toggleSidebar}
       />
 
+      {/* Mobile menu toggle button - only visible when sidebar is collapsed on mobile */}
+      <button
+        onClick={toggleSidebar}
+        className={`fixed top-4 left-4 z-50 p-2 rounded-full bg-[var(--accent)] text-white shadow-lg md:hidden ${isExpanded ? 'hidden' : 'flex'} items-center justify-center`}
+        aria-label="Open Menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
       {/* Sidebar */}
       <aside
         className={`
-          fixed md:sticky left-0 top-0 h-screen z-50 bg-[var(--background)] border-r border-[var(--secondary)]
-          transition-all duration-300 flex flex-col overflow-hidden
-          ${isExpanded ? 'w-64' : 'w-16'}
+          fixed md:sticky left-0 top-0 h-screen z-50 bg-[var(--background)] border-r border-[var(--border)]
+          transition-all duration-300 flex flex-col overflow-hidden premium-shadow
+          ${isExpanded ? 'w-64' : 'md:w-16 -translate-x-full md:translate-x-0'}
         `}
       >
         {/* Header */}
-        <div className="h-16 flex items-center px-4 border-b border-[var(--secondary)] relative">
+        <div className="h-16 flex items-center px-4 border-b border-[var(--border)] relative">
           <div className={`flex items-center ${isExpanded ? 'w-full' : 'justify-center'}`}>
             {isExpanded ? (
-              <Link href="/" className="text-xl font-bold text-[var(--primary)]">Bidpazar</Link>
+              <Link href="/" className="text-xl font-bold text-[var(--accent)]">
+                <span className="bg-clip-text">Bidpazar</span>
+              </Link>
             ) : (
-              <Link href="/" className="text-xl font-bold text-[var(--primary)]">B</Link>
+              <Link href="/" className="text-xl font-bold text-[var(--accent)]">
+                <span className="bg-clip-text">B</span>
+              </Link>
             )}
           </div>
 
           {/* Close/Open button positioned at top right */}
           <button
             onClick={toggleSidebar}
-            className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)]"
+            className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1.5 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] transition-all"
             aria-label={isExpanded ? 'Daralt' : 'Genişlet'}
           >
             {isExpanded ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <div className="flex items-center">
+                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4 -ml-2" />
+              </div>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <Menu className="h-4 w-4" />
             )}
           </button>
         </div>
 
         {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto px-3">
-          <ul className="space-y-1 mt-4">
+        <div className="flex-1 overflow-y-auto px-3 scrollbar-thin">
+          <ul className="space-y-2 mt-6">
             <li>
               <Link href="/"
-                className={`flex items-center px-4 py-2 rounded-lg 
+                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
                 ${pathname === '/'
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-muted hover:text-muted-foreground'}`}>
-                <Home className="h-5 w-5 mr-2" />
-                <span className="hidden lg:block">Anasayfa</span>
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                {isExpanded ? (
+                  <>
+                    <Home className="h-5 w-5 mr-3" />
+                    <span>Anasayfa</span>
+                  </>
+                ) : (
+                  <Home className="h-5 w-5" />
+                )}
               </Link>
             </li>
             <li>
               <Link href="/products"
-                className={`flex items-center px-4 py-2 rounded-lg 
+                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
                 ${pathname.startsWith('/products')
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-muted hover:text-muted-foreground'}`}>
-                <ShoppingBag className="h-5 w-5 mr-2" />
-                <span className="hidden lg:block">Ürünler</span>
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                {isExpanded ? (
+                  <>
+                    <ShoppingBag className="h-5 w-5 mr-3" />
+                    <span>Ürünler</span>
+                  </>
+                ) : (
+                  <ShoppingBag className="h-5 w-5" />
+                )}
               </Link>
             </li>
             <li>
               <Link href="/live-streams"
-                className={`flex items-center px-4 py-2 rounded-lg 
+                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
                 ${pathname.startsWith('/live-streams')
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-muted hover:text-muted-foreground'}`}>
-                <Tv className="h-5 w-5 mr-2" />
-                <span className="hidden lg:block">Canlı Yayınlar</span>
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                {isExpanded ? (
+                  <>
+                    <Tv className="h-5 w-5 mr-3" />
+                    <span>Canlı Yayınlar</span>
+                  </>
+                ) : (
+                  <Tv className="h-5 w-5" />
+                )}
               </Link>
             </li>
             {isAuthenticated && (
               <li>
                 <Link href="/dashboard"
-                  className={`flex items-center px-4 py-2 rounded-lg 
+                  className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
                   ${pathname.startsWith('/dashboard')
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-muted hover:text-muted-foreground'}`}>
-                  <LayoutDashboard className="h-5 w-5 mr-2" />
-                  <span className="hidden lg:block">Panelim</span>
+                      ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                      : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  {isExpanded ? (
+                    <>
+                      <LayoutDashboard className="h-5 w-5 mr-3" />
+                      <span>Panelim</span>
+                    </>
+                  ) : (
+                    <LayoutDashboard className="h-5 w-5" />
+                  )}
                 </Link>
               </li>
             )}
@@ -122,27 +153,35 @@ const Sidebar = () => {
         </div>
 
         {/* Footer with theme toggle and user info */}
-        <div className="p-4 border-t border-[var(--secondary)]">
+        <div className="p-4 border-t border-[var(--border)]">
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center p-2 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] mb-4"
+            className="w-full flex items-center p-2 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] mb-4 transition-all"
             aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
           >
-            {theme === 'light' ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
+            {isExpanded ? (
+              <>
+                {theme === 'light' ? (
+                  <MoonStar className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
+                <span className="ml-3">{theme === 'light' ? 'Karanlık Mod' : 'Aydınlık Mod'}</span>
+              </>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
+              <div className="w-full flex justify-center">
+                {theme === 'light' ? (
+                  <MoonStar className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
+              </div>
             )}
-            {isExpanded && <span className="ml-3">{theme === 'light' ? 'Karanlık Mod' : 'Aydınlık Mod'}</span>}
           </button>
 
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-white">
+              <div className="w-8 h-8 rounded-full premium-gradient flex items-center justify-center text-[var(--accent-foreground)] font-medium">
                 {isAuthenticated && user ? user.username.charAt(0).toUpperCase() : 'G'}
               </div>
             </div>
@@ -161,7 +200,7 @@ const Sidebar = () => {
                 ) : (
                   <>
                     <p className="text-sm font-medium text-[var(--foreground)]">
-                      {guestId}
+                      Misafir
                     </p>
                     <div className="flex mt-1 space-x-2">
                       <Link href="/sign-in" className="text-xs text-[var(--primary)]">Giriş Yap</Link>

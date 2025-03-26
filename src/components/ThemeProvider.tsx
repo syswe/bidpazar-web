@@ -17,9 +17,11 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
+  const [mounted, setMounted] = useState(false);
 
   // Initialize theme on client side only
   useEffect(() => {
+    setMounted(true);
     try {
       // Check if we're in the browser
       const savedTheme = localStorage.getItem('theme') as Theme;
@@ -35,6 +37,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } else {
         document.documentElement.classList.remove('dark');
       }
+
+      // Add smooth transition for theme changes
+      document.documentElement.style.transition = 'background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease';
     } catch (e) {
       console.error('Error setting theme:', e);
     }
@@ -62,7 +67,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Use a consistent render approach to prevent hydration issues
+  // Use a wrapper with opacity to prevent flashing during hydration
+  if (!mounted) {
+    // Return a placeholder with the same structure
+    return <div style={{ visibility: 'hidden' }}>{children}</div>;
+  }
+
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       {children}

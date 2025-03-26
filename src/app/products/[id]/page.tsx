@@ -51,32 +51,41 @@ export default function ProductDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen">
-        <div className="mb-4">
-          <Link
-            href="/products"
-            className="text-[var(--primary)] hover:underline flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Ürünlere geri dön
-          </Link>
-        </div>
+      <div className="min-h-screen bg-[var(--background)] p-4 sm:p-6 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-6">
+            <Link
+              href="/products"
+              className="text-[var(--accent)] hover:underline flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Ürünlere geri dön
+            </Link>
+          </div>
 
-        <div className="animate-pulse">
-          <div className="h-8 bg-[var(--secondary)] rounded w-1/3 mb-4"></div>
-          <div className="flex flex-col md:flex-row gap-8">
-            <div className="w-full md:w-1/2">
-              <div className="bg-[var(--secondary)] h-96 rounded-lg"></div>
-            </div>
-            <div className="w-full md:w-1/2">
-              <div className="h-6 bg-[var(--secondary)] rounded w-3/4 mb-4"></div>
-              <div className="h-4 bg-[var(--secondary)] rounded w-full mb-2"></div>
-              <div className="h-4 bg-[var(--secondary)] rounded w-full mb-2"></div>
-              <div className="h-4 bg-[var(--secondary)] rounded w-2/3 mb-6"></div>
-              <div className="h-8 bg-[var(--secondary)] rounded w-1/3 mb-6"></div>
-              <div className="h-10 bg-[var(--secondary)] rounded w-full"></div>
+          <div className="animate-pulse">
+            <div className="h-10 bg-[var(--secondary)] rounded-lg w-1/3 mb-8"></div>
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="w-full md:w-1/2">
+                <div className="bg-[var(--secondary)] h-[500px] rounded-2xl"></div>
+                <div className="flex gap-3 mt-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="h-20 w-20 bg-[var(--secondary)] rounded-lg"></div>
+                  ))}
+                </div>
+              </div>
+              <div className="w-full md:w-1/2 mt-8 md:mt-0">
+                <div className="h-8 bg-[var(--secondary)] rounded-lg w-3/4 mb-6"></div>
+                <div className="h-6 bg-[var(--secondary)] rounded-lg w-1/2 mb-8"></div>
+                <div className="h-4 bg-[var(--secondary)] rounded-lg w-full mb-3"></div>
+                <div className="h-4 bg-[var(--secondary)] rounded-lg w-full mb-3"></div>
+                <div className="h-4 bg-[var(--secondary)] rounded-lg w-full mb-3"></div>
+                <div className="h-4 bg-[var(--secondary)] rounded-lg w-2/3 mb-10"></div>
+                <div className="h-10 bg-[var(--secondary)] rounded-lg w-1/3 mb-10"></div>
+                <div className="h-14 bg-[var(--secondary)] rounded-lg w-full"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -86,142 +95,197 @@ export default function ProductDetailPage() {
 
   if (error || !product) {
     return (
-      <div className="min-h-screen">
-        <div className="mb-4">
-          <Link
-            href="/products"
-            className="text-[var(--primary)] hover:underline flex items-center"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Ürünlere geri dön
-          </Link>
-        </div>
+      <div className="min-h-screen bg-[var(--background)] p-4 sm:p-6 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-6">
+            <Link
+              href="/products"
+              className="text-[var(--accent)] hover:underline flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Ürünlere geri dön
+            </Link>
+          </div>
 
-        <div className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 p-4 rounded-md">
-          {error || 'Ürün bulunamadı.'}
+          <div className="bg-[var(--background)] p-8 rounded-2xl border border-red-200 shadow-sm text-center">
+            <div className="flex items-center justify-center text-red-500 mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-[var(--foreground)] mb-2">{error || 'Ürün bulunamadı'}</h3>
+            <p className="text-[var(--foreground)] opacity-70 mb-6">
+              Bu ürün silinmiş veya kullanılamıyor olabilir.
+            </p>
+            <Link
+              href="/products"
+              className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg hover:shadow-lg transition-all inline-flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+              </svg>
+              Diğer Ürünlere Göz Atın
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="mb-4">
-        <Link
-          href="/products"
-          className="text-[var(--primary)] hover:underline flex items-center"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Ürünlere geri dön
-        </Link>
-      </div>
+    <div className="min-h-screen bg-[var(--background)] p-4 sm:p-6 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Return Link */}
+        <div className="mb-6">
+          <Link
+            href="/products"
+            className="text-[var(--accent)] hover:underline flex items-center group"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Ürünlere geri dön
+          </Link>
+        </div>
 
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Ürün Görselleri */}
-        <div className="w-full md:w-1/2">
-          <div className="relative h-96 w-full mb-4 bg-[var(--background)] border border-[var(--border)] rounded-lg overflow-hidden">
-            {product.images && product.images.length > 0 ? (
-              <Image
-                src={product.images[activeImageIndex].url}
-                alt={product.title}
-                fill
-                className="object-contain"
-                unoptimized={true}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-[var(--foreground)] opacity-70">Görsel bulunamadı</p>
+        <div className="flex flex-col lg:flex-row gap-12">
+          {/* Product Images */}
+          <div className="w-full lg:w-3/5">
+            <div className="relative h-[500px] w-full mb-4 bg-[var(--background)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm">
+              {product.images && product.images.length > 0 ? (
+                <Image
+                  src={product.images[activeImageIndex].url}
+                  alt={product.title}
+                  fill
+                  className="object-contain p-4"
+                  unoptimized={true}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-[var(--accent)] opacity-30 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-[var(--foreground)] opacity-70">Ürün görseli bulunmuyor</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnail Images */}
+            {product.images && product.images.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {product.images.map((image, index) => (
+                  <button
+                    key={image.id}
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`relative h-24 w-24 flex-shrink-0 rounded-lg overflow-hidden transition-all ${activeImageIndex === index
+                        ? 'border-2 border-[var(--accent)] shadow-md'
+                        : 'border border-[var(--border)] opacity-70 hover:opacity-100'
+                      }`}
+                  >
+                    <Image
+                      src={image.url}
+                      alt={`${product.title} - Görsel ${index + 1}`}
+                      fill
+                      className="object-cover"
+                      unoptimized={true}
+                    />
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Küçük Görseller */}
-          {product.images && product.images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {product.images.map((image, index) => (
+          {/* Product Info */}
+          <div className="w-full lg:w-2/5">
+            <div className="bg-[var(--background)] rounded-2xl border border-[var(--border)] p-8 shadow-sm">
+              <div className="flex flex-col">
+                <span className="text-sm text-[var(--accent)] font-medium mb-2">
+                  {product.category?.name || 'Kategorisiz Ürün'}
+                </span>
+                <h1 className="text-3xl font-bold text-[var(--foreground)] mb-2">
+                  {product.title}
+                </h1>
+              </div>
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center text-sm text-[var(--foreground)] opacity-70">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  {product.user?.username || 'Bilinmiyor'}
+                </div>
+                <span className="w-1 h-1 rounded-full bg-[var(--foreground)] opacity-30"></span>
+                <div className="flex items-center text-sm text-[var(--foreground)] opacity-70">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {new Date(product.createdAt).toLocaleDateString('tr-TR')}
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <p className="text-[var(--foreground)] whitespace-pre-line leading-relaxed">
+                  {product.description}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between mb-8 py-4 border-y border-[var(--border)]">
+                <div className="text-sm uppercase tracking-wider text-[var(--foreground)] opacity-70">Fiyat</div>
+                <div className="text-3xl font-bold text-[var(--accent)]">
+                  {formattedPrice}
+                </div>
+              </div>
+
+              {isOwner ? (
+                <div className="flex gap-4">
+                  <Link
+                    href={`/products/${product.id}/edit`}
+                    className="flex-1 py-3 px-6 bg-[var(--accent)] text-white font-medium rounded-lg hover:shadow-lg transition-all flex items-center justify-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Düzenle
+                  </Link>
+                  <button
+                    className="flex-1 py-3 px-6 bg-red-500 text-white font-medium rounded-lg hover:shadow-lg transition-all flex items-center justify-center"
+                    onClick={() => {
+                      // Silme işlemi burada yapılacak
+                      if (confirm('Bu ürünü silmek istediğinize emin misiniz?')) {
+                        // Silme API çağrısı
+                      }
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Sil
+                  </button>
+                </div>
+              ) : (
                 <button
-                  key={image.id}
-                  onClick={() => setActiveImageIndex(index)}
-                  className={`relative h-20 w-20 flex-shrink-0 rounded-md overflow-hidden border-2 ${activeImageIndex === index
-                      ? 'border-[var(--primary)]'
-                      : 'border-[var(--border)]'
-                    }`}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-[var(--accent)] to-[#071739] text-white font-medium rounded-lg hover:shadow-xl transition-all flex items-center justify-center group"
+                  onClick={() => {
+                    // Satın alma veya iletişim işlemi burada yapılacak
+                    if (!user) {
+                      router.push('/sign-in?redirect=' + encodeURIComponent(`/products/${product.id}`));
+                      return;
+                    }
+                    // İletişim veya satın alma işlemi
+                  }}
                 >
-                  <Image
-                    src={image.url}
-                    alt={`${product.title} - Görsel ${index + 1}`}
-                    fill
-                    className="object-cover"
-                    unoptimized={true}
-                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 group-hover:animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  İletişime Geç
                 </button>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Ürün Bilgileri */}
-        <div className="w-full md:w-1/2">
-          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-2">
-            {product.title}
-          </h1>
-
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm bg-[var(--secondary)] text-[var(--foreground)] px-2 py-1 rounded-full">
-              {product.category?.name || 'Kategori Yok'}
-            </span>
-            <span className="text-sm text-[var(--foreground)] opacity-70">
-              Satıcı: {product.user?.username || 'Bilinmiyor'}
-            </span>
           </div>
-
-          <p className="text-[var(--foreground)] mb-6 whitespace-pre-line">
-            {product.description}
-          </p>
-
-          <div className="text-2xl font-bold text-[var(--primary)] mb-6">
-            {formattedPrice}
-          </div>
-
-          {isOwner ? (
-            <div className="flex gap-4">
-              <Link
-                href={`/products/${product.id}/edit`}
-                className="px-6 py-2 bg-[var(--primary)] text-[var(--primary-foreground)] font-medium rounded-md hover:opacity-90 transition-opacity"
-              >
-                Düzenle
-              </Link>
-              <button
-                className="px-6 py-2 bg-red-500 dark:bg-red-600 text-white font-medium rounded-md hover:opacity-90 transition-opacity"
-                onClick={() => {
-                  // Silme işlemi burada yapılacak
-                  if (confirm('Bu ürünü silmek istediğinize emin misiniz?')) {
-                    // Silme API çağrısı
-                  }
-                }}
-              >
-                Sil
-              </button>
-            </div>
-          ) : (
-            <button
-              className="w-full px-6 py-3 bg-[var(--primary)] text-[var(--primary-foreground)] font-medium rounded-md hover:opacity-90 transition-opacity"
-              onClick={() => {
-                // Satın alma veya iletişim işlemi burada yapılacak
-                if (!user) {
-                  router.push('/sign-in?redirect=' + encodeURIComponent(`/products/${product.id}`));
-                  return;
-                }
-                // İletişim veya satın alma işlemi
-              }}
-            >
-              İletişime Geç
-            </button>
-          )}
         </div>
       </div>
     </div>

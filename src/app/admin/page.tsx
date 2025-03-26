@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
-import { getProducts, getCategories, getAllUsers } from '@/lib/api';
+import { getProducts, getCategories, getAllUsers, getLiveStreams } from '@/lib/api';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
     products: 0,
     categories: 0,
     users: 0,
+    streams: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,16 +20,18 @@ export default function AdminDashboard() {
         setIsLoading(true);
         setError(null);
 
-        const [products, categories, users] = await Promise.all([
+        const [products, categories, users, streams] = await Promise.all([
           getProducts(),
           getCategories(),
           getAllUsers(),
+          getLiveStreams(),
         ]);
 
         setStats({
           products: products.length,
           categories: categories.length,
           users: users.length,
+          streams: streams.length,
         });
       } catch (err) {
         console.error('İstatistikler yüklenirken hata:', err);
@@ -43,11 +46,11 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout title="Dashboard">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {isLoading ? (
           // Loading state
           <>
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 animate-pulse">
                 <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2"></div>
                 <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
@@ -56,7 +59,7 @@ export default function AdminDashboard() {
           </>
         ) : error ? (
           // Error state
-          <div className="col-span-3 bg-red-50 dark:bg-red-900 text-red-600 dark:text-red-200 p-4 rounded-lg">
+          <div className="col-span-4 bg-red-50 dark:bg-red-900 text-red-600 dark:text-red-200 p-4 rounded-lg">
             {error}
           </div>
         ) : (
@@ -97,6 +100,19 @@ export default function AdminDashboard() {
                   className="text-blue-600 dark:text-blue-400 text-sm hover:underline"
                 >
                   Tüm kullanıcıları görüntüle →
+                </a>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+              <h2 className="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">Toplam Canlı Yayın</h2>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.streams}</p>
+              <div className="mt-4">
+                <a
+                  href="/admin/streams"
+                  className="text-blue-600 dark:text-blue-400 text-sm hover:underline"
+                >
+                  Tüm canlı yayınları görüntüle →
                 </a>
               </div>
             </div>

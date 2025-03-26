@@ -35,6 +35,20 @@ export function formatDate(date: Date | string): string {
 }
 
 /**
+ * Formats a date and time in Turkish locale
+ */
+export function formatDateTime(date: Date | string): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(dateObj);
+}
+
+/**
  * Truncates text to a specified length and adds ellipsis if needed
  */
 export function truncateText(text: string, maxLength: number): string {

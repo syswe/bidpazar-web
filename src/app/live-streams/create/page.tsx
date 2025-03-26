@@ -93,152 +93,184 @@ export default function CreateLiveStreamPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Link href="/live-streams" className="text-primary hover:underline flex items-center gap-1">
-          <ArrowLeft size={16} />
-          <span>Canlı Yayınlara Dön</span>
-        </Link>
+    <div className="min-h-screen bg-[var(--background)]">
+      {/* Premium Header */}
+      <div className="bg-gradient-to-r from-[var(--accent)] to-[#071739] text-white py-10 px-6">
+        <div className="container mx-auto max-w-7xl">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">Yeni Canlı Yayın</h1>
+          <p className="text-white/80">
+            Koleksiyonunuzu canlı olarak sergileyin ve izleyicilerinizle etkileşime geçin
+          </p>
+        </div>
       </div>
 
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Yeni Canlı Yayın Oluştur</h1>
+      <div className="container mx-auto max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <Link href="/live-streams" className="text-[var(--accent)] hover:text-[var(--accent)]/80 flex items-center gap-2 group">
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+            <span>Canlı Yayınlara Dön</span>
+          </Link>
+        </div>
 
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-md mb-4">
-            {error}
-          </div>
-        )}
+        <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl p-8 shadow-sm">
+          <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-6 pb-2 border-b border-[var(--border)]">
+            <span className="border-b-3 border-[var(--accent)] pb-1">Yayın Detayları</span>
+          </h2>
 
-        {success && (
-          <div className="bg-green-100 text-green-800 p-4 rounded-md mb-4">
-            {success}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium mb-1">
-              Yayın Başlığı *
-            </label>
-            <input
-              type="text"
-              id="title"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              className="w-full p-2 border border-input rounded-md bg-background"
-              placeholder="Yayın başlığı girin"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium mb-1">
-              Açıklama
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows={4}
-              className="w-full p-2 border border-input rounded-md bg-background"
-              placeholder="Yayın açıklaması girin"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="startTime" className="block text-sm font-medium mb-1">
-              Başlangıç Zamanı
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <Calendar size={16} className="text-muted-foreground" />
+          {error && (
+            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-md">
+              <div className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-red-700">{error}</p>
               </div>
-              <input
-                type="datetime-local"
-                id="startTime"
-                name="startTime"
-                value={formData.startTime}
-                onChange={handleChange}
-                className="w-full p-2 pl-10 border border-input rounded-md bg-background"
-              />
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Boş bırakırsanız, yayın "Taslak" olarak kaydedilir.
-            </p>
-          </div>
+          )}
 
-          <div>
-            <label htmlFor="thumbnail" className="block text-sm font-medium mb-1">
-              Kapak Görseli
-            </label>
-            <div className="mt-1 flex items-center">
-              {thumbnailPreview ? (
-                <div className="relative">
-                  <img
-                    src={thumbnailPreview}
-                    alt="Thumbnail preview"
-                    className="h-32 w-48 object-cover rounded-md"
+          {success && (
+            <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-md">
+              <div className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-green-700">{success}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div>
+                  <label htmlFor="title" className="block text-[var(--foreground)] font-medium mb-2">
+                    Yayın Başlığı <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleChange}
+                    className="w-full p-3 border border-[var(--border)] rounded-lg bg-[var(--background)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
+                    placeholder="Örn: Antika Saat Koleksiyonum"
+                    required
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setThumbnailPreview(null);
-                      setFormData((prev) => ({ ...prev, thumbnailUrl: '' }));
-                    }}
-                    className="absolute top-1 right-1 bg-destructive text-destructive-foreground p-1 rounded-full"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                    </svg>
-                  </button>
                 </div>
-              ) : (
-                <label
-                  htmlFor="thumbnail-upload"
-                  className="cursor-pointer bg-muted hover:bg-muted/80 p-6 rounded-md flex flex-col items-center justify-center"
-                >
-                  <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <span className="mt-2 block text-sm font-medium text-muted-foreground">
-                    Kapak görseli eklemek için tıklayın
-                  </span>
-                </label>
-              )}
-              <input
-                id="thumbnail-upload"
-                name="thumbnail"
-                type="file"
-                accept="image/*"
-                onChange={handleThumbnailChange}
-                className="sr-only"
-              />
-            </div>
-          </div>
 
-          <div className="flex gap-4 pt-4">
-            <button
-              type="button"
-              onClick={() => router.push('/live-streams')}
-              className="px-4 py-2 border border-input rounded-md"
-              disabled={loading}
-            >
-              İptal
-            </button>
-            <button
-              type="submit"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md flex items-center justify-center min-w-32"
-              disabled={loading}
-            >
-              {loading ? (
-                <div className="h-5 w-5 border-2 border-t-transparent border-primary-foreground rounded-full animate-spin"></div>
-              ) : (
-                'Yayın Oluştur'
-              )}
-            </button>
-          </div>
-        </form>
+                <div>
+                  <label htmlFor="description" className="block text-[var(--foreground)] font-medium mb-2">
+                    Açıklama
+                  </label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={5}
+                    className="w-full p-3 border border-[var(--border)] rounded-lg bg-[var(--background)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
+                    placeholder="Yayında neler olacağını anlatın"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="startTime" className="block text-[var(--foreground)] font-medium mb-2">
+                    Başlangıç Zamanı
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                      <Calendar size={18} className="text-[var(--foreground)]/50" />
+                    </div>
+                    <input
+                      type="datetime-local"
+                      id="startTime"
+                      name="startTime"
+                      value={formData.startTime}
+                      onChange={handleChange}
+                      className="w-full p-3 pl-10 border border-[var(--border)] rounded-lg bg-[var(--background)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
+                    />
+                  </div>
+                  <p className="text-sm text-[var(--foreground)]/60 mt-2">
+                    Boş bırakırsanız, yayın &quot;Planlanmış&quot; olarak kaydedilir.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="thumbnail" className="block text-[var(--foreground)] font-medium mb-2">
+                  Kapak Görseli
+                </label>
+                <div className="mt-2 flex flex-col items-center">
+                  {thumbnailPreview ? (
+                    <div className="relative w-full aspect-video mb-4">
+                      <img
+                        src={thumbnailPreview}
+                        alt="Kapak görseli önizleme"
+                        className="h-full w-full object-cover rounded-xl shadow-md"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThumbnailPreview(null);
+                          setFormData((prev) => ({ ...prev, thumbnailUrl: '' }));
+                        }}
+                        className="absolute top-2 right-2 bg-[var(--background)] text-red-500 p-2 rounded-full shadow-lg hover:bg-red-50 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                          <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="thumbnail-upload"
+                      className="w-full h-48 cursor-pointer border-2 border-dashed border-[var(--border)] hover:border-[var(--accent)] rounded-xl flex flex-col items-center justify-center bg-[var(--background)] hover:bg-[var(--accent)]/5 transition-colors"
+                    >
+                      <Upload className="h-12 w-12 text-[var(--accent)] mb-2" />
+                      <span className="text-[var(--foreground)]">
+                        Kapak görseli eklemek için tıklayın
+                      </span>
+                      <p className="text-sm text-[var(--foreground)]/60 mt-1">
+                        PNG, JPG veya GIF (16:9 önerilir)
+                      </p>
+                    </label>
+                  )}
+                  <input
+                    id="thumbnail-upload"
+                    name="thumbnail"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleThumbnailChange}
+                    className="sr-only"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-8 border-t border-[var(--border)]">
+              <Link
+                href="/live-streams"
+                className="px-6 py-3 border border-[var(--border)] text-[var(--foreground)] rounded-lg hover:border-[var(--foreground)] transition-colors"
+              >
+                İptal
+              </Link>
+              <button
+                type="submit"
+                className="px-8 py-3 bg-gradient-to-r from-[var(--accent)] to-[#071739] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="h-5 w-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                    <span>İşleniyor...</span>
+                  </>
+                ) : (
+                  <span>Yayın Oluştur</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
