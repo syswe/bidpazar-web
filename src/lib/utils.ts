@@ -25,13 +25,13 @@ export function formatCurrency(amount: number): string {
 /**
  * Formats a date in Turkish locale
  */
-export function formatDate(date: Date | string): string {
-  const dateObj = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("tr-TR", {
-    day: "numeric",
+export function formatDate(input: string | number | Date): string {
+  const date = new Date(input);
+  return date.toLocaleDateString("en-US", {
     month: "long",
+    day: "numeric",
     year: "numeric",
-  }).format(dateObj);
+  });
 }
 
 /**
@@ -94,4 +94,15 @@ export function classNames(
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function absoluteUrl(path: string): string {
+  return `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}${path}`;
 }

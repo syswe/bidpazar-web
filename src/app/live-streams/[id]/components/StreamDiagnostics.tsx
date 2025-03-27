@@ -1,324 +1,246 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+'use client';
 
-interface NetworkStats {
-  connectionType?: string;
-  effectiveType?: string;
-  downlink: number;
-  rtt: number;
-  lastChecked: Date;
-}
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 
-interface VideoStats {
-  width: number;
-  height: number;
-  frameRate?: number;
-  decodedFrames?: number;
-  droppedFrames?: number;
-  playbackRate: number;
-  readyState: number;
-  networkState: number;
-}
-
-interface SocketStats {
-  connected: boolean;
-  id?: string;
-  transport?: string;
-  reconnectAttempts: number;
-  errors: number;
-  lastActivity?: Date;
-  ping?: number;
-}
-
-interface StreamStatsProps {
-  networkStats: NetworkStats;
-  videoStats: VideoStats;
-  socketStats: SocketStats;
-  framesSent?: number;
-  framesReceived?: number;
+interface StreamDiagnosticsProps {
   streamId: string;
-  userId?: string;
-  isStreamer: boolean;
-  onRunTest?: () => void;
+  onReset?: () => void;
 }
 
-const NetworkTest: React.FC<{ onComplete: (results: any) => void }> = ({ onComplete }) => {
-  const [testing, setTesting] = useState(false);
-  const [progress, setProgress] = useState(0);
+interface DiagnosticResult {
+  success: boolean;
+  message: string;
+  details?: string[];
+}
 
-  const runTest = useCallback(async () => {
-    setTesting(true);
-    setProgress(0);
+export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps) {
+  const [isRunning, setIsRunning] = useState(false);
+  const [results, setResults] = useState<DiagnosticResult[]>([]);
+  const [summary, setSummary] = useState<string>('');
+
+  const runDiagnostics = async () => {
+    setIsRunning(true);
+    setResults([]);
+    setSummary('Running diagnostics...');
 
     try {
-      // Simple bandwidth estimation test
-      const startTime = Date.now();
-      const testSizes = [100, 500, 1000, 2000]; // KB
-      const results = {
-        downloadSpeeds: [] as number[],
-        avgDownloadKbps: 0,
-        testTime: 0,
-        success: false
-      };
+      // Step 1: Check network connectivity
+      await checkNetworkConnectivity();
 
-      for (let i = 0; i < testSizes.length; i++) {
-        setProgress(Math.floor((i / testSizes.length) * 100));
+      // Step 2: Check WebRTC support
+      await checkWebRTCSupport();
 
-        // Fetch a file with the specified size
-        const size = testSizes[i];
-        const fetchStart = Date.now();
+      // Step 3: Check media devices
+      await checkMediaDevices();
 
-        try {
-          // Add cache busting parameter and fetch test file
-          const url = `${process.env.NEXT_PUBLIC_API_URL}/test-bandwidth?size=${size}&_cb=${Date.now()}`;
-          const response = await fetch(url, {
-            method: 'GET',
-            cache: 'no-store',
-            signal: AbortSignal.timeout(10000) // 10s timeout
-          });
+      // Step 4: Test STUN/TURN servers
+      await testICEServers();
 
-          if (response.ok) {
-            const blob = await response.blob();
-            const fetchEnd = Date.now();
-            const fetchTime = fetchEnd - fetchStart;
-
-            // Calculate speed in Kbps
-            const fileSizeKB = blob.size / 1024;
-            const speedKbps = (fileSizeKB * 8) / (fetchTime / 1000);
-            results.downloadSpeeds.push(speedKbps);
-          }
-        } catch (e) {
-          console.warn("Test fetch failed", e);
-        }
-      }
-
-      // Calculate average download speed
-      if (results.downloadSpeeds.length > 0) {
-        results.avgDownloadKbps = results.downloadSpeeds.reduce((a, b) => a + b, 0) / results.downloadSpeeds.length;
-        results.success = true;
-      }
-
-      results.testTime = Date.now() - startTime;
-
-      setProgress(100);
-      onComplete(results);
+      setSummary('Diagnostics complete. Check the results below.');
     } catch (error) {
-      console.error("Network test failed", error);
-      onComplete({
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      setSummary(`Diagnostics failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      setTesting(false);
+      setIsRunning(false);
     }
-  }, [onComplete]);
+  };
+
+  const checkNetworkConnectivity = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/health`);
+      if (response.ok) {
+        addResult({
+          success: true,
+          message: 'Network connectivity check passed',
+          details: ['Server is reachable', `Response status: ${response.status}`]
+        });
+      } else {
+        throw new Error(`Server returned status: ${response.status}`);
+      }
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'Network connectivity check failed',
+        details: [error instanceof Error ? error.message : String(error)]
+      });
+      throw error;
+    }
+  };
+
+  const checkWebRTCSupport = async () => {
+    try {
+      if (!window.RTCPeerConnection) {
+        throw new Error('WebRTC is not supported in this browser');
+      }
+
+      addResult({
+        success: true,
+        message: 'WebRTC support check passed',
+        details: [
+          'RTCPeerConnection is available',
+          `Browser: ${navigator.userAgent}`
+        ]
+      });
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'WebRTC support check failed',
+        details: [error instanceof Error ? error.message : String(error)]
+      });
+      throw error;
+    }
+  };
+
+  const checkMediaDevices = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Media devices API is not supported');
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasVideoInput = devices.some(device => device.kind === 'videoinput');
+      const hasAudioInput = devices.some(device => device.kind === 'audioinput');
+
+      if (!hasVideoInput && !hasAudioInput) {
+        throw new Error('No media input devices found');
+      }
+
+      addResult({
+        success: true,
+        message: 'Media devices check passed',
+        details: [
+          `Video input devices: ${devices.filter(d => d.kind === 'videoinput').length}`,
+          `Audio input devices: ${devices.filter(d => d.kind === 'audioinput').length}`
+        ]
+      });
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'Media devices check failed',
+        details: [error instanceof Error ? error.message : String(error)]
+      });
+      throw error;
+    }
+  };
+
+  const testICEServers = async () => {
+    try {
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+
+      const pc = new RTCPeerConnection({ iceServers });
+      pc.createDataChannel('test');
+
+      let candidateFound = false;
+      let timeoutId: NodeJS.Timeout;
+
+      await new Promise<void>((resolve, reject) => {
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            candidateFound = true;
+            clearTimeout(timeoutId);
+            pc.close();
+            resolve();
+          }
+        };
+
+        timeoutId = setTimeout(() => {
+          pc.close();
+          if (!candidateFound) {
+            reject(new Error('No ICE candidates found'));
+          }
+        }, 5000);
+
+        pc.createOffer()
+          .then(offer => pc.setLocalDescription(offer))
+          .catch(reject);
+      });
+
+      addResult({
+        success: true,
+        message: 'ICE servers check passed',
+        details: ['Successfully gathered ICE candidates']
+      });
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'ICE servers check failed',
+        details: [error instanceof Error ? error.message : String(error)]
+      });
+      throw error;
+    }
+  };
+
+  const addResult = (result: DiagnosticResult) => {
+    setResults(prev => [...prev, result]);
+  };
 
   useEffect(() => {
-    runTest();
-  }, [runTest]);
+    runDiagnostics();
+  }, [streamId]);
 
   return (
-    <div className="p-3 bg-slate-800 rounded-md">
-      <p className="text-white mb-2">Network Test in Progress...</p>
-      <div className="w-full h-2 bg-slate-600 rounded-md overflow-hidden">
-        <div
-          className="h-full bg-blue-500 transition-width duration-300 ease-in-out"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-    </div>
-  );
-};
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-2xl mx-auto">
+      <h2 className="text-xl font-semibold mb-4">Stream Diagnostics</h2>
 
-export const StreamDiagnostics: React.FC<StreamStatsProps> = ({
-  networkStats,
-  videoStats,
-  socketStats,
-  framesSent = 0,
-  framesReceived = 0,
-  streamId,
-  userId,
-  isStreamer,
-  onRunTest
-}) => {
-  const [expanded, setExpanded] = useState(false);
-  const [runningTest, setRunningTest] = useState(false);
-  const [testResults, setTestResults] = useState<any>(null);
-
-  // Function to determine streaming quality assessment
-  const assessStreamQuality = useCallback(() => {
-    let quality = 'good';
-    let issues = [];
-
-    // Check network conditions
-    if (networkStats.downlink < 1.5) {
-      quality = 'poor';
-      issues.push('Low bandwidth');
-    } else if (networkStats.downlink < 3) {
-      quality = 'fair';
-      issues.push('Limited bandwidth');
-    }
-
-    if (networkStats.rtt > 200) {
-      quality = quality === 'good' ? 'fair' : 'poor';
-      issues.push('High latency');
-    }
-
-    // Check video playback
-    if (videoStats.droppedFrames && videoStats.decodedFrames) {
-      const dropRate = (videoStats.droppedFrames / videoStats.decodedFrames) * 100;
-      if (dropRate > 15) {
-        quality = 'poor';
-        issues.push('High frame drop rate');
-      } else if (dropRate > 5) {
-        quality = quality === 'good' ? 'fair' : 'poor';
-        issues.push('Moderate frame drops');
-      }
-    }
-
-    // Check socket connection
-    if (!socketStats.connected) {
-      quality = 'poor';
-      issues.push('Socket disconnected');
-    } else if (socketStats.errors > 3) {
-      quality = quality === 'good' ? 'fair' : 'poor';
-      issues.push('Connection errors');
-    }
-
-    return { quality, issues };
-  }, [networkStats, videoStats, socketStats]);
-
-  const { quality, issues } = assessStreamQuality();
-
-  const handleRunTest = () => {
-    setRunningTest(true);
-    if (onRunTest) onRunTest();
-  };
-
-  const handleTestComplete = (results: any) => {
-    setTestResults(results);
-    setRunningTest(false);
-
-    if (results.success) {
-      const mbps = results.avgDownloadKbps / 1000;
-      if (mbps < 1.5) {
-        toast.error(`Network bandwidth test results: ${mbps.toFixed(2)} Mbps - This connection may be too slow for streaming video.`);
-      } else if (mbps < 3) {
-        toast.warning(`Network bandwidth test results: ${mbps.toFixed(2)} Mbps - This connection may experience quality issues with HD streaming.`);
-      } else {
-        toast.success(`Network bandwidth test results: ${mbps.toFixed(2)} Mbps - This connection should be suitable for streaming.`);
-      }
-    } else {
-      toast.error("Network test failed. Please try again later.");
-    }
-  };
-
-  const getQualityColor = () => {
-    switch (quality) {
-      case 'good': return 'bg-green-500';
-      case 'fair': return 'bg-yellow-500';
-      case 'poor': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  return (
-    <div className="bg-black/60 rounded-lg p-2 text-xs font-mono text-white">
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center">
-          <div className={`w-3 h-3 rounded-full mr-2 ${getQualityColor()}`}></div>
-          <span className="font-semibold">Stream Health: {quality.toUpperCase()}</span>
-        </div>
-        <span>{expanded ? '▼' : '▶'}</span>
-      </div>
-
-      {expanded && (
-        <div className="mt-2 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-black/30 p-2 rounded">
-              <h4 className="font-bold mb-1">Network</h4>
-              <p>Type: {networkStats.connectionType || 'unknown'}</p>
-              <p>Quality: {networkStats.effectiveType || 'unknown'}</p>
-              <p>Bandwidth: {networkStats.downlink.toFixed(1)} Mbps</p>
-              <p>Latency: {networkStats.rtt} ms</p>
+      <div className="space-y-4">
+        {results.map((result, index) => (
+          <div
+            key={index}
+            className={`p-4 rounded-lg ${result.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+              />
+              <span className={result.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}>
+                {result.message}
+              </span>
             </div>
-
-            <div className="bg-black/30 p-2 rounded">
-              <h4 className="font-bold mb-1">Connection</h4>
-              <p>Status: {socketStats.connected ? 'Connected' : 'Disconnected'}</p>
-              <p>Socket ID: {socketStats.id || 'none'}</p>
-              <p>Reconnects: {socketStats.reconnectAttempts}</p>
-              <p>Errors: {socketStats.errors}</p>
-            </div>
-
-            <div className="bg-black/30 p-2 rounded">
-              <h4 className="font-bold mb-1">Video</h4>
-              <p>Resolution: {videoStats.width}x{videoStats.height}</p>
-              <p>State: {videoStats.readyState}/4</p>
-              {videoStats.frameRate && <p>Frame Rate: {videoStats.frameRate.toFixed(1)} fps</p>}
-              {videoStats.decodedFrames !== undefined && (
-                <p>Frames: {videoStats.decodedFrames} (dropped: {videoStats.droppedFrames || 0})</p>
-              )}
-            </div>
-
-            <div className="bg-black/30 p-2 rounded">
-              <h4 className="font-bold mb-1">Stream Info</h4>
-              <p>Stream ID: {streamId.substring(0, 10)}...</p>
-              <p>User ID: {userId ? userId.substring(0, 10) + '...' : 'anonymous'}</p>
-              <p>Role: {isStreamer ? 'Streamer' : 'Viewer'}</p>
-              <p>{isStreamer ? `Sent: ${framesSent} frames` : `Received: ${framesReceived} frames`}</p>
-            </div>
-          </div>
-
-          {issues.length > 0 && (
-            <div className="bg-red-900/30 p-2 rounded">
-              <h4 className="font-bold">Issues Detected:</h4>
-              <ul className="list-disc list-inside">
-                {issues.map((issue, i) => (
-                  <li key={i}>{issue}</li>
+            {result.details && (
+              <ul className="mt-2 ml-4 text-sm space-y-1">
+                {result.details.map((detail, i) => (
+                  <li key={i} className="text-gray-600 dark:text-gray-400">
+                    • {detail}
+                  </li>
                 ))}
               </ul>
-            </div>
-          )}
+            )}
+          </div>
+        ))}
 
-          <div className="mt-2">
-            {runningTest ? (
-              <NetworkTest onComplete={handleTestComplete} />
-            ) : (
+        {isRunning && (
+          <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Running diagnostics...</span>
+          </div>
+        )}
+
+        <div className="mt-4 pt-4 border-t dark:border-gray-700">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{summary}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={runDiagnostics}
+              disabled={isRunning}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50"
+            >
+              Run Again
+            </button>
+            {onReset && (
               <button
-                onClick={handleRunTest}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 rounded text-xs"
+                onClick={onReset}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg"
               >
-                Run Network Test
+                Reset Connection
               </button>
             )}
-
-            {testResults?.success && (
-              <div className="mt-2 bg-slate-800 p-2 rounded text-xs">
-                <p>Download: {(testResults.avgDownloadKbps / 1000).toFixed(2)} Mbps</p>
-                <p>Test Time: {(testResults.testTime / 1000).toFixed(1)}s</p>
-                <p>Status: {testResults.avgDownloadKbps > 3000 ? 'Good' : testResults.avgDownloadKbps > 1500 ? 'Fair' : 'Poor'}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end mt-2">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.reload();
-              }}
-              className="text-blue-400 hover:text-blue-300 text-xs"
-            >
-              Reload Page
-            </a>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
-}; 
+} 

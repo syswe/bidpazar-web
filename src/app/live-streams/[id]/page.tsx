@@ -17,29 +17,23 @@ import {
   Heart,
   MessageCircle,
   Share2,
-  Gift,
-  DollarSign,
   Calendar
 } from "lucide-react";
-import { ServerBasedStreamManager } from './components/ServerBasedStreamManager';
+import { StreamDiagnostics } from './components/StreamDiagnostics';
+import WebRTCStreamManager from './components/WebRTCStreamManager';
 
-interface StreamUser {
-  id: string;
-  username: string;
-  name?: string | null;
-}
-
-interface StreamDetails {
+interface LiveStreamDetails {
   id: string;
   title: string;
-  status: 'SCHEDULED' | 'LIVE' | 'ENDED';
-  createdAt: string;
-  updatedAt: string;
-  viewerCount: number;
-  userId: string;
-  description?: string;
-  startTime?: string | null;
-  user?: StreamUser;
+  description: string;
+  creatorId: string;
+  status: 'active' | 'ended' | 'scheduled';
+  startTime?: string;
+  updatedAt?: string;
+  user?: {
+    id: string;
+    username: string;
+  };
 }
 
 interface LogItem {
@@ -56,7 +50,7 @@ export default function LiveStreamPage() {
   const [isStreamer, setIsStreamer] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [streamStatus, setStreamStatus] = useState<'SCHEDULED' | 'LIVE' | 'ENDED'>('SCHEDULED');
-  const [streamDetails, setStreamDetails] = useState<StreamDetails | null>(null);
+  const [streamDetails, setStreamDetails] = useState<LiveStreamDetails | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [viewerCount, setViewerCount] = useState(0);
@@ -66,6 +60,15 @@ export default function LiveStreamPage() {
   const [showChat, setShowChat] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(Math.floor(Math.random() * 100));
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [connectionState, setConnectionState] = useState({
+    isConnected: false,
+    isReconnecting: false,
+    lastError: null
+  });
+  const [userId, setUserId] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
   const { user } = useAuth();
 
@@ -165,12 +168,7 @@ export default function LiveStreamPage() {
 
   // Check if current user is the streamer and get stream details
   useEffect(() => {
-    async function fetchStreamInfo() {
-      if (!streamId) {
-        setIsLoading(false);
-        return;
-      }
-
+    const fetchStreamDetails = async () => {
       try {
         logMessage(`Fetching stream details for: ${streamId}`, 'debug');
 
@@ -196,13 +194,14 @@ export default function LiveStreamPage() {
         setStreamStatus(data.status);
         setViewerCount(data.viewerCount || Math.floor(Math.random() * 10) + 1);
 
-        // Check if current user is the streamer with improved logging
-        const isCurrentUserStreamer = user?.id && data.userId === user.id;
-        logMessage(`Stream creator ID: ${data.userId}`, 'debug');
-        logMessage(`Current user ID: ${user?.id}`, 'debug');
-        logMessage(`User is streamer: ${isCurrentUserStreamer}`, 'debug');
+        // Get user details from local storage or auth context
+        const storedUserId = localStorage.getItem('userId') || 'guest-' + Math.random().toString(36).substring(7);
+        const storedUsername = localStorage.getItem('username') || 'Guest';
+        setUserId(storedUserId);
+        setUsername(storedUsername);
 
-        setIsStreamer(!!isCurrentUserStreamer);
+        // Check if current user is the streamer
+        setIsStreamer(data.creatorId === storedUserId);
 
         // Double-check with backend for streamer status if user is logged in
         if (user?.id && token) {
@@ -221,7 +220,7 @@ export default function LiveStreamPage() {
               logMessage(`Backend streamer check result: ${checkData.isStreamer}`, 'debug');
 
               // Override isStreamer with the backend result if different
-              if (checkData.isStreamer !== isCurrentUserStreamer) {
+              if (checkData.isStreamer !== isStreamer) {
                 logMessage(`Updating streamer status based on backend check`, 'debug');
                 setIsStreamer(checkData.isStreamer);
               }
@@ -234,12 +233,15 @@ export default function LiveStreamPage() {
       } catch (error) {
         logMessage(`Error fetching stream details`, 'error', error);
         toast.error("Could not load stream details. Please try again.");
+        setError('Failed to load stream details');
       } finally {
         setIsLoading(false);
       }
-    }
+    };
 
-    fetchStreamInfo();
+    if (streamId) {
+      fetchStreamDetails();
+    }
   }, [streamId, user]);
 
   // Handle leaving page
@@ -257,6 +259,57 @@ export default function LiveStreamPage() {
     }
     setIsLiked(!isLiked);
   };
+
+  // Track connection issues
+  useEffect(() => {
+    // Check for connection issues
+    const checkConnection = () => {
+      // If we're not connected after 5 seconds, show diagnostics
+      if (connectionState.lastError || connectionState.isReconnecting) {
+        setConnectionState({
+          isConnected: false,
+          isReconnecting: true,
+          lastError: connectionState.lastError
+        });
+
+        // Auto-show diagnostics if we detect connection issues
+        if (!showDiagnostics) {
+          logMessage("Connection issues detected, showing diagnostics", "warn", {
+            lastError: connectionState.lastError,
+            isReconnecting: connectionState.isReconnecting
+          });
+          setShowDiagnostics(true);
+        }
+      } else {
+        setConnectionState({
+          isConnected: true,
+          isReconnecting: false,
+          lastError: null
+        });
+      }
+    };
+
+    // Check immediately and then periodically
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+
+    return () => clearInterval(interval);
+  }, [connectionState.lastError, connectionState.isReconnecting, showDiagnostics]);
+
+  const handleConnectionReset = () => {
+    logMessage("User initiated connection reset", "info");
+
+    // Force reload with cache clearing
+    window.location.reload();
+  };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-red-500">{error}</div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -350,8 +403,10 @@ export default function LiveStreamPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="bg-black rounded-xl overflow-hidden aspect-video mb-4 relative">
-                <ServerBasedStreamManager
+                <WebRTCStreamManager
                   streamId={streamId}
+                  userId={userId}
+                  username={username}
                   isStreamer={isStreamer}
                 />
 
@@ -420,113 +475,215 @@ export default function LiveStreamPage() {
 
   // Viewer view - Vertical layout with TikTok-style interface
   return (
-    <div className="relative w-full h-full">
-      {/* Add info banner about server-based streaming */}
-      <div className="absolute top-14 left-0 right-0 z-30 flex justify-center">
-        <div className="bg-blue-600 text-white px-3 py-1 rounded text-sm shadow-lg">
-          Sunucu tabanlı yayın kullanılıyor (daha güvenilir bağlantı)
+    <div className="container mx-auto px-4 py-8 min-h-screen">
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+          <h2 className="text-xl font-semibold">Loading stream...</h2>
         </div>
-      </div>
+      ) : streamDetails ? (
+        <div className={`grid ${isPremiumLayout ? 'lg:grid-cols-3' : 'lg:grid-cols-1'} gap-6`}>
+          <div className={`${isPremiumLayout ? 'lg:col-span-2' : 'w-full'} space-y-4`}>
+            {/* Stream header */}
+            <div className="flex justify-between items-center">
+              <h1 className="text-2xl font-bold truncate">{streamDetails.title}</h1>
+              <button onClick={handleBackToHome} className="p-2 rounded-full hover:bg-muted">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-      {/* Stream content - always use ServerBasedStreamManager */}
-      <ServerBasedStreamManager
-        streamId={streamId}
-        isStreamer={isStreamer}
-      />
+            {/* Stream status & info */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {streamStatus === 'LIVE' ? (
+                <span className="bg-red-500 text-white px-2 py-1 rounded text-sm font-medium inline-flex items-center">
+                  <span className="w-2 h-2 bg-white rounded-full animate-pulse mr-1"></span> LIVE
+                </span>
+              ) : streamStatus === 'SCHEDULED' ? (
+                <span className="bg-blue-500 text-white px-2 py-1 rounded text-sm font-medium inline-flex items-center">
+                  <Calendar className="w-3 h-3 mr-1" /> SCHEDULED
+                </span>
+              ) : (
+                <span className="bg-gray-500 text-white px-2 py-1 rounded text-sm font-medium">
+                  ENDED
+                </span>
+              )}
 
-      {/* Top gradient overlay for streamer info */}
-      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/80 to-transparent z-10 pointer-events-none"></div>
+              <span className="text-sm font-medium inline-flex items-center gap-1">
+                <Clock className="h-4 w-4" /> {elapsedTime}
+              </span>
 
-      {/* Bottom gradient overlay for chat */}
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-black/80 to-transparent z-10 pointer-events-none"></div>
+              <span className="text-sm font-medium inline-flex items-center gap-1">
+                <Eye className="h-4 w-4" /> {viewerCount} watching
+              </span>
 
-      {/* Streamer info at top */}
-      <div className="absolute top-0 left-0 right-0 p-4 z-20">
-        <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">
+                Host: {streamDetails.user?.username || 'Unknown'}
+              </span>
+
+              {connectionState.isReconnecting && (
+                <span className="text-sm font-medium text-red-500 inline-flex items-center gap-1 bg-red-100 px-2 py-1 rounded">
+                  Connection issues detected
+                  <button
+                    onClick={() => setShowDiagnostics(true)}
+                    className="text-xs underline"
+                  >
+                    Troubleshoot
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {/* Video player */}
+            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+              {streamStatus === 'LIVE' ? (
+                <WebRTCStreamManager
+                  streamId={streamId}
+                  userId={userId}
+                  username={username}
+                  isStreamer={isStreamer}
+                />
+              ) : streamStatus === 'SCHEDULED' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                  <Calendar className="h-16 w-16 mb-4 opacity-70" />
+                  <h3 className="text-2xl font-bold mb-2">Stream Scheduled</h3>
+                  <p className="text-gray-300">
+                    {streamDetails.startTime
+                      ? `Starting ${new Date(streamDetails.startTime).toLocaleString()}`
+                      : 'Stay tuned for the upcoming stream'}
+                  </p>
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                  <PlayCircle className="h-16 w-16 mb-4 opacity-70" />
+                  <h3 className="text-2xl font-bold mb-2">Stream Ended</h3>
+                  <p className="text-gray-300">This live stream has concluded</p>
+                </div>
+              )}
+
+              {/* Connection diagnostics modal */}
+              {showDiagnostics && (
+                <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
+                  <div className="relative w-full max-w-md">
+                    <button
+                      onClick={() => setShowDiagnostics(false)}
+                      className="absolute top-2 right-2 text-white hover:text-gray-300"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                    <StreamDiagnostics streamId={streamId} onReset={handleConnectionReset} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Interaction bar */}
+            <div className="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleLike}
+                  className={`flex items-center gap-1 ${isLiked ? 'text-red-500' : 'text-gray-600 dark:text-gray-300'}`}
+                >
+                  <Heart className={`h-5 w-5 ${isLiked && 'fill-current'}`} />
+                  <span>{likeCount}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowChat(!showChat)}
+                  className="flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  <span>Chat</span>
+                </button>
+
+                <button className="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+                  <Share2 className="h-5 w-5" />
+                  <span>Share</span>
+                </button>
+              </div>
+
+              <div>
+                {connectionState.isReconnecting && (
+                  <button
+                    onClick={() => setShowDiagnostics(true)}
+                    className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded"
+                  >
+                    Fix Connection
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Stream description */}
+            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+              <h3 className="font-semibold text-lg mb-2">About this stream</h3>
+              <p className="text-gray-700 dark:text-gray-300">
+                {streamDetails.description || 'No description provided for this live stream.'}
+              </p>
+            </div>
+
+            {/* Product display section for this stream */}
+            <ProductDisplay streamId={streamId} />
+          </div>
+
+          {/* Chat panel */}
+          {(showChat || isPremiumLayout) && (
+            <div className={`${!isPremiumLayout && 'mt-4 lg:mt-0'}`}>
+              <StreamChat streamId={streamId} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <h2 className="text-xl font-semibold mb-4">Stream Not Found</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            The stream you&apos;re looking for doesn&apos;t exist or has been removed.
+          </p>
           <button
             onClick={handleBackToHome}
-            className="text-white p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
           >
-            <X className="h-5 w-5" />
+            Back to Live Streams
           </button>
 
-          <div className="flex items-center">
-            <div className="flex items-center bg-black/50 text-white text-sm rounded-full px-3 py-1.5">
-              <Eye className="w-4 h-4 mr-1.5" />
-              <span>{viewerCount}</span>
+          {/* Show diagnostics button when stream not found */}
+          <button
+            onClick={() => setShowDiagnostics(true)}
+            className="mt-4 text-primary hover:underline"
+          >
+            Run connection diagnostics
+          </button>
+
+          {showDiagnostics && (
+            <div className="mt-6 w-full max-w-md">
+              <StreamDiagnostics streamId={streamId} onReset={handleConnectionReset} />
             </div>
-          </div>
+          )}
         </div>
+      )}
 
-        <div className="mt-4 flex items-center">
-          <div className="w-10 h-10 bg-[var(--accent)] rounded-full flex items-center justify-center text-white font-bold">
-            {streamDetails?.user?.username?.charAt(0).toUpperCase() || 'U'}
-          </div>
-          <div className="ml-3">
-            <h3 className="text-white font-semibold">
-              {streamDetails?.user?.username || 'Username'}
-            </h3>
-            <p className="text-white/80 text-sm">{streamDetails?.title}</p>
-          </div>
-
-          <button className="ml-auto bg-[var(--accent)] text-white px-4 py-1.5 rounded-full text-sm font-medium">
-            Takip Et
-          </button>
-        </div>
-      </div>
-
-      {/* Right side buttons */}
-      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex flex-col items-center gap-6 z-20">
-        <button
-          onClick={handleLike}
-          className="flex flex-col items-center"
+      {/* Debug panel */}
+      {debugMode && (
+        <div
+          ref={debugPanelRef}
+          className="fixed bottom-0 left-0 right-0 h-48 bg-black/90 text-green-400 font-mono text-xs p-2 overflow-y-auto z-50"
         >
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isLiked ? 'bg-red-500' : 'bg-black/50'}`}>
-            <Heart className={`w-6 h-6 ${isLiked ? 'text-white fill-current' : 'text-white'}`} />
+          <div className="flex justify-between items-center mb-2 sticky top-0 bg-black">
+            <h3 className="font-bold">Debug Console</h3>
+            <button onClick={() => setDebugMode(false)} className="text-red-400 hover:text-red-300">
+              Close
+            </button>
           </div>
-          <span className="text-white text-xs mt-1">{likeCount}</span>
-        </button>
-
-        <button
-          onClick={() => setShowChat(!showChat)}
-          className="flex flex-col items-center"
-        >
-          <div className={`w-12 h-12 rounded-full bg-black/50 flex items-center justify-center ${showChat ? 'bg-[var(--accent)]' : 'bg-black/50'}`}>
-            <MessageCircle className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-white text-xs mt-1">Sohbet</span>
-        </button>
-
-        <button className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-            <Share2 className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-white text-xs mt-1">Paylaş</span>
-        </button>
-
-        <button className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-            <Gift className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-white text-xs mt-1">Hediye</span>
-        </button>
-
-        <button className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-            <DollarSign className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-white text-xs mt-1">Teklif</span>
-        </button>
-      </div>
-
-      {/* Bottom chat (TikTok style) */}
-      {showChat && (
-        <div className="absolute bottom-0 left-0 right-16 max-h-96 p-4 z-20">
-          <div className="h-60 mb-2">
-            <StreamChat streamId={streamId} />
-          </div>
+          {logs.map((log, i) => (
+            <div key={i} className={`mb-1 ${log.level === 'error' ? 'text-red-400' :
+              log.level === 'warn' ? 'text-yellow-400' :
+                log.level === 'debug' ? 'text-blue-400' : 'text-green-400'
+              }`}>
+              <span className="opacity-70">[{new Date(log.timestamp).toLocaleTimeString()}]</span>{' '}
+              {log.message}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
-} 
+}

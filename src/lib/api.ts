@@ -7,6 +7,17 @@ console.log("API configuration:");
 console.log(`NEXT_PUBLIC_API_URL env: ${process.env.NEXT_PUBLIC_API_URL}`);
 console.log(`Using API_URL: ${API_URL}`);
 
+// Helper function to ensure proper URL construction
+const constructApiUrl = (endpoint: string): string => {
+  // Remove any leading slashes from the endpoint
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
+
+  // Remove any trailing slashes from the API_URL
+  const baseUrl = API_URL.endsWith("/") ? API_URL.slice(0, -1) : API_URL;
+
+  return `${baseUrl}/${cleanEndpoint}`;
+};
+
 // Verify API URL format
 if (!API_URL.includes("/api")) {
   console.warn(
@@ -148,8 +159,7 @@ const fetcher = async <T>(
   };
 
   try {
-    const fullEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    const url = `${API_URL}${fullEndpoint}`;
+    const url = constructApiUrl(endpoint);
     console.log(`Fetcher making request to: ${url}`);
     console.log(`Authorization header present: ${!!token}`);
 
