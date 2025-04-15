@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { getProductById, getCategories, updateProduct, uploadProductImages, Category } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 
-export default function EditProductPage({ params }: { params: { id: string } }) {
+export default function EditProductPage() {
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -32,7 +34,7 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
 
         // Fetch both product data and categories
         const [product, categoriesData] = await Promise.all([
-          getProductById(params.id),
+          getProductById(id),
           getCategories()
         ]);
 
@@ -62,14 +64,14 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
     if (!authLoading && isAuthenticated) {
       fetchData();
     }
-  }, [params.id, authLoading, isAuthenticated]);
+  }, [id, authLoading, isAuthenticated]);
 
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/sign-in?redirect=' + encodeURIComponent('/products/edit/' + params.id));
+      router.push('/sign-in?redirect=' + encodeURIComponent('/products/edit/' + id));
     }
-  }, [authLoading, isAuthenticated, router, params.id]);
+  }, [authLoading, isAuthenticated, router, id]);
 
   // Handle form field changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -99,15 +101,15 @@ export default function EditProductPage({ params }: { params: { id: string } }) 
       setError(null);
 
       // Update product data
-      await updateProduct(params.id, productData);
+      await updateProduct(id, productData);
 
       // Upload new images if selected
       if (selectedFiles.length > 0) {
-        await uploadProductImages(params.id, selectedFiles);
+        await uploadProductImages(id, selectedFiles);
       }
 
       // Redirect to product page
-      router.push(`/products/${params.id}`);
+      router.push(`/products/${id}`);
     } catch (err) {
       console.error('Ürün güncellenirken hata:', err);
       setError('Ürün güncellenirken bir hata oluştu.');

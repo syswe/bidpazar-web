@@ -135,6 +135,7 @@ export default function WebRTCStreamManager({
         wsRef.current = null;
       }
       
+      // Create new WebSocket with custom timeout
       const ws = new WebSocket(fullWsUrl);
       
       // Log readyState changes
@@ -171,23 +172,24 @@ export default function WebRTCStreamManager({
       // Store timeout to clean it up later if needed
       timeoutsRef.current.push(connectionTimeout);
 
+      // Handle connection errors
       ws.onerror = (event) => {
         console.error('WebSocket connection error:', event);
         clearTimeout(connectionTimeout);
         
         // Only update state if component is still mounted
         if (initialMountRef.current) {
-          // Determine if this is likely a CORS error
-          const isCorsError = navigator.userAgent.includes('Chrome') && 
-                             !socketUrl.includes(window.location.hostname);
+          // Provide a more detailed error message based on browser and URL
+          let errorMessage = 'WebSocket connection failed. ';
           
-          // Provide a more detailed error message
-          let errorMessage = 'Could not connect to streaming server. ';
-          
-          if (isCorsError) {
-            errorMessage += 'This may be due to a CORS issue. Please ensure the backend CORS settings include this frontend URL.';
+          if (navigator.userAgent.includes('Chrome')) {
+            if (!socketUrl.includes(window.location.hostname)) {
+              errorMessage += 'This could be a CORS issue. Make sure the server allows connections from this origin.';
+            } else {
+              errorMessage += 'Check if the server is running and check your network connection.';
+            }
           } else {
-            errorMessage += 'The server might not be running or is unreachable. Check your network connection and server status.';
+            errorMessage += 'Check your browser console for more details.';
           }
           
           setError(errorMessage);
@@ -200,6 +202,33 @@ export default function WebRTCStreamManager({
         logReadyState();
       };
 
+      // Helper function for reconnection with exponential backoff
+      const reconnectWithBackoff = (attempt: number) => {
+        // Don't attempt reconnection if unmounting
+        if (!initialMountRef.current) {
+          console.log('[WebRTCStreamManager] Component unmounting, skipping reconnection attempt');
+          return;
+        }
+
+        // Calculate exponential backoff time (capped at 30 seconds)
+        const backoffTime = Math.min(1000 * Math.pow(2, attempt), 30000);
+        
+        console.log(`[WebRTCStreamManager] Scheduling reconnection attempt ${attempt + 1}/${MAX_CONNECTION_ATTEMPTS} in ${backoffTime/1000}s`);
+        
+        // Create timeout for reconnection
+        const reconnectTimeout = setTimeout(() => {
+          if (initialMountRef.current) {
+            console.log(`[WebRTCStreamManager] Attempting reconnection #${attempt + 1}`);
+            setConnectionAttempts(attempt + 1);
+            connectToSignalingServer();
+          }
+        }, backoffTime);
+        
+        // Store timeout reference for cleanup
+        timeoutsRef.current.push(reconnectTimeout);
+      };
+
+      // Handle connection closure
       ws.onclose = (event) => {
         clearTimeout(connectionTimeout);
         
@@ -207,74 +236,99 @@ export default function WebRTCStreamManager({
         if (initialMountRef.current) {
           isConnectingRef.current = false;
           setConnectionStatus('disconnected');
-        }
-        
-        console.log(`[WebRTCStreamManager] WebSocket closed with code: ${event.code}, reason: ${event.reason || 'No reason'}`);
-        logReadyState();
-        
-        if ((event.code === 1006 || event.code === 1001) && initialMountRef.current) {
-          console.warn('WebSocket connection closed unexpectedly');
           
-          if (initialMountRef.current) {
-            setConnectionAttempts(prev => prev + 1);
-          }
-
-          // Provide more specific error messages based on close code
-          let closeReason = "";
-          switch(event.code) {
-            case 1001:
-              closeReason = "The server is going away (shutting down).";
-              break;
-            case 1006:
-              closeReason = "Connection lost unexpectedly. Check your network connection or server status.";
-              break;
-            default:
-              closeReason = event.reason || "Unknown reason";
-          }
+          console.log(`[WebRTCStreamManager] WebSocket closed with code: ${event.code}, reason: ${event.reason || 'No reason'}`);
+          logReadyState();
           
-          setError(`WebSocket connection closed: ${closeReason} (Code: ${event.code})`);
-
-          // Only try to reconnect if we haven't exceeded max attempts and if still mounted
-          if (connectionAttempts < MAX_CONNECTION_ATTEMPTS && initialMountRef.current && hasInitializedRef.current) {
-            console.log(`Attempting to reconnect (attempt ${connectionAttempts + 1}/${MAX_CONNECTION_ATTEMPTS})`);
-            // Use a delay to avoid immediate reconnection
-            const reconnectDelay = 2000; // 2 seconds base delay
-            const reconnectTimeout = setTimeout(connectToSignalingServer, reconnectDelay);
+          // Handle unexpected closure specifically
+          if (event.code === 1006 || event.code === 1001) {
+            console.warn('WebSocket connection closed unexpectedly');
             
-            // Store timeout to clean it up later if needed
-            timeoutsRef.current.push(reconnectTimeout);
-          } else if (initialMountRef.current) {
-            console.log('Maximum connection attempts reached, showing demo mode');
-            setDemoMode(true);
-            if (isStreamer) {
-              startDemoStreaming();
-            } else {
-              showDemoStream();
+            // Provide more specific error messages based on close code
+            let closeReason = "";
+            switch(event.code) {
+              case 1001:
+                closeReason = "The server is going away (shutting down).";
+                break;
+              case 1006:
+                closeReason = "Connection lost unexpectedly. Check your network connection or server status.";
+                break;
+              default:
+                closeReason = event.reason || "Unknown reason";
             }
             
-            // Show a final error message after all reconnection attempts
-            setError(`Unable to establish connection after ${MAX_CONNECTION_ATTEMPTS} attempts. Switched to demo mode.`);
+            setError(`WebSocket connection closed: ${closeReason} (Code: ${event.code})`);
+            
+            // Automatically attempt to reconnect for recoverable errors
+            if (connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
+              console.log(`[WebRTCStreamManager] Connection attempt ${connectionAttemptsRef.current + 1}/${MAX_CONNECTION_ATTEMPTS}`);
+              reconnectWithBackoff(connectionAttemptsRef.current);
+            } else {
+              console.log('[WebRTCStreamManager] Maximum reconnection attempts reached');
+            }
           }
         }
       };
 
+      // Handle successful connection
       ws.onopen = () => {
         clearTimeout(connectionTimeout);
         console.log('[WebRTCStreamManager] Connected to signaling server');
         logReadyState();
+        
+        // Set connected status and reset errors
         setConnectionStatus('connected');
         setError(null);
         setConnectionAttempts(0);
         isConnectingRef.current = false;
-
-        // No need to send getRouterRtpCapabilities here as it will be sent 
-        // after receiving the connection-status message
+        
+        // Send initial presence message
+        try {
+          ws.send(JSON.stringify({
+            type: 'join-room',
+            streamId: streamIdRef.current,
+            userId: userIdRef.current,
+            username: usernameRef.current,
+            data: {
+              timestamp: Date.now(),
+              isStreamer: isStreamerRef.current
+            }
+          }));
+          console.log('[WebRTCStreamManager] Join room message sent successfully');
+        } catch (err) {
+          console.error('Error sending join room message:', err);
+        }
       };
 
+      // Handle incoming messages
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('[WebRTCStreamManager] Received message:', message.type, message);
+          console.log('[WebRTCStreamManager] Received message:', message.type || 'unknown-type', message);
+          
+          // Handle connection status message specifically
+          if (message.type === 'connection-status') {
+            console.log('[WebRTCStreamManager] Connection acknowledged by server');
+            // Request router capabilities after connection is confirmed
+            try {
+              // Always include all required parameters
+              if (wsRef.current) {
+                wsRef.current.send(JSON.stringify({
+                  type: 'getRouterRtpCapabilities',
+                  streamId: streamIdRef.current,
+                  userId: userIdRef.current,
+                  username: usernameRef.current,
+                  data: {}
+                }));
+              } else {
+                console.error('[WebRTCStreamManager] WebSocket not available for RTP capabilities request');
+              }
+            } catch (err) {
+              console.error('Error requesting RTP capabilities:', err);
+            }
+          }
+          
+          // Pass the message to the general handler
           handleSignalingMessage(message);
         } catch (error) {
           console.error('Failed to handle WebSocket message:', error);
@@ -282,9 +336,10 @@ export default function WebRTCStreamManager({
         }
       };
 
+      // Store reference to the WebSocket
       wsRef.current = ws;
     } catch (error) {
-      console.error('Failed to connect to signaling server:', error);
+      console.error('Failed to create WebSocket connection:', error);
       setError(`Failed to connect to streaming server: ${error instanceof Error ? error.message : String(error)}`);
       setConnectionAttempts(prev => prev + 1);
       isConnectingRef.current = false;
@@ -459,8 +514,14 @@ export default function WebRTCStreamManager({
           // If MediaSoup is available, request router capabilities
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             console.log('[WebRTCStreamManager] Requesting router capabilities');
+            
+            // Always include all required parameters
             wsRef.current.send(JSON.stringify({
-              type: 'getRouterRtpCapabilities'
+              type: 'getRouterRtpCapabilities',
+              streamId: streamIdRef.current,
+              userId: userIdRef.current,
+              username: usernameRef.current,
+              data: {}
             }));
           }
         } else {
@@ -618,8 +679,12 @@ export default function WebRTCStreamManager({
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({
               type: 'connectProducerTransport',
+              streamId: streamIdRef.current,
+              userId: userIdRef.current,
+              username: usernameRef.current,
               transportId: transport.id,
-              dtlsParameters
+              dtlsParameters,
+              data: {}
             }));
           }
           callback();
@@ -633,10 +698,18 @@ export default function WebRTCStreamManager({
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({
               type: 'produce',
+              streamId: streamIdRef.current,
+              userId: userIdRef.current,
+              username: usernameRef.current,
               transportId: transport.id,
               kind,
               rtpParameters,
-              appData
+              appData: {
+                ...appData,
+                streamId: streamIdRef.current,
+                userId: userIdRef.current
+              },
+              data: {}
             }));
 
             // Normally would wait for response with producerId, for demo just use a random ID
@@ -691,8 +764,12 @@ export default function WebRTCStreamManager({
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({
               type: 'connectConsumerTransport',
+              streamId: streamIdRef.current,
+              userId: userIdRef.current,
+              username: usernameRef.current,
               transportId: transport.id,
-              dtlsParameters
+              dtlsParameters,
+              data: {}
             }));
             console.log('[WebRTCStreamManager] Sent connect consumer transport message');
           } else {
@@ -723,12 +800,15 @@ export default function WebRTCStreamManager({
           
           console.log('[WebRTCStreamManager] Consumer transport connected, sending consume request');
           
-          // Send consume request now that transport is connected
+          // Send consume request now that transport is connected with all required parameters
           wsRef.current.send(JSON.stringify({
             type: 'consume',
             streamId: streamIdRef.current,
+            userId: userIdRef.current,
+            username: usernameRef.current,
             transportId: transport.id,
-            rtpCapabilities: deviceRef.current.rtpCapabilities
+            rtpCapabilities: deviceRef.current.rtpCapabilities,
+            data: {} // Include empty data object for consistency
           }));
         } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
           console.error(`[WebRTCStreamManager] Consumer transport entered problematic state: ${state}`);

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTheme } from './ThemeProvider';
 import { useAuth } from './AuthProvider';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun } from 'lucide-react';
+import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle } from 'lucide-react';
 
 const Sidebar = () => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -132,22 +132,40 @@ const Sidebar = () => {
               </Link>
             </li>
             {isAuthenticated && (
-              <li>
-                <Link href="/dashboard"
-                  className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                  ${pathname.startsWith('/dashboard')
-                      ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                      : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
-                  {isExpanded ? (
-                    <>
-                      <LayoutDashboard className="h-5 w-5 mr-3" />
-                      <span>Panelim</span>
-                    </>
-                  ) : (
-                    <LayoutDashboard className="h-5 w-5" />
-                  )}
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link href="/dashboard"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname.startsWith('/dashboard') && !pathname.startsWith('/dashboard/messages')
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <LayoutDashboard className="h-5 w-5 mr-3" />
+                        <span>Panelim</span>
+                      </>
+                    ) : (
+                      <LayoutDashboard className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/dashboard/messages"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname.startsWith('/dashboard/messages')
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <MessageCircle className="h-5 w-5 mr-3" />
+                        <span>Mesajlar</span>
+                      </>
+                    ) : (
+                      <MessageCircle className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+              </>
             )}
           </ul>
         </div>

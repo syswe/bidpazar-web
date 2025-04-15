@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    const { token } = getAuth();
+    // Only check request headers for token (server-side can't access localStorage)
+    const authHeader = req.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
     
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.error('API route /api/messages/notifications/read: No token found in request headers');
+      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
     }
 
     const body = await req.json();
@@ -14,12 +16,20 @@ export async function POST(req: NextRequest) {
 
     if (!notificationIds || !Array.isArray(notificationIds)) {
       return NextResponse.json(
-        { error: 'Missing required fields: notificationIds (must be an array)' },
+        { error: 'Notification IDs array is required' },
         { status: 400 }
       );
     }
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/messages/notifications/read`, {
+    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const apiUrl = baseUrl.endsWith('/api') 
+      ? `${baseUrl}/messages/notifications/read`
+      : `${baseUrl}/api/messages/notifications/read`;
+    
+    console.log('Marking notifications as read:', apiUrl, { notificationIds });
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -29,7 +39,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      return NextResponse.json(
+        { error: `Backend API error: ${response.status}` }, 
+        { status: response.status }
+      );
     }
 
     const data = await response.json();

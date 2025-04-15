@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from '@/lib/auth';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest) {
   try {
     const { token } = getAuth();
     
@@ -12,7 +9,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const conversationId = params.id;
+    // Extract the conversation ID from the URL path
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/');
+    const conversationIndex = pathParts.indexOf('conversations');
+    const conversationId = conversationIndex >= 0 ? pathParts[conversationIndex + 1] : null;
+    
+    if (!conversationId) {
+      return NextResponse.json({ error: 'Conversation ID not found' }, { status: 400 });
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const page = searchParams.get('page') || '1';
     const limit = searchParams.get('limit') || '50';

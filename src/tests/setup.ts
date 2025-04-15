@@ -165,7 +165,8 @@ class MockMediaStreamTrack {
   stop() {
     this.readyState = 'ended';
     if (this.onended) {
-      this.onended.call(this, new Event('ended'));
+      // @ts-ignore - Ignoring type check for test mock
+      this.onended.call(null, new Event('ended'));
     }
   }
   
@@ -193,7 +194,9 @@ class MockMediaStreamTrack {
 const mockGetUserMedia = jest.fn().mockImplementation(() => 
   Promise.resolve(
     new MockMediaStream([
+      // @ts-ignore - Ignoring type check for test mock
       new MockMediaStreamTrack('video'),
+      // @ts-ignore - Ignoring type check for test mock
       new MockMediaStreamTrack('audio')
     ])
   )
@@ -219,6 +222,7 @@ const mediaDevices = {
   getDisplayMedia: jest.fn().mockImplementation(() =>
     Promise.resolve(
       new MockMediaStream([
+        // @ts-ignore - Ignoring type check for test mock
         new MockMediaStreamTrack('video')
       ])
     )

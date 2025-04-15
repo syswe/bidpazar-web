@@ -1,13 +1,13 @@
 import { cookies } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: Request) {
   try {
-    // Await params before accessing id
-    const streamId = (await params).id;
+    // Extract the ID from the URL path
+    const url = new URL(request.url);
+    const pathParts = url.pathname.split('/');
+    const streamId = pathParts[pathParts.length - 2]; // Assuming the URL format is /api/live-streams/[id]/product
+    
     const cookieStore = await cookies();
     const token = cookieStore.get("token")?.value;
 
@@ -75,7 +75,7 @@ export async function GET(
           description: "This is a fallback product shown due to an error",
           currentBid: 100,
           startingBid: 50,
-          liveStreamId: params?.id || "unknown-stream"
+          liveStreamId: "unknown-stream"
         }
       },
       { status: 500 }

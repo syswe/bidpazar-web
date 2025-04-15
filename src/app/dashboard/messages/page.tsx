@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
+import { getAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
@@ -45,6 +46,10 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [showNewMessageForm, setShowNewMessageForm] = useState(false);
+  const [newMessageUsername, setNewMessageUsername] = useState('');
+  const [searchingUser, setSearchingUser] = useState(false);
+  const [userSearchError, setUserSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -56,19 +61,46 @@ export default function MessagesPage() {
     async function fetchConversationsAndNotifications() {
       try {
         setLoading(true);
-        // Fetch conversations
-        const conversationsResponse = await fetch('/api/messages/conversations');
+        // Get token from auth
+        const { token } = getAuth();
+        
+        if (!token) {
+          console.error('No token available - user not properly authenticated');
+          setError('Authentication error - please try logging in again');
+          return;
+        }
+        
+        console.log('Fetching conversations with token');
+        
+        // Fetch conversations with explicit Authorization header
+        const conversationsResponse = await fetch('/api/messages/conversations', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
         if (!conversationsResponse.ok) {
+          const errorText = await conversationsResponse.text();
+          console.error(`Conversations API error (${conversationsResponse.status}):`, errorText);
           throw new Error('Failed to fetch conversations');
         }
+        
         const conversationsData = await conversationsResponse.json();
         setConversations(conversationsData);
 
-        // Fetch notifications
-        const notificationsResponse = await fetch('/api/messages/notifications');
+        // Fetch notifications with explicit Authorization header
+        const notificationsResponse = await fetch('/api/messages/notifications', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
         if (!notificationsResponse.ok) {
+          const errorText = await notificationsResponse.text();
+          console.error(`Notifications API error (${notificationsResponse.status}):`, errorText);
           throw new Error('Failed to fetch notifications');
         }
+        
         const notificationsData = await notificationsResponse.json();
         setNotifications(notificationsData.notifications);
         setUnreadNotificationsCount(notificationsData.unreadCount);
@@ -93,7 +125,7 @@ export default function MessagesPage() {
     if (diffInDays === 0) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffInDays === 1) {
-      return 'Yesterday';
+      return 'Dün';
     } else if (diffInDays < 7) {
       return date.toLocaleDateString([], { weekday: 'short' });
     } else {
@@ -131,10 +163,50 @@ export default function MessagesPage() {
     }
   };
 
+  const handleFindUser = async () => {
+    if (!newMessageUsername.trim()) return;
+    
+    try {
+      setSearchingUser(true);
+      setUserSearchError(null);
+      const { token } = getAuth();
+      
+      if (!token) {
+        setUserSearchError('Kimlik doğrulama hatası - lütfen tekrar giriş yapın');
+        return;
+      }
+      
+      const response = await fetch(`/api/users/byUsername/${newMessageUsername}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          setUserSearchError('Kullanıcı bulunamadı');
+        } else {
+          setUserSearchError('Kullanıcı aranırken bir hata oluştu');
+        }
+        return;
+      }
+      
+      const user = await response.json();
+      
+      // Navigate to conversation page with this user
+      router.push(`/dashboard/messages/${user.id}`);
+    } catch (err) {
+      console.error('Kullanıcı aranırken hata:', err);
+      setUserSearchError('Kullanıcı aranırken bir hata oluştu');
+    } finally {
+      setSearchingUser(false);
+    }
+  };
+
   if (isLoading || loading) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-bold mb-6">Messages</h1>
+        <h1 className="text-2xl font-bold mb-6">Mesajlar</h1>
         <div className="animate-pulse">
           <div className="h-12 bg-gray-200 rounded mb-4"></div>
           <div className="h-24 bg-gray-200 rounded mb-2"></div>
@@ -148,14 +220,14 @@ export default function MessagesPage() {
   if (error) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-bold mb-6">Messages</h1>
+        <h1 className="text-2xl font-bold mb-6">Mesajlar</h1>
         <div className="bg-red-100 text-red-700 p-4 rounded-lg">
           <p>{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-2 text-sm underline"
           >
-            Try again
+            Tekrar Dene
           </button>
         </div>
       </div>
@@ -164,12 +236,56 @@ export default function MessagesPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <h1 className="text-2xl font-bold mb-6">Messages</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Mesajlar</h1>
+        <button
+          onClick={() => setShowNewMessageForm(!showNewMessageForm)}
+          className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          Yeni Mesaj
+        </button>
+      </div>
+
+      {showNewMessageForm && (
+        <div className="mb-6 p-4 border rounded-lg">
+          <h2 className="text-lg font-medium mb-4">Yeni Mesaj Gönder</h2>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium mb-1">
+                Kullanıcı adı
+              </label>
+              <div className="flex">
+                <input
+                  type="text"
+                  id="username"
+                  value={newMessageUsername}
+                  onChange={(e) => {
+                    setNewMessageUsername(e.target.value);
+                    setUserSearchError(null);
+                  }}
+                  placeholder="Mesaj göndermek istediğiniz kullanıcı adı"
+                  className="flex-1 rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button
+                  onClick={handleFindUser}
+                  disabled={searchingUser || !newMessageUsername.trim()}
+                  className="ml-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  {searchingUser ? 'Aranıyor...' : 'Ara'}
+                </button>
+              </div>
+              {userSearchError && (
+                <p className="text-red-500 text-sm mt-1">{userSearchError}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="inbox" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="inbox" className="relative">
-            Inbox
+            Gelen Kutusu
             {conversations.length > 0 && (
               <span className="ml-2 bg-blue-500 text-white text-xs rounded-full px-2 py-0.5">
                 {conversations.length}
@@ -177,7 +293,7 @@ export default function MessagesPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="notifications" className="relative">
-            Notifications
+            Bildirimler
             {unreadNotificationsCount > 0 && (
               <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
                 {unreadNotificationsCount}
@@ -213,7 +329,7 @@ export default function MessagesPage() {
                       <p className="text-gray-600 dark:text-gray-300 truncate">
                         {conversation.messages && conversation.messages.length > 0
                           ? conversation.messages[0].content
-                          : "No messages yet"}
+                          : "Henüz mesaj yok"}
                       </p>
                     </div>
                     {conversation.unreadCount > 0 && (
@@ -228,8 +344,14 @@ export default function MessagesPage() {
               ))}
             </div>
           ) : (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 text-center">
-              <p className="text-gray-500 dark:text-gray-400 mb-4">You don't have any messages yet.</p>
+            <div className="text-center py-8 border rounded-lg">
+              <p className="text-gray-500 dark:text-gray-400 mb-4">Henüz hiç mesajınız yok</p>
+              <button
+                onClick={() => setShowNewMessageForm(true)}
+                className="text-blue-500 hover:underline"
+              >
+                Yeni bir mesaj başlat
+              </button>
             </div>
           )}
         </TabsContent>
@@ -285,10 +407,10 @@ export default function MessagesPage() {
                     <div className="flex-1">
                       <div className="flex justify-between">
                         <h3 className="font-medium">
-                          {notification.type === 'BID_WON' && 'Auction Won'}
-                          {notification.type === 'BID_OUTBID' && 'Auction Update'}
-                          {notification.type === 'MESSAGE' && 'New Message'}
-                          {notification.type === 'SYSTEM' && 'System Notification'}
+                          {notification.type === 'BID_WON' && 'Açık Artırma Kazanıldı'}
+                          {notification.type === 'BID_OUTBID' && 'Açık Artırma Güncelleme'}
+                          {notification.type === 'MESSAGE' && 'Yeni Mesaj'}
+                          {notification.type === 'SYSTEM' && 'Sistem Bildirimi'}
                         </h3>
                         <time className="text-sm text-gray-500 dark:text-gray-400">
                           {formatDate(notification.createdAt)}
@@ -302,7 +424,7 @@ export default function MessagesPage() {
                           onClick={() => markNotificationsAsRead([notification.id])}
                           className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
                         >
-                          Mark as read
+                          Okundu olarak işaretle
                         </button>
                       )}
                     </div>
@@ -319,14 +441,14 @@ export default function MessagesPage() {
                     )}
                     className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                   >
-                    Mark all as read
+                    Tümünü okundu olarak işaretle
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-6 text-center">
-              <p className="text-gray-500 dark:text-gray-400 mb-4">You don't have any notifications yet.</p>
+            <div className="text-center py-8 border rounded-lg">
+              <p className="text-gray-500 dark:text-gray-400">Henüz bildiriminiz yok</p>
             </div>
           )}
         </TabsContent>

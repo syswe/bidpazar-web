@@ -1,29 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
-    const { token } = getAuth();
+    // Only check request headers for token (server-side can't access localStorage)
+    const authHeader = req.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
     
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.error('API route /api/messages/notifications: No token found in request headers');
+      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
     }
 
-    const searchParams = req.nextUrl.searchParams;
-    const page = searchParams.get('page') || '1';
-    const limit = searchParams.get('limit') || '20';
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/messages/notifications?page=${page}&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
+    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const apiUrl = baseUrl.endsWith('/api') 
+      ? `${baseUrl}/messages/notifications`
+      : `${baseUrl}/api/messages/notifications`;
+    
+    console.log('Fetching notifications from:', apiUrl);
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      return NextResponse.json(
+        { error: `Backend API error: ${response.status}` }, 
+        { status: response.status }
+      );
     }
 
     const data = await response.json();

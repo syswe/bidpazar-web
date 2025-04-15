@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// Removing the second parameter completely and using request.url to get the ID
+export async function GET(request: Request) {
   try {
-    const streamId = (await params).id;
+    // Extract the ID from the URL path
+    const url = new URL(request.url);
+    const pathParts = url.pathname.split('/');
+    const streamId = pathParts[pathParts.length - 2]; // Assuming the URL format is /api/live-streams/[id]/check-streamer
 
     // Get token from Authorization header
     const authHeader = request.headers.get("authorization");
