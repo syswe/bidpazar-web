@@ -37,6 +37,12 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
       // Step 4: Test STUN/TURN servers
       await testICEServers();
 
+      // Step 5: Test signaling server connection
+      await testSignalingServer();
+
+      // Step 6: Check stream status
+      await checkStreamStatus();
+
       setSummary('Diagnostics complete. Check the results below.');
     } catch (error) {
       setSummary(`Diagnostics failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -170,6 +176,103 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
         details: [error instanceof Error ? error.message : String(error)]
       });
       throw error;
+    }
+  };
+
+  const testSignalingServer = async () => {
+    try {
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:5001';
+      
+      // Ensure socket URL uses correct protocol and remove any trailing slashes
+      const wsUrl = socketUrl.startsWith('ws')
+        ? socketUrl.replace(/\/$/, '')
+        : socketUrl.replace(/^http/, 'ws').replace(/\/$/, '');
+      
+      // Create a test connection to the signaling server
+      const wsTestUrl = `${wsUrl}/rtc/health`;
+      
+      let connectionSuccess = false;
+      let errorMessage = '';
+      
+      await new Promise<void>((resolve, reject) => {
+        try {
+          const ws = new WebSocket(wsTestUrl);
+          
+          const timeout = setTimeout(() => {
+            ws.close();
+            reject(new Error('Connection timeout after 5 seconds'));
+          }, 5000);
+          
+          ws.onopen = () => {
+            clearTimeout(timeout);
+            connectionSuccess = true;
+            ws.close();
+            resolve();
+          };
+          
+          ws.onerror = (event) => {
+            clearTimeout(timeout);
+            errorMessage = 'WebSocket connection error';
+            ws.close();
+            reject(new Error(errorMessage));
+          };
+        } catch (err) {
+          reject(err);
+        }
+      });
+      
+      addResult({
+        success: connectionSuccess,
+        message: 'Signaling server connection check passed',
+        details: [
+          `Connected to: ${wsTestUrl}`,
+          'WebSocket connection established successfully'
+        ]
+      });
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'Signaling server connection check failed',
+        details: [
+          error instanceof Error ? error.message : String(error),
+          'This may indicate that the streaming server is not running or unreachable'
+        ]
+      });
+      // Don't throw here to allow other tests to continue
+    }
+  };
+
+  const checkStreamStatus = async () => {
+    try {
+      // Check stream status via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch stream status: ${response.status}`);
+      }
+      
+      const streamData = await response.json();
+      const status = streamData.status;
+      
+      const isLive = status === 'active';
+      
+      addResult({
+        success: true,
+        message: `Stream status check: ${isLive ? 'Stream is LIVE' : 'Stream is not live'}`,
+        details: [
+          `Current status: ${status}`,
+          `Stream ID: ${streamId}`,
+          `Creator: ${streamData.user?.username || 'Unknown'}`,
+          `Created: ${new Date(streamData.createdAt || Date.now()).toLocaleString()}`
+        ]
+      });
+    } catch (error) {
+      addResult({
+        success: false,
+        message: 'Stream status check failed',
+        details: [error instanceof Error ? error.message : String(error)]
+      });
+      // Don't throw here to allow other tests to continue
     }
   };
 

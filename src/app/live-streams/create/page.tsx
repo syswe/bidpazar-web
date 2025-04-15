@@ -77,7 +77,7 @@ export default function CreateLiveStreamPage() {
         thumbnailUrl: thumbnailPreview || undefined,
       };
 
-      const response = await createLiveStream(dataToSend, token!);
+      const response = await createLiveStream(dataToSend);
       setSuccess('Canlı yayın başarıyla oluşturuldu!');
 
       // Redirect to the new live stream page after a brief delay

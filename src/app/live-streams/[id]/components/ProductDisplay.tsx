@@ -25,17 +25,21 @@ export default function ProductDisplay({ streamId }: ProductDisplayProps) {
     async function fetchProduct() {
       try {
         setLoading(true);
+        setError(null);
+        
+        console.log(`Fetching product for stream: ${streamId}`);
         const response = await fetch(`/api/live-streams/${streamId}/product`);
 
         if (!response.ok) {
-          throw new Error('Failed to fetch product');
+          console.error('Product API response not OK:', response.status);
+          throw new Error(`Failed to fetch product (${response.status})`);
         }
 
         const data = await response.json();
         setProduct(data);
       } catch (err) {
         console.error('Error fetching product:', err);
-        setError('Failed to load product information');
+        setError('Failed to load product information. The server may be unavailable.');
       } finally {
         setLoading(false);
       }
@@ -47,11 +51,29 @@ export default function ProductDisplay({ streamId }: ProductDisplayProps) {
   }, [streamId]);
 
   if (loading) {
-    return <div className="animate-pulse p-4">Loading product...</div>;
+    return (
+      <div className="p-4 border border-gray-200 rounded-md">
+        <div className="animate-pulse flex flex-col space-y-3">
+          <div className="h-40 bg-gray-200 rounded"></div>
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="text-red-500">{error}</div>;
+    return (
+      <div className="p-4 border border-red-100 bg-red-50 rounded-md text-red-600">
+        <p>{error}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="text-xs mt-2 text-red-700 underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   if (!product) {

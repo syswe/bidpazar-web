@@ -475,23 +475,19 @@ export const createLiveStream = async (
     thumbnailUrl?: string;
     startTime?: string;
   },
-  token: string
+  token?: string
 ): Promise<LiveStream> => {
-  const response = await fetch(`${API_URL}/live-streams`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Failed to create live stream");
+  const authToken = token || getToken();
+  if (!authToken) {
+    throw new Error('No authentication token available');
   }
-
-  return response.json();
+  return fetcher(`/live-streams`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
 };
 
 export const startLiveStream = async (
@@ -671,6 +667,22 @@ export const addListingToLiveStream = async (
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || "Failed to add listing to live stream");
+  }
+
+  return response.json();
+};
+
+export const getStreamVideo = async (streamId: string): Promise<{
+  message: string;
+  streamId: string;
+  status: string;
+  wsEndpoint: string;
+}> => {
+  const response = await fetch(`${API_URL}/stream/${streamId}/video`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to get stream video");
   }
 
   return response.json();

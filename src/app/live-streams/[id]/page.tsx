@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { StreamDiagnostics } from './components/StreamDiagnostics';
 import WebRTCStreamManager from './components/WebRTCStreamManager';
+import { getCookie } from "cookies-next";
+import { Toaster } from "react-hot-toast";
 
 interface LiveStreamDetails {
   id: string;
@@ -46,10 +48,13 @@ interface LogItem {
 export default function LiveStreamPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+
   const streamId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
   const [isStreamer, setIsStreamer] = useState(false);
+  console.log('[LiveStreamPage] Initial isStreamer state:', isStreamer); // Log initial state
   const [isLoading, setIsLoading] = useState(true);
-  const [streamStatus, setStreamStatus] = useState<'SCHEDULED' | 'LIVE' | 'ENDED'>('SCHEDULED');
+  const [streamStatus, setStreamStatus] = useState<'LIVE' | 'SCHEDULED' | 'ENDED'>('SCHEDULED');
   const [streamDetails, setStreamDetails] = useState<LiveStreamDetails | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
@@ -66,11 +71,31 @@ export default function LiveStreamPage() {
     isReconnecting: false,
     lastError: null
   });
-  const [userId, setUserId] = useState<string>('');
-  const [username, setUsername] = useState<string>('');
+  const [userId, setUserId] = useState<string>(() => user?.id || 'guest-' + Math.random().toString(36).substring(7));
+  const [username, setUsername] = useState<string>(() => user?.username || 'Guest');
   const [error, setError] = useState<string | null>(null);
+  const [chatDataChannel, setChatDataChannel] = useState<RTCDataChannel | undefined>(undefined);
 
-  const { user } = useAuth();
+  // Update userId/username if auth state changes after initial load
+  useEffect(() => {
+    if (user) {
+      // Only update if the current ID is a guest ID
+      if (userId.startsWith('guest-')) {
+        setUserId(user.id);
+      }
+      if (username === 'Guest') {
+        setUsername(user.username);
+      }
+    } else {
+      // If user logs out, revert to guest
+      if (!userId.startsWith('guest-')) {
+         setUserId('guest-' + Math.random().toString(36).substring(7));
+      }
+       if (username !== 'Guest') {
+         setUsername('Guest');
+       }
+    }
+  }, [user]); // Rerun when user context changes
 
   // Custom debug logging function
   const logMessage = (message: string, level: 'info' | 'warn' | 'error' | 'debug' = 'info', data?: unknown) => {
@@ -166,7 +191,7 @@ export default function LiveStreamPage() {
     }
   }, [logs, debugMode]);
 
-  // Check if current user is the streamer and get stream details
+  // Make sure to fetch all user details before setting up WebRTC
   useEffect(() => {
     const fetchStreamDetails = async () => {
       try {
@@ -178,9 +203,7 @@ export default function LiveStreamPage() {
         logMessage(`Current user: ${user?.username} (${user?.id})`, 'debug');
 
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}`, {
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : ''
-          }
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
 
         if (!response.ok) {
@@ -191,57 +214,57 @@ export default function LiveStreamPage() {
         logMessage(`Stream details received`, 'debug', data);
 
         setStreamDetails(data);
-        setStreamStatus(data.status);
+        
+        // Make sure to correctly map API status to UI status values 
+        const apiStatus = data.status;
+        if (apiStatus === 'active' || apiStatus === 'LIVE') {
+          setStreamStatus('LIVE');
+          logMessage('Stream status set to LIVE', 'info');
+        } else if (apiStatus === 'scheduled' || apiStatus === 'SCHEDULED') {
+          setStreamStatus('SCHEDULED');
+          logMessage('Stream status set to SCHEDULED', 'info');
+        } else if (apiStatus === 'ended' || apiStatus === 'ENDED') {
+          setStreamStatus('ENDED');
+          logMessage('Stream status set to ENDED', 'info');
+        } else {
+          logMessage(`Unknown stream status: ${apiStatus}, defaulting to SCHEDULED`, 'warn');
+          setStreamStatus('SCHEDULED');
+        }
+        
         setViewerCount(data.viewerCount || Math.floor(Math.random() * 10) + 1);
 
-        // Get user details from local storage or auth context
-        const storedUserId = localStorage.getItem('userId') || 'guest-' + Math.random().toString(36).substring(7);
-        const storedUsername = localStorage.getItem('username') || 'Guest';
-        setUserId(storedUserId);
-        setUsername(storedUsername);
-
         // Check if current user is the streamer
-        setIsStreamer(data.creatorId === storedUserId);
-
-        // Double-check with backend for streamer status if user is logged in
-        if (user?.id && token) {
-          try {
-            const streamerCheckResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/check-streamer`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              }
-            );
-
-            if (streamerCheckResponse.ok) {
-              const checkData = await streamerCheckResponse.json();
-              logMessage(`Backend streamer check result: ${checkData.isStreamer}`, 'debug');
-
-              // Override isStreamer with the backend result if different
-              if (checkData.isStreamer !== isStreamer) {
-                logMessage(`Updating streamer status based on backend check`, 'debug');
-                setIsStreamer(checkData.isStreamer);
-              }
-            }
-          } catch (error) {
-            logMessage(`Error checking streamer status with backend`, 'warn', error);
+        logMessage('[LiveStreamPage] Checking streamer status:', 'info', { 
+          streamCreatorId: data.user?.id, 
+          loggedInUserId: user?.id, 
+          currentIsStreamerState: isStreamer 
+        });
+        
+        // Only set isStreamer to true if the user is logged in and matches the streamer
+        if (data.user?.id && user?.id && data.user.id === user.id) {
+          logMessage('[LiveStreamPage] Match found! Setting isStreamer to true.', 'info', user?.id);
+          setIsStreamer(true);
+        } else {
+          // Ensure isStreamer is false if no match (handles case where initial state might be wrong)
+          if (isStreamer) {
+             logMessage('[LiveStreamPage] No match / user changed. Setting isStreamer to false.', 'info');
+             setIsStreamer(false); 
           }
+          
+          // Explicitly indicate this is a viewer
+          logMessage('[LiveStreamPage] This user is a viewer', 'info', { isAnonymous: !user?.id });
         }
-
       } catch (error) {
-        logMessage(`Error fetching stream details`, 'error', error);
-        toast.error("Could not load stream details. Please try again.");
-        setError('Failed to load stream details');
+        console.error('Error fetching stream details:', error);
+        logMessage(`Failed to fetch stream details: ${error}`, 'error', error);
+        toast.error("Could not load stream details. Please try refreshing the page.");
+        setError("Failed to load stream information");
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (streamId) {
-      fetchStreamDetails();
-    }
+    fetchStreamDetails();
   }, [streamId, user]);
 
   // Handle leaving page
@@ -303,6 +326,72 @@ export default function LiveStreamPage() {
     window.location.reload();
   };
 
+  // Fix the formatDate function usage
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "TBA";
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short"
+    }).format(date);
+  };
+
+  // Render the WebRTC manager only when userId and streamId are confirmed
+  const shouldRenderWebRTC = !isLoading && userId && streamId;
+
+  // Log the values determining if WebRTCManager should render
+  console.log('[LiveStreamPage] Checking shouldRenderWebRTC:', { isLoading, userId, streamId, shouldRender: shouldRenderWebRTC });
+
+  // Add a function to start the stream (for streamers)
+  const handleStartStream = async () => {
+    logMessage('Streamer is starting the stream', 'info');
+    try {
+      const token = getCookie('token') as string;
+      console.log('[LiveStreamPage] Token used for starting stream:', token);
+      // Fallback to token from auth context if cookie token is undefined
+      const finalToken = token || getAuth().token || '';
+      console.log('[LiveStreamPage] Final token used for starting stream:', finalToken);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/start`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${finalToken}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error starting stream: ${response.status} - ${errorText}`);
+        throw new Error(`Error starting stream: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      logMessage('Stream started successfully', 'info', data);
+      setStreamStatus('LIVE');
+      toast.success('Stream started successfully!');
+    } catch (error) {
+      console.error('Error starting stream:', error);
+      logMessage(`Failed to start stream: ${error}`, 'error');
+      toast.error('Failed to start stream. Please try again.');
+    }
+  };
+
+  // Add a useEffect to log viewer details
+  useEffect(() => {
+    console.log('[LiveStreamPage] Viewer render details:', { 
+      shouldRenderWebRTC, 
+      streamStatus, 
+      isStreamer,
+      streamDetails,
+      rawStatus: streamDetails?.status 
+    });
+    
+    console.log('[LiveStreamPage] About to render WebRTCStreamManager for VIEWER:', { 
+      shouldRenderWebRTC, 
+      streamStatus 
+    });
+  }, [shouldRenderWebRTC, streamStatus, isStreamer, streamDetails]);
+
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -310,6 +399,8 @@ export default function LiveStreamPage() {
       </div>
     );
   }
+
+  console.log('[LiveStreamPage] Rendering layout with isStreamer:', isStreamer);
 
   if (isLoading) {
     return (
@@ -388,6 +479,14 @@ export default function LiveStreamPage() {
                   <Clock className="w-4 h-4 mr-1" />
                   <span>{elapsedTime}</span>
                 </div>
+                {streamStatus === 'SCHEDULED' && (
+                  <button
+                    onClick={handleStartStream}
+                    className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded-md text-sm transition-colors"
+                  >
+                    Start Stream
+                  </button>
+                )}
                 <button
                   onClick={handleBackToHome}
                   className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-md text-sm transition-colors"
@@ -403,12 +502,20 @@ export default function LiveStreamPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="bg-black rounded-xl overflow-hidden aspect-video mb-4 relative">
-                <WebRTCStreamManager
-                  streamId={streamId}
-                  userId={userId}
-                  username={username}
-                  isStreamer={isStreamer}
-                />
+                {/* Only render WebRTCStreamManager when essential info is ready */}
+                {shouldRenderWebRTC ? (
+                  <WebRTCStreamManager
+                    streamId={streamId}
+                    userId={userId}
+                    username={username}
+                    isStreamer={isStreamer}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
+                    <span className="ml-2 text-white">Initializing Stream...</span>
+                  </div>
+                )}
 
                 <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-lg text-white flex items-center">
                   <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse mr-2"></div>
@@ -452,7 +559,7 @@ export default function LiveStreamPage() {
                   </span>
                 </h2>
                 <div className="flex-1 overflow-hidden">
-                  <StreamChat streamId={streamId} />
+                  <StreamChat dataChannel={chatDataChannel} />
                 </div>
               </div>
 
@@ -533,47 +640,91 @@ export default function LiveStreamPage() {
               )}
             </div>
 
-            {/* Video player */}
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-              {streamStatus === 'LIVE' ? (
+            {/* Stream Video Container */}
+            <div className="rounded-lg overflow-hidden bg-black aspect-video mb-6 max-h-[70vh] shadow-lg relative">
+              {/* Debug logs */}
+              {streamStatus && shouldRenderWebRTC !== undefined && (
+                <></>
+              )}
+              
+              {/* Only render WebRTCStreamManager when essential info is ready AND stream is LIVE or user is streamer */}
+              {shouldRenderWebRTC && (
+                streamStatus === 'LIVE' || 
+                isStreamer || 
+                (streamDetails && 
+                  (String(streamDetails.status).toUpperCase() === 'LIVE' || 
+                   String(streamDetails.status).toUpperCase() === 'ACTIVE'))
+              ) ? (
                 <WebRTCStreamManager
                   streamId={streamId}
                   userId={userId}
                   username={username}
                   isStreamer={isStreamer}
                 />
-              ) : streamStatus === 'SCHEDULED' ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                  <Calendar className="h-16 w-16 mb-4 opacity-70" />
-                  <h3 className="text-2xl font-bold mb-2">Stream Scheduled</h3>
-                  <p className="text-gray-300">
-                    {streamDetails.startTime
-                      ? `Starting ${new Date(streamDetails.startTime).toLocaleString()}`
-                      : 'Stay tuned for the upcoming stream'}
-                  </p>
-                </div>
               ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                  <PlayCircle className="h-16 w-16 mb-4 opacity-70" />
-                  <h3 className="text-2xl font-bold mb-2">Stream Ended</h3>
-                  <p className="text-gray-300">This live stream has concluded</p>
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-8 w-8 animate-spin text-white" />
+                      <span className="ml-2 text-white">Initializing Stream...</span>
+                    </>
+                  ) : streamStatus === 'SCHEDULED' ? (
+                    <div className="text-center text-white">
+                      <Calendar className="w-16 h-16 mx-auto mb-4" />
+                      <h3 className="text-xl">Stream is scheduled</h3>
+                      <p>Check back later</p>
+                    </div>
+                  ) : streamStatus === 'ENDED' ? (
+                    <div className="text-center text-white">
+                      <X className="w-16 h-16 mx-auto mb-4" />
+                      <h3 className="text-xl">Stream has ended</h3>
+                    </div>
+                  ) : (
+                    <div className="text-center text-white">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                      <span>Waiting for stream to start...</span>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {/* Connection diagnostics modal */}
-              {showDiagnostics && (
-                <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
-                  <div className="relative w-full max-w-md">
-                    <button
-                      onClick={() => setShowDiagnostics(false)}
-                      className="absolute top-2 right-2 text-white hover:text-gray-300"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                    <StreamDiagnostics streamId={streamId} onReset={handleConnectionReset} />
+              
+              {streamStatus === 'SCHEDULED' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-white">
+                  <div className="text-center">
+                    <Calendar className="w-16 h-16 mx-auto mb-4 opacity-70" />
+                    <h3 className="text-2xl font-bold mb-2">Stream is Scheduled</h3>
+                    <p className="text-white/80 mb-4">This stream will begin at {streamDetails?.startTime ? formatDate(streamDetails.startTime) : 'a scheduled time'}</p>
                   </div>
                 </div>
               )}
+              
+              {streamStatus === 'ENDED' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-white">
+                  <div className="text-center">
+                    <X className="w-16 h-16 mx-auto mb-4 opacity-70" />
+                    <h3 className="text-2xl font-bold mb-2">Stream has Ended</h3>
+                    <p className="text-white/80 mb-4">This live stream has ended</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Stream Status Overlay */}
+              <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
+                {streamStatus === 'LIVE' && (
+                  <div className="flex items-center gap-4">
+                    <span className="bg-red-500/80 text-white px-2 py-1 rounded-full text-sm flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+                      LIVE
+                    </span>
+                    <span className="bg-black/60 text-white px-2 py-1 rounded-full text-sm flex items-center gap-1">
+                      <Eye className="w-3 h-3" /> {viewerCount}
+                    </span>
+                    <span className="bg-black/60 text-white px-2 py-1 rounded-full text-sm">
+                      {elapsedTime}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Interaction bar */}
@@ -628,7 +779,7 @@ export default function LiveStreamPage() {
           {/* Chat panel */}
           {(showChat || isPremiumLayout) && (
             <div className={`${!isPremiumLayout && 'mt-4 lg:mt-0'}`}>
-              <StreamChat streamId={streamId} />
+              <StreamChat dataChannel={chatDataChannel} />
             </div>
           )}
         </div>

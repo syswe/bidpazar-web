@@ -99,6 +99,12 @@ export default function Navigation() {
                     Dashboard
                   </Link>
                   <Link
+                    href="/dashboard/messages"
+                    className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
+                  >
+                    Messages
+                  </Link>
+                  <Link
                     href="/products/create"
                     className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
@@ -206,6 +212,12 @@ export default function Navigation() {
                   Dashboard
                 </Link>
                 <Link
+                  href="/dashboard/messages"
+                  className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
+                >
+                  Messages
+                </Link>
+                <Link
                   href="/products/create"
                   className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
@@ -225,16 +237,16 @@ export default function Navigation() {
                 </button>
               </>
             ) : (
-              <div className="flex flex-col space-y-2 mt-2">
+              <div className="mt-4 flex flex-col space-y-2">
                 <Link
                   href="/sign-in"
-                  className="px-4 py-2 rounded-md text-center bg-[var(--background)] text-[var(--foreground)] hover:bg-[var(--secondary)]"
+                  className="block py-2 text-center rounded-md bg-[var(--secondary)] text-[var(--foreground)]"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="px-4 py-2 rounded-md text-center bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
+                  className="block py-2 text-center bg-[var(--primary)] text-white rounded-md"
                 >
                   Sign Up
                 </Link>

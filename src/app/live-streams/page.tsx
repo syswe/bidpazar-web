@@ -53,9 +53,21 @@ export default function LiveStreamsPage() {
 
         const data = await response.json();
         console.log("Received live streams data:", data);
-        const activeStreams = data.filter(
+        
+        // Map API status values to UI status values
+        const mappedStreams = data.map((stream: any) => ({
+          ...stream,
+          status: stream.status === 'LIVE' || stream.status === 'active' ? 'LIVE' : 
+                 stream.status === 'SCHEDULED' || stream.status === 'scheduled' ? 'SCHEDULED' :
+                 'ENDED'
+        }));
+        
+        // Filter non-ended streams
+        const activeStreams = mappedStreams.filter(
           (stream: LiveStream) => stream.status !== "ENDED"
         );
+        
+        console.log("Filtered active streams:", activeStreams);
         setLiveStreams(activeStreams);
       } catch (error) {
         console.error("Error fetching live streams:", error);
