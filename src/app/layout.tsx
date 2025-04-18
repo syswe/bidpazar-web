@@ -20,6 +20,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
+      <head>
+        {/* Runtime environment variables - load first */}
+        <script src="/env.js" />
+        {/* Check environment after loading */}
+        <script src="/check-env.js" />
+      </head>
       <body className={inter.className}>
         <ThemeProvider>
           <AuthProvider>

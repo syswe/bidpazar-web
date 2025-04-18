@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
+import env from '../lib/env';
 
 export default function TestWebRTC() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -125,7 +126,7 @@ export default function TestWebRTC() {
       
       try {
         // 1. Create WebSocket connection
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:5001';
+        const socketUrl = env.SOCKET_URL;
         const wsUrl = socketUrl.startsWith('ws') 
           ? socketUrl.replace(/\/$/, '') 
           : socketUrl.replace(/^http/, 'ws').replace(/\/$/, '');

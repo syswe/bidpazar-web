@@ -17,7 +17,10 @@ interface AuthResponse {
   phoneNumber?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+import env from "./env";
+
+// Use the API_URL from our env utility
+const API_URL = env.API_URL;
 
 // Store auth data in localStorage (using a single key for both token and user)
 export const setAuth = (token: string, user: User): void => {

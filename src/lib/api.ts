@@ -1,11 +1,15 @@
 import { getToken } from "./auth";
+import env from "./env";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+// Use the API_URL from our env utility
+const API_URL = env.API_URL;
 
 // Log API URL configuration for debugging purposes
 console.log("API configuration:");
 console.log(`NEXT_PUBLIC_API_URL env: ${process.env.NEXT_PUBLIC_API_URL}`);
+console.log(`window.__ENV__?.NEXT_PUBLIC_API_URL: ${typeof window !== 'undefined' ? window.__ENV__?.NEXT_PUBLIC_API_URL : 'N/A (server)'}`);
 console.log(`Using API_URL: ${API_URL}`);
+console.log(`Environment mode: ${process.env.NODE_ENV}`);
 
 // Helper function to ensure proper URL construction
 const constructApiUrl = (endpoint: string): string => {
@@ -520,7 +524,7 @@ export const endLiveStream = async (
     }
 
     // Try to end the stream on WebRTC server, but don't fail if it's not available
-    const webrtcServer = process.env.NEXT_PUBLIC_WEBRTC_SERVER;
+    const webrtcServer = env.WEBRTC_SERVER;
     if (webrtcServer) {
       try {
         const response = await fetch(`${webrtcServer}/stream/${id}/end`, {

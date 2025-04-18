@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
 import { useAuth } from '@/components/AuthProvider';
+import env from "../../../../lib/env";
 
 // Log immediately when the function body executes
 console.log('[WebRTCStreamManager] Function body executing');
@@ -108,7 +109,7 @@ export default function WebRTCStreamManager({
     setConnectionStatus('connecting');
     
     // Use socket URL environment variable
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:5001';
+    const socketUrl = env.SOCKET_URL;
     console.log(`[WebRTCStreamManager] Using socket URL base: ${socketUrl}`);
 
     // Ensure socket URL uses correct protocol and remove any trailing slashes
