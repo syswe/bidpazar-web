@@ -1,121 +1,132 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Sample users from the main users route
-const sampleUsers = [
-  { 
-    id: 'user1', 
-    username: 'johndoe', 
-    name: 'John Doe', 
-    email: 'john@example.com',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  { 
-    id: 'user2', 
-    username: 'janedoe', 
-    name: 'Jane Doe', 
-    email: 'jane@example.com',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  { 
-    id: 'user3', 
-    username: 'bobsmith', 
-    name: 'Bob Smith', 
-    email: 'bob@example.com',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  { 
-    id: 'user4', 
-    username: 'alicejones', 
-    name: 'Alice Jones', 
-    email: 'alice@example.com',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  { 
-    id: 'user5', 
-    username: 'sarahlee', 
-    name: 'Sarah Lee', 
-    email: 'sarah@example.com',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+// Removed sampleUsers array
 
-export async function GET(req: NextRequest) {
+// This handler function follows Next.js 15.2.2 pattern for dynamic routes
+export async function GET(request: NextRequest) {
+  // Extract username from the URL path
+  const { pathname } = request.nextUrl;
+  const segments = pathname.split('/').filter(Boolean);
+  const username = segments[segments.length - 1];
+
   try {
-    // Extract the username from the URL path
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split('/');
-    const usernameIndex = pathParts.indexOf('byUsername');
-    const username = usernameIndex >= 0 ? pathParts[usernameIndex + 1] : null;
-    
     if (!username) {
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
-    // Only check request headers for token (server-side can't access localStorage)
-    const authHeader = req.headers.get('authorization');
+    // Get auth token from headers
+    const authHeader = request.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
     
     if (!token) {
-      console.error('API route /api/users/byUsername/[username]: No token found in request headers');
+      console.error('API route: No token found in request headers');
       return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
     }
 
-    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
-    const apiUrl = baseUrl.endsWith('/api') 
-      ? `${baseUrl}/users/byUsername/${username}`
-      : `${baseUrl}/api/users/byUsername/${username}`;
+    // Important: Get API URL from environment with a proper fallback
+    // We need to handle the case where the env var might be unavailable
+    let apiBaseUrl = 'http://localhost:5001/api'; // Default fallback
+    
+    // Try to get from window.__ENV__ if in browser
+    if (typeof window !== 'undefined' && window.__ENV__?.NEXT_PUBLIC_API_URL) {
+      apiBaseUrl = window.__ENV__.NEXT_PUBLIC_API_URL;
+    } 
+    // Otherwise try process.env
+    else if (process.env.NEXT_PUBLIC_API_URL) {
+      apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+    }
+    
+    // Ensure URL doesn't have duplicate /api
+    const apiUrl = apiBaseUrl.endsWith('/api') 
+      ? `${apiBaseUrl}/users/byUsername/${username}`
+      : `${apiBaseUrl}/api/users/byUsername/${username}`;
+    
+    console.log(`Fetching user by username from: ${apiUrl}`);
+    
+    // Make the API request
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-    // Try to fetch real user first
-    try {
-      console.log(`Trying to fetch user by username from: ${apiUrl}`);
-      const response = await fetch(apiUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return NextResponse.json(data);
-      }
+    // Handle the response
+    if (!response.ok) {
+      const errorMessage = await response.text();
+      console.error(`Backend API error (${response.status}):`, errorMessage);
       
-      console.log(`Users API returned ${response.status} - falling back to sample data`);
-    } catch (error) {
-      console.error("Error accessing user API:", error);
+      try {
+        // Try to parse error as JSON if possible
+        const errorJson = JSON.parse(errorMessage);
+        return NextResponse.json(errorJson, { status: response.status });
+      } catch {
+        // Otherwise return as text
+        return NextResponse.json(
+          { error: errorMessage || `Error: ${response.status}` }, 
+          { status: response.status }
+        );
+      }
     }
+
+    // Parse and return successful response
+    const data = await response.json();
+    return NextResponse.json(data);
     
-    // Fall back to sample data if API call fails
-    const sampleUser = sampleUsers.find(user => 
-      user.username.toLowerCase() === username.toLowerCase()
-    );
-    
-    // Add "bbb" as a valid username for testing
-    if (username.toLowerCase() === 'bbb') {
-      const bbbUser = {
-        id: 'user-bbb',
-        username: 'bbb',
-        name: 'Test User BBB',
-        email: 'bbb@example.com',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      return NextResponse.json(bbbUser);
-    }
-    
-    if (!sampleUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-    
-    return NextResponse.json(sampleUser);
   } catch (error) {
     console.error('Error in users/byUsername API route:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to connect to backend service' }, 
+      { status: 503 }
+    );
   }
-} 
+}
+
+// Add TypeScript interface for global window object with __ENV__
+declare global {
+  interface Window {
+    __ENV__?: {
+      NEXT_PUBLIC_API_URL?: string;
+      NEXT_PUBLIC_SOCKET_URL?: string;
+      NEXT_PUBLIC_APP_URL?: string;
+      NEXT_PUBLIC_WEBRTC_SERVER?: string;
+    };
+  }
+}
+
+// Removed the fallback logic that used sampleUsers
+
+// Removed the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
+// const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+// const apiUrl = baseUrl.endsWith('/api') 
+//   ? `${baseUrl}/users/byUsername/${username}`
+//   : `${baseUrl}/api/users/byUsername/${username}`;
+
+// Directly fetch from the backend
+// console.log(`Fetching user by username from: ${apiUrl}`);
+// const response = await fetch(apiUrl, {
+//   headers: {
+//     'Authorization': `Bearer ${token}`,
+//     'Content-Type': 'application/json',
+//   },
+// });
+
+// Forward the backend response status and body
+// const responseBody = await response.text();
+// const status = response.status;
+
+// Attempt to parse JSON, otherwise return text
+// let data;
+// try {
+//   data = JSON.parse(responseBody);
+// } catch (e) {
+//   // If backend returned 404, keep the original error message if available
+//   if (status === 404 && data?.error) {
+//      // Keep backend's 404 error
+//   } else {
+//     data = { error: responseBody }; // Return raw text as error if not JSON
+//   }
+// }
+
+// Return the backend response directly
+// return NextResponse.json(data, { status }); 

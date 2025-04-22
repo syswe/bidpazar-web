@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTheme } from './ThemeProvider';
 import { useAuth } from './AuthProvider';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle } from 'lucide-react';
+import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle, Package } from 'lucide-react';
 
 const Sidebar = () => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -128,6 +128,22 @@ const Sidebar = () => {
                   </>
                 ) : (
                   <Tv className="h-5 w-5" />
+                )}
+              </Link>
+            </li>
+            <li>
+              <Link href="/packages"
+                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                ${pathname.startsWith('/packages')
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                {isExpanded ? (
+                  <>
+                    <Package className="h-5 w-5 mr-3" />
+                    <span>Paketler</span>
+                  </>
+                ) : (
+                  <Package className="h-5 w-5" />
                 )}
               </Link>
             </li>

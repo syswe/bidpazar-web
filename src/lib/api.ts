@@ -22,6 +22,21 @@ const constructApiUrl = (endpoint: string): string => {
   return `${baseUrl}/${cleanEndpoint}`;
 };
 
+// Function to get a browser-compatible URL (replaces Docker hostnames with localhost)
+const getBrowserCompatibleUrl = (url: string): string => {
+  if (typeof window === 'undefined') {
+    // We're on the server, return the URL as is
+    return url;
+  }
+  
+  // In browser, ensure Docker hostnames are replaced with localhost
+  return url
+    .replace(/http:\/\/api:/, 'http://localhost:')
+    .replace(/http:\/\/backend:/, 'http://localhost:')
+    .replace(/ws:\/\/api:/, 'ws://localhost:')
+    .replace(/ws:\/\/backend:/, 'ws://localhost:');
+};
+
 // Verify API URL format
 if (!API_URL.includes("/api")) {
   console.warn(
@@ -163,63 +178,124 @@ const fetcher = async <T>(
   };
 
   try {
-    const url = constructApiUrl(endpoint);
-    console.log(`Fetcher making request to: ${url}`);
-    console.log(`Authorization header present: ${!!token}`);
+    // Get original URL from the env config
+    const originalUrl = constructApiUrl(endpoint);
+    // Get browser-compatible URL (replaces Docker hostnames if needed)
+    const url = getBrowserCompatibleUrl(originalUrl);
+    
+    console.log(`[DEBUG] Fetcher making request to: ${url}`);
+    console.log(`[DEBUG] Request method: ${options?.method || 'GET'}`);
+    console.log(`[DEBUG] Authorization header present: ${!!token}`);
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    // Determine credentials mode based on environment
+    // In development, we always include credentials
+    // In production, only include credentials for same-origin or specified domains
+    const credentialsMode = process.env.NODE_ENV === 'development' 
+      ? 'include' 
+      : 'same-origin';
 
-    console.log(
-      `Fetcher got response: ${response.status} ${response.statusText}`
-    );
-
-    // Check content type and status first
-    const contentType = response.headers.get("content-type");
-    console.log(`Fetcher response content-type: ${contentType}`);
-
-    if (!response.ok) {
-      // For error responses, try to parse as JSON first
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        console.error("Fetcher received JSON error:", errorData);
-        throw new Error(
-          errorData.message || errorData.error || "API isteği başarısız oldu"
-        );
-      } else {
-        // If not JSON, handle as text
-        const errorText = await response.text();
-        console.error("Fetcher received non-JSON error:", errorText);
-        throw new Error(
-          `API isteği başarısız oldu: ${response.status} ${response.statusText}`
-        );
-      }
-    }
-
-    // For OK responses where content is expected
-    if (contentType && contentType.includes("application/json")) {
-      return (await response.json()) as T;
-    }
-
-    // Handle empty responses or non-JSON responses
-    if (response.status === 204 || !contentType) {
-      return {} as T; // No content expected
-    }
-
-    // Default case - still try to parse as JSON, but log a warning
-    console.warn(
-      `Unexpected content type: ${contentType} for successful response`
-    );
     try {
-      return (await response.json()) as T;
-    } catch (e) {
-      console.error("Failed to parse response as JSON:", e);
-      throw new Error("Invalid response format");
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        // Use consistent cors mode and credentials policy
+        mode: 'cors',
+        credentials: credentialsMode,
+      });
+
+      console.log(
+        `[DEBUG] Fetcher got response: ${response.status} ${response.statusText}`
+      );
+
+      // Check content type and status first
+      const contentType = response.headers.get("content-type");
+      console.log(`[DEBUG] Fetcher response content-type: ${contentType}`);
+      
+      // Standard response handling logic
+      if (!response.ok) {
+        // For error responses, try to parse as JSON first
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          console.error("[DEBUG] Fetcher received JSON error:", errorData);
+          throw new Error(
+            errorData.message || errorData.error || "API isteği başarısız oldu"
+          );
+        } else {
+          // If not JSON, handle as text
+          const errorText = await response.text();
+          console.error("[DEBUG] Fetcher received non-JSON error:", errorText);
+          throw new Error(
+            `API isteği başarısız oldu: ${response.status} ${response.statusText}`
+          );
+        }
+      }
+
+      // For OK responses where content is expected
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        console.log(`[DEBUG] Fetcher received JSON data:`, data);
+        return data as T;
+      }
+
+      // Handle empty responses or non-JSON responses
+      if (response.status === 204 || !contentType) {
+        console.log(`[DEBUG] Fetcher received no content (204 or no content-type)`);
+        return {} as T; // No content expected
+      }
+
+      // Default case - still try to parse as JSON, but log a warning
+      console.warn(
+        `[DEBUG] Unexpected content type: ${contentType} for successful response`
+      );
+      try {
+        return (await response.json()) as T;
+      } catch (e) {
+        console.error("[DEBUG] Failed to parse response as JSON:", e);
+        throw new Error("Invalid response format");
+      }
+      
+    } catch (fetchError) {
+      // If the error might be due to hostname resolution, try with localhost
+      if (url.includes('http://api:') || url.includes('ws://api:') ||
+          url.includes('http://backend:') || url.includes('ws://backend:')) {
+        
+        console.warn('[DEBUG] Failed to connect to container hostname, trying with localhost instead');
+        
+        // Replace with localhost and retry
+        const localhostUrl = url
+          .replace(/http:\/\/api:/, 'http://localhost:')
+          .replace(/http:\/\/backend:/, 'http://localhost:')
+          .replace(/ws:\/\/api:/, 'ws://localhost:')
+          .replace(/ws:\/\/backend:/, 'ws://localhost:');
+          
+        console.log(`[DEBUG] Retrying with URL: ${localhostUrl}`);
+        
+        // Try again with the fallback URL
+        const retryResponse = await fetch(localhostUrl, {
+          ...options,
+          headers,
+          mode: 'cors',
+          credentials: credentialsMode,
+        });
+        
+        console.log(`[DEBUG] Retry response: ${retryResponse.status} ${retryResponse.statusText}`);
+        
+        // Process the retry response
+        if (!retryResponse.ok) {
+          const errorText = await retryResponse.text();
+          throw new Error(`API isteği başarısız oldu: ${retryResponse.status} ${retryResponse.statusText}`);
+        }
+        
+        const data = await retryResponse.json();
+        console.log(`[DEBUG] Retry succeeded, received data:`, data);
+        return data as T;
+      }
+      
+      // If not a hostname issue or retrying failed, rethrow
+      throw fetchError;
     }
   } catch (error) {
-    console.error("Fetcher error:", error);
+    console.error("[DEBUG] Fetcher error:", error);
     throw error;
   }
 };

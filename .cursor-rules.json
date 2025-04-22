@@ -1,0 +1,55 @@
+{
+  "rules": [
+    {
+      "rule": "Provide context about the frontend project structure and technologies.",
+      "context": {
+        "description": "This frontend project is built with Next.js (App Router), React, and TypeScript. It uses Tailwind CSS for styling and Jest for testing. It communicates with a backend API (configured via environment variables) and handles authentication.",
+        "techStack": [
+          "Next.js (App Router)",
+          "React",
+          "TypeScript",
+          "Tailwind CSS",
+          "Jest",
+          "ESLint",
+          "Docker"
+        ],
+        "directoryStructure": {
+          "src/": "Main source code directory",
+          "src/app/": "Next.js App Router pages, layouts, loading states, and API routes",
+          "src/components/": "Reusable React components",
+          "src/lib/": "Utility functions, API client (api.ts), auth helpers (auth.ts), env handling (env.ts)",
+          "src/hooks/": "Custom React hooks (if present)",
+          "src/types/": "TypeScript interfaces and type definitions (if present)",
+          "src/tests/": "Unit and integration tests (Jest)",
+          "public/": "Static assets (images, fonts, scripts like env.js)",
+          ".env or .env.local": "Environment variables (API URL, Socket URL, etc.)",
+          "next.config.ts": "Next.js configuration",
+          "tailwind.config.js": "Tailwind CSS configuration",
+          "tsconfig.json": "TypeScript configuration",
+          "Dockerfile": "Instructions for building the Docker image"
+        },
+        "keyFiles": [
+          "next.config.ts",
+          "package.json",
+          "tsconfig.json",
+          "tailwind.config.js",
+          "src/lib/api.ts",
+          "src/lib/auth.ts",
+          "src/lib/env.ts",
+          "src/app/layout.tsx",
+          ".env",
+          ".env.local",
+          "Dockerfile"
+        ],
+        "conventions": [
+          "Follow Next.js App Router conventions for file-based routing and components (page.tsx, layout.tsx, loading.tsx, error.tsx).",
+          "Use server components and client components ('use client') appropriately.",
+          "API calls are centralized in `src/lib/api.ts`.",
+          "Environment variables are accessed via `src/lib/env.ts`.",
+          "Styling is primarily done using Tailwind CSS utility classes.",
+          "Adhere to TypeScript best practices and defined types."
+        ]
+      }
+    }
+  ]
+} 

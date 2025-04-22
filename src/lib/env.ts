@@ -28,9 +28,9 @@ declare global {
 // Default values (used as fallbacks)
 const defaults: EnvironmentConfig = {
   API_URL: 'http://localhost:5001/api',
-  SOCKET_URL: 'ws://localhost:5001/rtc/v1',
+  SOCKET_URL: 'ws://localhost:5001',
   APP_URL: 'http://localhost:3000',
-  WEBRTC_SERVER: 'ws://localhost:5001/rtc/v1'
+  WEBRTC_SERVER: 'http://localhost:5001'
 };
 
 /**
@@ -59,12 +59,30 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   }
   
   // Construct environment with proper priority
-  return {
+  let configValues = {
     API_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
     SOCKET_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_SOCKET_URL) || process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
     APP_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_APP_URL) || process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
     WEBRTC_SERVER: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_WEBRTC_SERVER) || process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER
   };
+
+  // In browser environment, ensure URLs use localhost instead of container names
+  if (isBrowser) {
+    // Replace Docker container hostnames with localhost for browser compatibility
+    // This handles cases where Docker container names (like 'api', 'backend') are used but browsers can't resolve them
+    configValues = {
+      ...configValues,
+      API_URL: configValues.API_URL.replace(/http:\/\/api:/, 'http://localhost:'),
+      SOCKET_URL: configValues.SOCKET_URL.replace(/ws:\/\/api:/, 'ws://localhost:')
+        .replace(/ws:\/\/backend:/, 'ws://localhost:'),
+      WEBRTC_SERVER: configValues.WEBRTC_SERVER.replace(/http:\/\/api:/, 'http://localhost:')
+        .replace(/http:\/\/backend:/, 'http://localhost:')
+    };
+
+    console.log('[env] Browser-friendly URLs after hostname substitution:', configValues);
+  }
+  
+  return configValues;
 };
 
 // Create the environment store

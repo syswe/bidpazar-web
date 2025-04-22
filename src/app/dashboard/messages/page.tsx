@@ -176,25 +176,48 @@ export default function MessagesPage() {
         return;
       }
       
-      const response = await fetch(`/api/users/byUsername/${newMessageUsername}`, {
+      console.log(`Searching for user with username: ${newMessageUsername}`);
+      
+      // Use our new messages API endpoint instead of the user API
+      const apiUrl = `/api/messages/find-user/${encodeURIComponent(newMessageUsername)}`;
+      console.log(`API URL (via messages API): ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          setUserSearchError('Kullanıcı bulunamadı');
-        } else {
-          setUserSearchError('Kullanıcı aranırken bir hata oluştu');
+      // Log the full response for debugging
+      console.log(`Response status: ${response.status}`);
+      const responseData = await response.text();
+      console.log(`Response data: ${responseData}`);
+      
+      // Try to parse as JSON if possible
+      let userData;
+      try {
+        userData = JSON.parse(responseData);
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            setUserSearchError(userData.error || 'Kullanıcı bulunamadı');
+          } else {
+            setUserSearchError(userData.error || 'Kullanıcı aranırken bir hata oluştu');
+          }
+          return;
         }
-        return;
+        
+        // We have a successful user response
+        console.log('User found:', userData);
+        
+        // Navigate to conversation page with this user
+        // We know this is a user ID, our page component will handle creating/fetching the conversation
+        router.push(`/dashboard/messages/${userData.id}`);
+      } catch (parseError) {
+        console.error('Error parsing response:', parseError);
+        setUserSearchError('API yanıtı işlenirken bir hata oluştu');
       }
-      
-      const user = await response.json();
-      
-      // Navigate to conversation page with this user
-      router.push(`/dashboard/messages/${user.id}`);
     } catch (err) {
       console.error('Kullanıcı aranırken hata:', err);
       setUserSearchError('Kullanıcı aranırken bir hata oluştu');

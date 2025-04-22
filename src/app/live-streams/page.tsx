@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Loader2, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../components/AuthProvider";
+import { env } from "@/lib/env";
 
 interface LiveStreamUser {
   id: string;

@@ -42,7 +42,7 @@ export default function ConversationPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Get the ID from params
-  const otherUserId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
+  const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -57,7 +57,7 @@ export default function ConversationPage() {
 
   useEffect(() => {
     async function fetchConversation() {
-      if (!otherUserId || !isAuthenticated) return;
+      if (!id || !isAuthenticated) return;
 
       try {
         setLoading(true);
@@ -68,23 +68,47 @@ export default function ConversationPage() {
           setError('Authentication error - please try logging in again');
           return;
         }
-        
-        console.log(`Fetching or creating conversation with user ID: ${otherUserId}`);
-        
-        // Get or create a conversation with this user
-        const response = await fetch(`/api/messages/conversations/${otherUserId}`, {
+
+        // First try to fetch as a conversation ID
+        console.log(`Trying to fetch by conversation ID: ${id}`);
+        let response = await fetch(`/api/messages/conversations/fetch/${id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
         });
+
+        let data;
         
+        // If that fails, try as a user ID
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`API error (${response.status}):`, errorText);
-          throw new Error('Failed to fetch conversation');
+          console.log(`Conversation not found by ID, trying as user ID: ${id}`);
+          
+          // Get or create a conversation with this user
+          response = await fetch(`/api/messages/conversations/${id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`API error (${response.status}):`, errorText);
+            throw new Error('Failed to fetch conversation');
+          }
+          
+          data = await response.json();
+          
+          // Now that we have the conversation, redirect to the conversation ID URL
+          // This ensures both users see the same view
+          if (data && data.id && data.id !== id) {
+            console.log(`Redirecting to conversation ID: ${data.id}`);
+            router.replace(`/dashboard/messages/${data.id}`);
+            return; // Let the redirect handle the rerender
+          }
+        } else {
+          data = await response.json();
         }
         
-        const data = await response.json();
         console.log('Conversation data:', data);
         
         // Set conversation data
@@ -111,7 +135,7 @@ export default function ConversationPage() {
     }
 
     fetchConversation();
-  }, [otherUserId, isAuthenticated, user?.id]);
+  }, [id, isAuthenticated, user?.id, router]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
