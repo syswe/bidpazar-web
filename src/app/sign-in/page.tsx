@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { login, verifyCode, resendVerificationCode } from '@/lib/auth';
 import { useAuth } from '@/components/AuthProvider';
 
-export default function SignIn() {
+// Create a separate component to handle the params to avoid the error
+function SignInContent() {
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -268,5 +269,21 @@ export default function SignIn() {
         )}
       </div>
     </div>
+  );
+}
+
+// Main component that uses Suspense
+export default function SignIn() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-[var(--foreground)]">Yükleniyor...</p>
+        </div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 } 
