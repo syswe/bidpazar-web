@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+// import { getAuth } from "@/lib/auth/get-auth"; // Removed incorrect import
+import { env } from "@/lib/env"; // Import env config
 
 export async function GET(request: Request) {
   try {
@@ -12,15 +14,17 @@ export async function GET(request: Request) {
     const token = cookieStore.get("token")?.value;
 
     // Log API URL and streamId
-    console.log(`Fetching product from: ${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/active-listing`);
+    console.log(
+      `Fetching product from: ${env.BACKEND_API_URL}/live-streams/${streamId}/active-listing` // Use BACKEND_API_URL
+    );
 
     try {
       // Try to fetch the product information from the backend
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/active-listing`,
+        `${env.BACKEND_API_URL}/live-streams/${streamId}/active-listing`, // Use BACKEND_API_URL
         {
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
           },
           next: { revalidate: 30 }, // Revalidate every 30 seconds
         }

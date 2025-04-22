@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../../../components/AuthProvider";
 import Link from "next/link";
+import { env } from "@/lib/env";
+import { getToken } from "@/lib/auth";
 
 export default function CreateListingPage() {
   const params = useParams();
@@ -48,7 +50,7 @@ export default function CreateListingPage() {
       setSubmitting(true);
 
       // Create a minimal listing with just the necessary information
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${id}/listings/simplified`, {
+      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${id}/listings/simplified`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -67,7 +69,7 @@ export default function CreateListingPage() {
         // If the simplified endpoint fails, try the original endpoint with a fallback method
         console.log("Simplified API failed, trying fallback method");
 
-        const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${id}/listings`, {
+        const fallbackResponse = await fetch(`${env.BACKEND_API_URL}/live-streams/${id}/listings`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

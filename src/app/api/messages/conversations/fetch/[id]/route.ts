@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,12 +10,10 @@ export async function GET(request: NextRequest) {
     const conversationId = segments[segments.length - 1];
 
     // Only check request headers for token (server-side can't access localStorage)
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    
+    const token = getToken();
     if (!token) {
       console.error('API route /api/messages/conversations/fetch/[id]: No token found in request headers');
-      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (!conversationId) {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const baseUrl = env.BACKEND_API_URL;
     const messagesUrl = baseUrl.endsWith('/api') 
       ? `${baseUrl}/messages/conversations/${conversationId}/messages`
       : `${baseUrl}/api/messages/conversations/${conversationId}/messages`;

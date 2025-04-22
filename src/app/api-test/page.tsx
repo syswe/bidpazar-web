@@ -148,13 +148,17 @@ export default function ApiTestPage() {
       <h1 className="text-2xl font-bold mb-4">API Connection Test</h1>
       
       <div className="mb-6">
-        <p className="mb-2">Current Environment:</p>
-        <pre className="bg-gray-100 p-3 rounded mb-4">
+        <h3>Environment Variables (Client-Side):</h3>
+        <pre>
           {JSON.stringify(
             {
-              API_URL: env.API_URL,
-              NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
               NODE_ENV: process.env.NODE_ENV,
+              // Display both URLs
+              NEXT_BACKEND_API_URL: env.BACKEND_API_URL,
+              NEXT_PUBLIC_API_URL: env.API_URL,
+              NEXT_PUBLIC_SOCKET_URL: env.SOCKET_URL,
+              NEXT_PUBLIC_APP_URL: env.APP_URL,
+              NEXT_PUBLIC_WEBRTC_SERVER: env.WEBRTC_SERVER,
             },
             null,
             2

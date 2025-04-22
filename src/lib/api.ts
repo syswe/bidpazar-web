@@ -1,5 +1,16 @@
 import { getToken } from "./auth";
-import env from "./env";
+import { env } from './env';
+
+// Log both backend and frontend API URLs for clarity
+console.log("--- Environment Variables ---");
+console.log(`env.BACKEND_API_URL: ${env.BACKEND_API_URL}`);
+console.log(`env.API_URL (Next.js API base): ${env.API_URL}`);
+console.log(`env.SOCKET_URL: ${env.SOCKET_URL}`);
+console.log("-----------------------------");
+
+// Example usage (can be removed if not needed)
+export const backendBaseUrl = env.BACKEND_API_URL;
+export const frontendApiBaseUrl = env.API_URL;
 
 // Use the API_URL from our env utility
 const API_URL = env.API_URL;

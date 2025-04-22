@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 // Removed sampleUsers array
 
@@ -15,40 +17,32 @@ export async function GET(request: NextRequest) {
     }
 
     // Get auth token from headers
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const token = getToken(); // Use getToken from auth library
     
     if (!token) {
       console.error('API route: No token found in request headers');
-      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Important: Get API URL from environment with a proper fallback
-    // We need to handle the case where the env var might be unavailable
-    let apiBaseUrl = 'http://localhost:5001/api'; // Default fallback
-    
-    // Try to get from window.__ENV__ if in browser
-    if (typeof window !== 'undefined' && window.__ENV__?.NEXT_PUBLIC_API_URL) {
-      apiBaseUrl = window.__ENV__.NEXT_PUBLIC_API_URL;
-    } 
-    // Otherwise try process.env
-    else if (process.env.NEXT_PUBLIC_API_URL) {
-      apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+    // Use the specific backend API URL from env
+    const apiBaseUrl = env.BACKEND_API_URL;
+
+    // Remove potential trailing slash and /api suffix if present
+    let cleanBaseUrl = apiBaseUrl.replace(/\/$/, "");
+    if (cleanBaseUrl.endsWith("/api")) {
+        cleanBaseUrl = cleanBaseUrl.slice(0, -4);
     }
-    
-    // Ensure URL doesn't have duplicate /api
-    const apiUrl = apiBaseUrl.endsWith('/api') 
-      ? `${apiBaseUrl}/users/byUsername/${username}`
-      : `${apiBaseUrl}/api/users/byUsername/${username}`;
-    
-    console.log(`Fetching user by username from: ${apiUrl}`);
+
+    const finalUrl = `${cleanBaseUrl}/users/byUsername/${username}`;
+
+    console.log(`Fetching user data from: ${finalUrl}`);
     
     // Make the API request
-    const response = await fetch(apiUrl, {
+    const response = await fetch(finalUrl, {
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
+      cache: 'no-store', // Disable cache for user data
     });
 
     // Handle the response
@@ -73,24 +67,12 @@ export async function GET(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
     
-  } catch (error) {
-    console.error('Error in users/byUsername API route:', error);
-    return NextResponse.json(
-      { error: 'Failed to connect to backend service' }, 
-      { status: 503 }
-    );
-  }
-}
-
-// Add TypeScript interface for global window object with __ENV__
-declare global {
-  interface Window {
-    __ENV__?: {
-      NEXT_PUBLIC_API_URL?: string;
-      NEXT_PUBLIC_SOCKET_URL?: string;
-      NEXT_PUBLIC_APP_URL?: string;
-      NEXT_PUBLIC_WEBRTC_SERVER?: string;
-    };
+  } catch (error: any) {
+    console.error("Error fetching user by username:", error);
+    // Return detailed error if available, otherwise generic message
+    const errorMessage = error.message || "Internal Server Error";
+    const errorStatus = error.status || 500;
+    return NextResponse.json({ error: errorMessage }, { status: errorStatus });
   }
 }
 

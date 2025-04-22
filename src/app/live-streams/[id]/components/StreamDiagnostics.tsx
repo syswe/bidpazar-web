@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 interface StreamDiagnosticsProps {
   streamId: string;
@@ -18,6 +20,9 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [summary, setSummary] = useState<string>('');
+  const [healthStatus, setHealthStatus] = useState<string>("unknown");
+  const [isLoadingHealth, setIsLoadingHealth] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   const runDiagnostics = async () => {
     setIsRunning(true);
@@ -53,7 +58,7 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
 
   const checkNetworkConnectivity = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/health`);
+      const response = await fetch(`${env.BACKEND_API_URL}/health`);
       if (response.ok) {
         addResult({
           success: true,
@@ -245,7 +250,12 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
   const checkStreamStatus = async () => {
     try {
       // Check stream status via API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}`);
+      const token = getToken();
+      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch stream status: ${response.status}`);

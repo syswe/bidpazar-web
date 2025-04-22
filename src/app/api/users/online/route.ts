@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 // Add a type for users
 interface User {
@@ -10,17 +12,15 @@ interface User {
 
 export async function GET(req: NextRequest) {
   try {
-    // Only check request headers for token (server-side can't access localStorage)
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    
+    const token = getToken(); // Use getToken from auth library
+
     if (!token) {
       console.error('API route /api/users/online: No token found in request headers');
       return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
     }
 
-    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    // Use the specific backend API URL from env
+    const baseUrl = env.BACKEND_API_URL;
 
     // Try fetching online users first
     try {

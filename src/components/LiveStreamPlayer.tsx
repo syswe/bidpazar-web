@@ -1,17 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
+import Hls from 'hls.js';
 import io from 'socket.io-client';
 import axios from 'axios';
+import { env } from '@/lib/env';
+import { getToken } from '@/lib/auth';
 
 const LiveStreamPlayer: React.FC<{ streamId: string }> = ({ streamId }) => {
   const [error, setError] = useState<string | null>(null);
   const [streamInfo, setStreamInfo] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchStreamInfo = async () => {
       try {
-        const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/live-streams/${streamId}/video`);
-        setStreamInfo(response.data);
+        // Use relative path for Next.js API route
+        const response = await fetch(`/api/live-streams/${streamId}/video`); 
+        if (!response.ok) { // Check if response is OK
+           throw new Error(`Failed to fetch stream info: ${response.statusText}`);
+        }
+        const data = await response.json(); // Correctly parse JSON body
+        setStreamInfo(data);
       } catch (err) {
         setError('Failed to fetch stream information');
         console.error(err);
@@ -24,28 +33,76 @@ const LiveStreamPlayer: React.FC<{ streamId: string }> = ({ streamId }) => {
   }, [streamId]);
 
   useEffect(() => {
-    if (!streamInfo || !videoRef.current) return;
+    const video = videoRef.current;
+    if (!video || !streamId) return;
 
-    // Placeholder for WebRTC connection
-    // In a real implementation, you would use a library like simple-peer or directly use RTCPeerConnection
-    // to connect to the WebSocket endpoint provided in streamInfo.wsEndpoint
-    console.log('WebRTC connection should be established to:', streamInfo.wsEndpoint);
+    let hls: Hls | null = null;
 
-    // For now, we'll just log a message
-    // Actual implementation would involve setting up WebRTC peer connection and attaching the stream to the video element
-    // videoRef.current.srcObject = stream; // This would be set once the stream is received via WebRTC
+    const setupHls = async () => {
+      try {
+        // Fetch video URL from the Next.js API route (relative path)
+        const response = await fetch(`/api/live-streams/${streamId}/video`); 
+        if (!response.ok) {
+          throw new Error(`Failed to get video URL: ${response.statusText}`);
+        }
+        const data = await response.json();
+        const videoUrl = data.videoUrl; // Assuming the API returns { videoUrl: '...' }
 
-  }, [streamInfo]);
+        if (!videoUrl) {
+           console.error('Video URL not found in response');
+           setIsLoading(false);
+           return;
+        }
 
-  useEffect(() => {
-    const socket = io(process.env.NEXT_PUBLIC_API_URL!, {
-      path: '/socket.io',
-      transports: ['websocket'],
-      reconnectionAttempts: 5
+        if (Hls.isSupported()) {
+          console.log('HLS supported, setting up HLS.js');
+          hls = new Hls();
+          hls.loadSource(videoUrl);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(e => console.error('Autoplay failed:', e));
+            setIsLoading(false);
+          });
+          hls.on(Hls.Events.ERROR, (event: any, data: any) => {
+            console.error('HLS Error:', data);
+            // Handle HLS errors (e.g., retry logic, show error message)
+            setError('Error loading video stream.');
+            setIsLoading(false);
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          console.log('Native HLS supported');
+          video.src = videoUrl;
+          video.addEventListener('loadedmetadata', () => {
+            video.play().catch(e => console.error('Autoplay failed:', e));
+            setIsLoading(false);
+          });
+          video.addEventListener('error', () => {
+             setError('Error loading video stream.');
+             setIsLoading(false);
+          });
+        } else {
+           console.error('HLS is not supported');
+           setError('HLS playback is not supported in this browser.');
+           setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error setting up HLS:', error);
+        setError('Failed to initialize video stream.');
+        setIsLoading(false);
+      }
+    };
+
+    setupHls();
+
+    // Socket connection for real-time updates (using SOCKET_URL)
+    const socket = io(env.SOCKET_URL, { // Use SOCKET_URL from env
+      auth: { token: getToken() }, // Send token for authentication
+      transports: ['websocket'], // Prefer WebSocket
     });
 
     socket.on('connect', () => {
-      socket.emit('join-stream', streamId);
+      console.log('Socket connected');
+      socket.emit('joinStream', streamId);
     });
 
     socket.on('stream-status', (status: string) => {

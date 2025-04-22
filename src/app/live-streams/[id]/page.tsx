@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import { env } from "@/lib/env";
 import {
   Loader2,
   Users,
@@ -32,6 +33,7 @@ import { StreamDiagnostics } from './components/StreamDiagnostics';
 import WebRTCStreamManager from './components/WebRTCStreamManager';
 import { getCookie } from "cookies-next";
 import { Toaster } from "react-hot-toast";
+import { cookies } from "next/headers";
 
 interface LiveStreamDetails {
   id: string;
@@ -104,7 +106,7 @@ export default function LiveStreamPage() {
         logMessage("No auth token found for fetch", 'warn');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}`, { headers });
+      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}`, { headers });
 
       if (!response.ok) {
         let errorMsg = `HTTP error ${response.status}`;
@@ -185,7 +187,7 @@ export default function LiveStreamPage() {
       }
 
       logMessage('[LiveStreamPage] Calling /start endpoint...', 'debug');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/start`, {
+      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

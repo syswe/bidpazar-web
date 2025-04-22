@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { env } from "@/lib/env"; // Import the updated env config
 
 // Removing the second parameter completely and using request.url to get the ID
 export async function GET(request: Request) {
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
 
     // Call backend API to check if user is streamer
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/check-streamer`,
+      `${env.BACKEND_API_URL}/live-streams/${streamId}/check-streamer`,
       {
         headers: {
           Authorization: `Bearer ${token}`,

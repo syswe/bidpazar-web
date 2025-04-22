@@ -3,7 +3,8 @@ window.__ENV__ = {
   NEXT_PUBLIC_API_URL: '',
   NEXT_PUBLIC_SOCKET_URL: '',
   NEXT_PUBLIC_APP_URL: '',
-  NEXT_PUBLIC_WEBRTC_SERVER: ''
+  NEXT_PUBLIC_WEBRTC_SERVER: '',
+  NEXT_BACKEND_API_URL: ''
 };
 
 console.log('[env.js] Container environment variables loaded');
@@ -17,10 +18,11 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL || window.__ENV__.NEXT_PUBLIC_API_URL ==
     (window.location.hostname === 'bidpazar.com' || window.location.hostname === 'api.bidpazar.com');
   
   window.__ENV__ = {
-    NEXT_PUBLIC_API_URL: isProduction ? 'https://bidpazar.com/api' : 'http://localhost:5001/api',
-    NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com/api' : 'ws://localhost:5001/rtc/v1',
+    NEXT_PUBLIC_API_URL: isProduction ? 'https://bidpazar.com/api' : 'http://localhost:3000/api',
+    NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com/backend' : 'ws://localhost:5001',
     NEXT_PUBLIC_APP_URL: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
-    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/api' : 'ws://localhost:5001/rtc/v1'
+    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'ws://localhost:5001',
+    NEXT_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001'
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);

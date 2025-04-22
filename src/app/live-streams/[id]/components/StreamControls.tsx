@@ -4,6 +4,8 @@ import axios, { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/AuthProvider';
 import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2 } from 'lucide-react';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env";
 
 interface StreamDetails {
   id: string;
@@ -66,7 +68,7 @@ const StreamControls = ({
 
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}`,
+          `${env.BACKEND_API_URL}/live-streams/${streamId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`
@@ -89,12 +91,12 @@ const StreamControls = ({
       setIsProcessing(true);
       console.debug("[StreamControls] Starting stream:", {
         streamId,
-        endpoint: `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/start`,
+        endpoint: `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
         hasToken: !!token
       });
 
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/start`,
+        `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
         {},
         {
           headers: {
@@ -122,12 +124,12 @@ const StreamControls = ({
       setIsProcessing(true);
       console.debug("[StreamControls] Ending stream:", {
         streamId,
-        endpoint: `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/end`,
+        endpoint: `${env.BACKEND_API_URL}/live-streams/${streamId}/end`,
         hasToken: !!token
       });
 
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/live-streams/${streamId}/end`,
+        `${env.BACKEND_API_URL}/live-streams/${streamId}/end`,
         {},
         {
           headers: {

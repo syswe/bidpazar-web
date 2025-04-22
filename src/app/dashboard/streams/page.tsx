@@ -1,11 +1,13 @@
 "use client";
 
+import React from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getUserLiveStreams, LiveStream, startLiveStream, endLiveStream } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -56,7 +58,7 @@ export default function MyStreamsPage() {
         throw new Error("Authentication required");
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams/user/streams`, {
+      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/user/streams`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

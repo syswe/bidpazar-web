@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 // Special route to find users through the messages API (bypassing user routes issue)
 export async function GET(request: NextRequest) {
@@ -13,16 +15,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get auth token from headers
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    
+    const token = getToken();
     if (!token) {
       console.error('API route: No token found in request headers');
-      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Create API URL using messages API (not user API)
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    const baseUrl = env.BACKEND_API_URL;
     const apiUrl = baseUrl.endsWith('/api') 
       ? `${baseUrl}/messages/find-user/${username}`
       : `${baseUrl}/api/messages/find-user/${username}`;

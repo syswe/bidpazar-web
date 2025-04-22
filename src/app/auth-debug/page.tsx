@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getAuth, validateToken } from '@/lib/auth';
 import { useAuth } from '@/components/AuthProvider';
+import { env } from "@/lib/env";
 
 export default function AuthDebugPage() {
   const [authData, setAuthData] = useState<{
@@ -50,7 +51,7 @@ export default function AuthDebugPage() {
       }
       
       // Test the API URL construction
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+      const baseUrl = env.BACKEND_API_URL;
       const apiUrl = baseUrl.endsWith('/api') 
         ? `${baseUrl}/messages/conversations`
         : `${baseUrl}/api/messages/conversations`;

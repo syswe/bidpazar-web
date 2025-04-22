@@ -83,6 +83,7 @@ frontend/
 2.  Update the `.env.local` file with necessary environment variables, such as the backend API URL:
     ```
     NEXT_PUBLIC_API_URL=http://localhost:8000/api # Example
+    NEXT_BACKEND_API_URL=http://localhost:5001    # Example: URL for backend-internal calls
     ```
     *(Refer to `.env.local.example` for required variables)*
 

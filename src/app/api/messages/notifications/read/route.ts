@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 export async function POST(req: NextRequest) {
-  try {
-    // Only check request headers for token (server-side can't access localStorage)
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    
-    if (!token) {
-      console.error('API route /api/messages/notifications/read: No token found in request headers');
-      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
-    }
+  const token = getToken();
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  try {
     const body = await req.json();
     const { notificationIds } = body;
 
-    if (!notificationIds || !Array.isArray(notificationIds)) {
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
       return NextResponse.json(
-        { error: 'Notification IDs array is required' },
+        { error: "Invalid or empty notificationIds array" },
         { status: 400 }
       );
     }
 
-    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    // Use the specific backend API URL from env
+    const baseUrl = env.BACKEND_API_URL;
     const apiUrl = baseUrl.endsWith('/api') 
       ? `${baseUrl}/messages/notifications/read`
       : `${baseUrl}/api/messages/notifications/read`;

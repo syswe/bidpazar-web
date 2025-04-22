@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from "@/lib/auth";
+import { env } from "@/lib/env"; // Import env config
 
 export async function POST(req: NextRequest) {
-  try {
-    // Only check request headers for token (server-side can't access localStorage)
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    
-    if (!token) {
-      console.error('API route /api/messages/messages: No token found in request headers');
-      return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
-    }
+  const token = getToken();
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  try {
     const body = await req.json();
     const { conversationId, content, receiverId } = body;
 
@@ -21,8 +19,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Remove the duplicate /api prefix if NEXT_PUBLIC_API_URL already includes it
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+    // Use the specific backend API URL from env
+    const baseUrl = env.BACKEND_API_URL;
     const apiUrl = baseUrl.endsWith('/api') 
       ? `${baseUrl}/messages/messages`
       : `${baseUrl}/api/messages/messages`;

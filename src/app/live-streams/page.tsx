@@ -1,5 +1,6 @@
 'use client';
 
+import React from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -40,10 +41,11 @@ export default function LiveStreamsPage() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
-        console.log("Fetching live streams from:", `${process.env.NEXT_PUBLIC_API_URL}/live-streams`);
+        console.log("Fetching live streams from:", `${env.BACKEND_API_URL}/live-streams`);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-streams`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        const response = await fetch(`${env.BACKEND_API_URL}/live-streams`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          next: { revalidate: 60 },
         });
 
         if (!response.ok) {
