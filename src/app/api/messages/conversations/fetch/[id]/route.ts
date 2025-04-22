@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from "@/lib/auth";
 import { env } from "@/lib/env"; // Import env config
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    // Extract the conversation ID from the URL path
-    const { pathname } = request.nextUrl;
-    const segments = pathname.split('/').filter(Boolean);
-    const conversationId = segments[segments.length - 1];
+    // Extract the conversation ID from context params
+    const { id } = await params;
+    const conversationId = id;
 
     // Only check request headers for token (server-side can't access localStorage)
     const token = getToken();

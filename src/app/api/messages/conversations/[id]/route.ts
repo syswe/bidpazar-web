@@ -9,11 +9,13 @@ import { env } from "@/lib/env"; // Import env config
 //   };
 // };
 
-export async function GET(request: NextRequest) {
-  // Extract the other user ID from the URL path
-  const { pathname } = request.nextUrl;
-  const segments = pathname.split('/').filter(Boolean);
-  const otherUserId = segments[segments.length - 1];
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  // Extract the other user ID from the context params
+  const { id } = await params;
+  const otherUserId = id;
 
   const token = getToken();
   if (!token) {

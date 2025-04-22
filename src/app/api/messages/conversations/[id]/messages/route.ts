@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const token = getToken();
   if (!token) {
@@ -12,7 +12,9 @@ export async function GET(
   }
 
   try {
-    const conversationId = context.params.id;
+    // Await the params Promise to get the id
+    const { id } = await params;
+    const conversationId = id;
     const page = request.nextUrl.searchParams.get("page") || "1";
     const limit = request.nextUrl.searchParams.get("limit") || "20";
 

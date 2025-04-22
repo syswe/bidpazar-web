@@ -3,12 +3,13 @@ import { getToken } from "@/lib/auth";
 import { env } from "@/lib/env"; // Import env config
 
 // Special route to find users through the messages API (bypassing user routes issue)
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ username: string }> }
+) {
   try {
-    // Extract username from URL path
-    const { pathname } = request.nextUrl;
-    const segments = pathname.split('/').filter(Boolean);
-    const username = segments[segments.length - 1];
+    // Extract username from context params
+    const { username } = await params;
     
     if (!username) {
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
