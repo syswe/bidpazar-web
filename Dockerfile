@@ -20,8 +20,6 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NODE_ENV production
 
-# Remove hardcoded environment variables, Next.js will read from .env files directly
-
 RUN npm run build -- --no-lint
 
 # Production image, copy all the files and run next
@@ -36,25 +34,30 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Make sure .env file gets copied if it exists
-COPY --from=builder /app/.env* ./
-
 # Make public directory and files writable
 RUN chmod -R 755 /app/public
 
-# Create a simpler startup script
+# Create a startup script that injects environment variables at runtime
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'set -e' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Log environment' >> /app/start.sh && \
-    echo 'echo "Starting with environment configuration from .env files"' >> /app/start.sh && \
+    echo 'echo "Starting with container environment variables"' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Inject environment variables into env.js' >> /app/start.sh && \
+    echo 'cat > ./public/env.js << EOL' >> /app/start.sh && \
+    echo '// This script provides access to container environment variables in the browser' >> /app/start.sh && \
+    echo 'window.__ENV__ = {' >> /app/start.sh && \
+    echo '  NEXT_PUBLIC_API_URL: "\'"$NEXT_PUBLIC_API_URL"\',"' >> /app/start.sh && \
+    echo '  NEXT_PUBLIC_SOCKET_URL: "\'"$NEXT_PUBLIC_SOCKET_URL"\',"' >> /app/start.sh && \
+    echo '  NEXT_PUBLIC_APP_URL: "\'"$NEXT_PUBLIC_APP_URL"\',"' >> /app/start.sh && \
+    echo '  NEXT_PUBLIC_WEBRTC_SERVER: "\'"$NEXT_PUBLIC_WEBRTC_SERVER"\'"' >> /app/start.sh && \
+    echo '};' >> /app/start.sh && \
+    echo 'EOL' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start Next.js' >> /app/start.sh && \
     echo 'exec node server.js' >> /app/start.sh && \
     chmod +x /app/start.sh
-
-# No need for env.js.template anymore
-# RUN mv ./public/env.js ./public/env.js.template
 
 # Install dependencies
 RUN apk add --no-cache gettext
