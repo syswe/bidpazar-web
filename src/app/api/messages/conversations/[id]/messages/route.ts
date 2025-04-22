@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from "@/lib/auth";
 import { env } from "@/lib/env";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: { id: string } }
+) {
   const token = getToken();
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const conversationId = params.id;
+    const conversationId = context.params.id;
     const page = request.nextUrl.searchParams.get("page") || "1";
     const limit = request.nextUrl.searchParams.get("limit") || "20";
 
