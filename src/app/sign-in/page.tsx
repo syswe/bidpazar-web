@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { login, verifyCode, resendVerificationCode } from '@/lib/auth';
 import { useAuth } from '@/components/AuthProvider';
@@ -20,14 +20,16 @@ export default function SignIn() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectPath = searchParams.get('redirect') || '/dashboard';
   const { login: setAuth, isAuthenticated } = useAuth();
 
   // Redirect if user is already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      router.push(redirectPath);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +56,7 @@ export default function SignIn() {
         setShowVerification(true);
       } else {
         setAuth(response.token, response.user);
-        router.push('/dashboard');
+        router.push(redirectPath);
       }
     } catch (err) {
       console.error('Giriş hatası:', err);
@@ -78,7 +80,7 @@ export default function SignIn() {
       setDebugInfo(response);
 
       setAuth(response.token, response.user);
-      router.push('/dashboard');
+      router.push(redirectPath);
     } catch (err) {
       console.error('Doğrulama hatası:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama başarısız');

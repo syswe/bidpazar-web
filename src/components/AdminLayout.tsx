@@ -1,9 +1,10 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from './AuthProvider';
+import { getAuth, validateToken } from '@/lib/auth';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -13,22 +14,86 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [isVerifying, setIsVerifying] = useState(true);
+  const [adminVerified, setAdminVerified] = useState(false);
 
+  // First useEffect to handle the initial check and debug logging
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || !user?.isAdmin)) {
+    const { user: storedUser } = getAuth();
+    console.log('AdminLayout initial state:', { 
+      isAuthenticated, 
+      isLoading, 
+      user,
+      storedUser,
+      'user?.isAdmin': user?.isAdmin,
+      'storedUser?.isAdmin': storedUser?.isAdmin
+    });
+  }, [isAuthenticated, isLoading, user]);
+
+  // Second useEffect to verify admin status with server
+  useEffect(() => {
+    // Only proceed if we're not loading and the user appears to be authenticated
+    if (!isLoading && isAuthenticated && user) {
+      setIsVerifying(true);
+      
+      // If user object shows admin status, we can validate that
+      if (user.isAdmin) {
+        setAdminVerified(true);
+        setIsVerifying(false);
+        return;
+      }
+      
+      // Double-check with server if the admin status is missing or false
+      const verifyAdmin = async () => {
+        try {
+          const validatedUser = await validateToken();
+          console.log('Server validated user:', validatedUser);
+          
+          if (validatedUser?.isAdmin) {
+            setAdminVerified(true);
+          } else {
+            console.log('User is not admin according to server validation');
+            // Delay redirect slightly to avoid immediate jumps
+            setTimeout(() => {
+              router.push('/dashboard');
+            }, 100);
+          }
+        } catch (error) {
+          console.error('Error validating token:', error);
+        } finally {
+          setIsVerifying(false);
+        }
+      };
+      
+      verifyAdmin();
+    } else if (!isLoading && !isAuthenticated) {
+      // Only redirect if we're definitely not authenticated
+      console.log('Not authenticated, redirecting to sign-in');
       router.push('/sign-in?redirect=/admin');
     }
   }, [isAuthenticated, isLoading, router, user]);
 
-  if (isLoading) {
+  // Show loading state if still loading or verifying
+  if (isLoading || isVerifying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">
+            {isVerifying ? 'Verifying admin privileges...' : 'Loading...'}
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (!isAuthenticated || !user?.isAdmin) {
+  // If not admin, don't render anything (should have been redirected)
+  if (!isAuthenticated || !adminVerified) {
+    console.log('AdminLayout access denied:', {
+      isAuthenticated,
+      adminVerified,
+      'user?.isAdmin': user?.isAdmin
+    });
     return null;
   }
 

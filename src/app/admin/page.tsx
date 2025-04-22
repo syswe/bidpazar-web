@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { getProducts, getCategories, getAllUsers, getLiveStreams } from '@/lib/api';
+import { useAuth } from '@/components/AuthProvider';
 
 export default function AdminDashboard() {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [stats, setStats] = useState({
     products: 0,
     categories: 0,
@@ -13,6 +15,16 @@ export default function AdminDashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Debug log for troubleshooting
+    console.log("Admin Dashboard - Auth state:", { 
+      isAuthenticated, 
+      authLoading, 
+      user, 
+      isAdmin: user?.isAdmin 
+    });
+  }, [isAuthenticated, authLoading, user]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -46,6 +58,19 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout title="Dashboard">
+      {/* Debug Info */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mb-8 p-4 bg-gray-200 dark:bg-gray-700 rounded-lg text-sm">
+          <h3 className="font-bold mb-2">Auth Debug Info:</h3>
+          <div>
+            <p><strong>isAuthenticated:</strong> {isAuthenticated ? 'Yes' : 'No'}</p>
+            <p><strong>isAdmin:</strong> {user?.isAdmin ? 'Yes' : 'No'}</p>
+            <p><strong>User ID:</strong> {user?.id || 'Not logged in'}</p>
+            <p><strong>Username:</strong> {user?.username || 'Not logged in'}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {isLoading ? (
           // Loading state
