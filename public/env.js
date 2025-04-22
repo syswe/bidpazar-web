@@ -9,8 +9,8 @@ window.__ENV__ = {
 console.log('[env.js] Container environment variables loaded');
 
 // Only use fallback if environment variables are missing
-if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
-  console.warn('[env.js] Environment variables missing, using fallbacks');
+if (!window.__ENV__.NEXT_PUBLIC_API_URL || window.__ENV__.NEXT_PUBLIC_API_URL === '') {
+  console.warn('[env.js] Environment variables missing or empty, using fallbacks');
   
   // Check if we're in production by looking at the hostname
   const isProduction = typeof window !== 'undefined' && 
@@ -24,4 +24,6 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);
+} else {
+  console.log('[env.js] Using container environment variables:', window.__ENV__);
 } 

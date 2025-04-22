@@ -44,7 +44,9 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   const isBrowser = typeof window !== 'undefined';
   
   // Check if window.__ENV__ has been injected
-  const hasRuntimeEnv = isBrowser && window.__ENV__ && !!window.__ENV__.NEXT_PUBLIC_API_URL;
+  const hasRuntimeEnv = isBrowser && window.__ENV__ && 
+    typeof window.__ENV__.NEXT_PUBLIC_API_URL === 'string' && 
+    window.__ENV__.NEXT_PUBLIC_API_URL.length > 0;
   
   if (isBrowser) {
     console.log(`[env] Browser environment detected, window.__ENV__ available: ${!!window.__ENV__}`);
@@ -85,8 +87,24 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   return configValues;
 };
 
+// Create initial environment store based on server/client context
+const getInitialEnvStore = () => {
+  // On server side, use process.env or defaults
+  if (typeof window === 'undefined') {
+    return {
+      API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
+      SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
+      APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
+      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER
+    };
+  }
+  
+  // On client side, use getEnvironmentValues
+  return getEnvironmentValues();
+};
+
 // Create the environment store
-const ENV_STORE = getEnvironmentValues();
+const ENV_STORE = getInitialEnvStore();
 
 // Safe logging that only runs in development or when forced
 const logEnvironment = (force = false) => {
