@@ -778,3 +778,268 @@ export const getStreamVideo = async (streamId: string): Promise<{
 
   return response.json();
 };
+
+// Message and Conversation interfaces
+export interface Conversation {
+  id: string;
+  updatedAt: string;
+  createdAt: string;
+  latestMessage?: Message;
+  participants: {
+    id: string;
+    username: string;
+    name?: string;
+  }[];
+  _count?: {
+    messages: number;
+  };
+}
+
+export interface Message {
+  id: string;
+  content: string;
+  senderId: string;
+  receiverId: string;
+  conversationId: string;
+  createdAt: string;
+  updatedAt: string;
+  sender?: {
+    id: string;
+    username: string;
+    name?: string;
+  };
+}
+
+export interface Notification {
+  id: string;
+  content: string;
+  type: 'MESSAGE' | 'BID_WON' | 'BID_OUTBID' | 'SYSTEM';
+  isRead: boolean;
+  relatedId?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Message API functions
+export const getUserConversations = async (): Promise<Conversation[]> => {
+  return fetcher<Conversation[]>('/messages/conversations');
+};
+
+export const getConversationMessages = async (
+  conversationId: string,
+  page: number = 1,
+  limit: number = 20
+): Promise<{ messages: Message[]; totalCount: number }> => {
+  return fetcher<{ messages: Message[]; totalCount: number }>(
+    `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+  );
+};
+
+export const getOrCreateConversation = async (
+  otherUserId: string
+): Promise<Conversation> => {
+  return fetcher<Conversation>(`/messages/conversations/${otherUserId}`);
+};
+
+export const getConversationDetails = async (
+  conversationId: string
+): Promise<Conversation> => {
+  return fetcher<Conversation>(`/messages/conversations/details/${conversationId}`);
+};
+
+export const sendMessage = async (
+  conversationId: string,
+  content: string,
+  receiverId: string
+): Promise<Message> => {
+  return fetcher<Message>('/messages/messages', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId, content, receiverId }),
+  });
+};
+
+export const findUserByUsername = async (
+  username: string
+): Promise<User | null> => {
+  return fetcher<User | null>(`/messages/find-user/${username}`);
+};
+
+// Notification API functions
+export const getUserNotifications = async (): Promise<{
+  notifications: Notification[];
+  unreadCount: number;
+}> => {
+  return fetcher<{ notifications: Notification[]; unreadCount: number }>('/messages/notifications');
+};
+
+export const markNotificationsAsRead = async (): Promise<{ success: boolean }> => {
+  return fetcher<{ success: boolean }>('/messages/notifications/read', {
+    method: 'POST',
+  });
+};
+
+// Health API functions
+export const healthCheck = async (): Promise<{ status: string }> => {
+  return fetcher<{ status: string }>('/health');
+};
+
+export const detailedHealthCheck = async (): Promise<{
+  status: string;
+  database: string;
+  uptime: number;
+  memory: object;
+  env: string;
+}> => {
+  return fetcher<{
+    status: string;
+    database: string;
+    uptime: number;
+    memory: object;
+    env: string;
+  }>('/health/detailed');
+};
+
+export const socketHealthCheck = async (): Promise<{
+  status: string;
+  activeConnections: number;
+}> => {
+  return fetcher<{ status: string; activeConnections: number }>('/health/socket');
+};
+
+// Diagnostics API functions
+export const diagnosticsHealth = async (): Promise<{ status: string; timestamp: string }> => {
+  return fetcher<{ status: string; timestamp: string }>('/diagnostics/health');
+};
+
+export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
+  const url = constructApiUrl(`/diagnostics/test-bandwidth?size=${sizeKB}`);
+  const browserUrl = getBrowserCompatibleUrl(url);
+  
+  const response = await fetch(browserUrl, {
+    headers,
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to perform bandwidth test');
+  }
+  
+  return response.blob();
+};
+
+export const getConnectionStats = async (): Promise<{
+  activeConnections: number;
+  serverLoad: {
+    cpu: object;
+    memory: object;
+    uptime: number;
+  };
+  timestamp: string;
+}> => {
+  return fetcher<{
+    activeConnections: number;
+    serverLoad: {
+      cpu: object;
+      memory: object;
+      uptime: number;
+    };
+    timestamp: string;
+  }>('/diagnostics/connection-stats');
+};
+
+export const getRateLimitStatus = async (): Promise<{
+  isRateLimited: boolean;
+  rateLimitedUntil: string | null;
+  connectionCount: number;
+  maxConnections: number;
+  ipAddress: string;
+  timestamp: string;
+}> => {
+  return fetcher<{
+    isRateLimited: boolean;
+    rateLimitedUntil: string | null;
+    connectionCount: number;
+    maxConnections: number;
+    ipAddress: string;
+    timestamp: string;
+  }>('/diagnostics/rate-limit-status');
+};
+
+// Additional Auth API functions
+export const requestVerificationCode = async (
+  email: string
+): Promise<{ message: string; userId: string; phoneNumber?: string }> => {
+  return fetcher<{ message: string; userId: string; phoneNumber?: string }>(
+    '/auth/request-verification',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }
+  );
+};
+
+// Additional Product API functions
+export const deleteProductMedia = async (mediaId: string): Promise<void> => {
+  return fetcher<void>(`/products/media/${mediaId}`, {
+    method: 'DELETE',
+  });
+};
+
+// Additional LiveStream API functions
+export const getActiveListing = async (
+  liveStreamId: string
+): Promise<AuctionListing | null> => {
+  return fetcher<AuctionListing | null>(`/live-streams/${liveStreamId}/active-listing`);
+};
+
+export const checkIsStreamer = async (
+  liveStreamId: string
+): Promise<{ isStreamer: boolean }> => {
+  return fetcher<{ isStreamer: boolean }>(`/live-streams/${liveStreamId}/check-streamer`);
+};
+
+export const addBidToListing = async (
+  listingId: string,
+  amount: number
+): Promise<Bid> => {
+  return fetcher<Bid>(`/live-streams/listings/${listingId}/bids`, {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });
+};
+
+export const testSocketConnection = async (): Promise<{
+  status: string;
+  message: string;
+  socketEnabled: boolean;
+  path: string;
+  timestamp: number;
+}> => {
+  return fetcher<{
+    status: string;
+    message: string;
+    socketEnabled: boolean;
+    path: string;
+    timestamp: number;
+  }>('/live-streams/socket-test');
+};
+
+export const addSimplifiedListingToLiveStream = async (
+  liveStreamId: string,
+  data: {
+    productId: string;
+    startPrice: number;
+    countdownTime?: number;
+  }
+): Promise<AuctionListing> => {
+  return fetcher<AuctionListing>(`/live-streams/${liveStreamId}/listings/simplified`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+};

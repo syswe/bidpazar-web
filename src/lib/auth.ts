@@ -20,7 +20,7 @@ interface AuthResponse {
 import env from "./env";
 
 // Use the API_URL from our env utility
-const API_URL = env.API_URL;
+const API_URL = env.BACKEND_API_URL;
 
 // Store auth data in localStorage (using a single key for both token and user)
 export const setAuth = (token: string, user: User): void => {
