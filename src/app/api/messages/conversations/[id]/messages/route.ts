@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from "@/lib/auth";
 import { env } from "@/lib/env";
 
-interface RouteParams {
-  params: { id: string };
-}
-
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const token = getToken();
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
