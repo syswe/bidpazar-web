@@ -293,16 +293,30 @@ global.ResizeObserver = class ResizeObserver {
 
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
-  constructor(callback) {
-    this.callback = callback;
+  private readonly _callback: IntersectionObserverCallback;
+  readonly root: Element | Document | null = null;
+  readonly rootMargin: string = '0px';
+  readonly thresholds: ReadonlyArray<number> = [0];
+  
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    this._callback = callback;
+    if (options?.root) this.root = options.root;
+    if (options?.rootMargin) this.rootMargin = options.rootMargin;
+    if (options?.threshold) {
+      this.thresholds = Array.isArray(options.threshold) 
+        ? options.threshold 
+        : [options.threshold];
+    }
   }
+  
   observe = jest.fn();
   unobserve = jest.fn();
   disconnect = jest.fn();
+  takeRecords = jest.fn().mockReturnValue([]);
   
   // Mock triggering the intersection
-  mockIntersect(entries) {
-    this.callback(entries, this);
+  mockIntersect(entries: IntersectionObserverEntry[]) {
+    this._callback(entries, this);
   }
 };
 
