@@ -1,0 +1,46 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# BidPazar Web Product Context
+
+## Purpose
+Frontend application for a real-time auction marketplace with live streaming, allowing users to browse products, watch live auctions, place bids, and communicate with sellers.
+
+## Technical Problems Solved
+- Real-time UI updates for auction and bidding status
+- WebRTC video streaming consumption
+- Authentication state management
+- Responsive design for mobile and desktop
+- Form validation and submission
+- WebSocket event handling
+- Chat interface for live streams and private messaging
+- Auction countdown UI
+
+## Architecture
+- Next.js App Router for page routing
+- React components with TypeScript
+- Context API for state management
+- Custom hooks for shared logic
+- API services for backend communication
+- Socket.io for real-time updates
+- WebRTC for stream consumption
+- TailwindCSS for responsive UI
+
+## Data Flow
+1. User authentication → JWT storage → Protected routes
+2. Product browsing → API data fetching → UI rendering
+3. Stream viewing → WebRTC connection → Media consumption
+4. Bid placement → Form validation → API submission → Socket update
+5. Chat messaging → Socket events → UI updates
+6. Notifications → Real-time reception → Alert display
+
+## User Experience Goals
+- Fast page loads with optimized assets
+- Seamless bidding experience during auctions
+- Reliable video streaming with fallback options
+- Intuitive navigation and information hierarchy
+- Responsive design for all device sizes
+
+- Real-time feedback for user actions

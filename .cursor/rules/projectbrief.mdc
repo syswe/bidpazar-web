@@ -1,0 +1,52 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# BidPazar Web Project Brief
+
+## Core Tech Stack
+- Next.js 15.2+
+- React 19+
+- TypeScript
+- TailwindCSS
+- Socket.io Client
+- Simple-Peer WebRTC
+
+## Key Components
+- User authentication and account management
+- Product marketplace browsing
+- Live auction streaming and participation
+- Real-time bidding interface
+- Live chat during streams
+- Private messaging between users
+- Admin dashboard
+- Payment processing
+
+## Frontend Architecture
+- Next.js App Router for routing
+- React components with TypeScript
+- TailwindCSS for styling
+- React Hook Form for form management
+- Zod for validation
+- Axios for API requests
+- Socket.io for real-time updates
+- HLS.js and simple-peer for media streaming
+
+## Pages/Routes
+- Home/landing
+- Authentication (sign-in, sign-up)
+- Product listings and details
+- Live stream browser and viewer
+- Dashboard for users
+- Admin panel
+- Messaging interface
+- Static pages (About, Terms, FAQ)
+
+## Integration Points
+- Backend REST API
+- WebSocket server
+- WebRTC streaming
+- Payment processing
+
+- Notifications system

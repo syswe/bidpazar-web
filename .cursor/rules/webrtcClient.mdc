@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# BidPazar WebRTC Client Implementation
+
+## Libraries
+- simple-peer: WebRTC peer connection management
+- mediasoup-client: SFU client implementation
+- socket.io-client: Signaling
+
+## Stream Consumption Flow
+1. Connect to signaling server via Socket.io
+2. Join stream room with authentication
+3. Request WebRTC transport from server
+4. Create consumer for remote media
+5. Handle stream rendering and controls
+
+## Stream Production Flow (Seller)
+1. Get local media stream (getUserMedia)
+2. Connect to signaling server
+3. Create producer transport
+4. Send media to SFU
+5. Handle connection state
+
+## Key Components
+- **useWebRTC** hook: WebRTC connection management
+- **MediasoupClient**: MediaSoup device handling
+- **StreamViewer**: Video display and controls
+- **StreamPublisher**: Camera/mic management
+
+## Error Handling
+- ICE connection failures
+- Media device access issues
+- Network interruptions
+- Bandwidth limitations
+
+## State Management
+- Connection state tracking
+- Stream quality monitoring
+- Device selection
+- Room participant management
+
+## Optimization
+- Adaptive bitrate handling
+- Resolution scaling
+- Connection quality monitoring
+- Bandwidth estimation
+
+## Mobile Considerations
+- Battery usage optimization
+- Cellular data awareness
+- Device orientation changes
+- Background state handling
+

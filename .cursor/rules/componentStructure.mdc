@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# BidPazar Web Component Structure
+
+## UI Component Organization
+- Atomic design principles
+- Component composition over inheritance
+- Separation of concerns between presentation and logic
+
+## Core Components
+- **Layout**: Base page structure, navigation, footer
+- **Auth**: Sign-in/sign-up forms, password reset, verification
+- **Product**: Listing cards, details, image galleries
+- **LiveStream**: Stream viewer, controls, chat interface
+- **Auction**: Bid controls, countdown timer, pricing display
+- **User**: Profile, dashboard, account settings
+- **Messaging**: Chat interface, conversation list, message bubbles
+- **Admin**: Dashboard, user management, content moderation
+
+## Component Patterns
+- Server vs. Client components
+- Controlled forms with React Hook Form
+- Error boundaries for fault tolerance
+- Loading states and skeletons
+- Modals and overlays
+- Responsive layouts with Tailwind breakpoints
+
+## State Management
+- React Context for global state
+- Custom hooks for shared logic
+- Form state with React Hook Form
+- API data fetching with SWR pattern
+- WebSocket event handling
+
+## Styling Approach
+- TailwindCSS utility classes
+- Component variants with class-variance-authority
+- Global styles in globals.css
+- Design tokens for consistency
+- Responsive breakpoints
+
+## Common Props Pattern
+```typescript
+interface BaseProps {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+interface ComponentProps extends BaseProps {
+  // Component-specific props
+}
+```
+
