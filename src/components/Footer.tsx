@@ -6,7 +6,7 @@ export default function Footer() {
   return (
     <footer className="bg-[var(--muted)] border-t border-[var(--border)] mt-16 pt-8 pb-6 px-4 md:px-6">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
           {/* Column 1: About & Company */}
           <div>
             <h3 className="text-lg font-bold mb-3 text-[var(--foreground)]">Kurumsal</h3>
@@ -29,12 +29,22 @@ export default function Footer() {
           <div>
             <h3 className="text-lg font-bold mb-3 text-[var(--foreground)]">Yasal</h3>
             <ul className="space-y-2">
-              <li><Link href="/privacy" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">Gizlilik Politikası</Link></li>
               <li><Link href="/terms" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">Kullanım Koşulları</Link></li>
+              <li><Link href="/user-agreement" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">Kullanıcı Sözleşmesi</Link></li>
+            </ul>
+          </div>
+          
+          {/* Column 4: Privacy */}
+          <div>
+            <h3 className="text-lg font-bold mb-3 text-[var(--foreground)]">Gizlilik</h3>
+            <ul className="space-y-2">
+              <li><Link href="/privacy" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">Gizlilik Politikası</Link></li>
+              <li><Link href="/kvkk" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">KVKK Aydınlatma Metni</Link></li>
+              <li><Link href="/cookies" className="text-[var(--foreground)] hover:text-[var(--accent)] transition-colors">Çerezler Aydınlatma Metni</Link></li>
             </ul>
           </div>
 
-          {/* Column 4: Mobile App */}
+          {/* Column 5: Mobile App */}
           <div className="md:col-span-3 lg:col-span-1">
             <h3 className="text-lg font-bold mb-3 text-[var(--foreground)]">Mobil Uygulama</h3>
             <div className="space-y-2">

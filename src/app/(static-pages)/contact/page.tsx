@@ -54,26 +54,16 @@ export default function ContactPage() {
 
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-medium mb-2">Adres</h3>
-                <p className="text-[var(--foreground)]">
-                  Bidpazar A.Ş.<br />
-                  Büyükdere Caddesi No:121<br />
-                  Esentepe Mahallesi<br />
-                  Şişli, İstanbul 34394
-                </p>
-              </div>
-
-              <div>
                 <h3 className="text-lg font-medium mb-2">Telefon</h3>
                 <p className="text-[var(--foreground)]">
-                  <a href="tel:+902123456789" className="hover:text-[var(--primary)]">+90 (212) 345 67 89</a>
+                  <a href="tel:05078314424" className="hover:text-[var(--primary)]">0507 831 4424</a>
                 </p>
               </div>
 
               <div>
                 <h3 className="text-lg font-medium mb-2">E-posta</h3>
                 <p className="text-[var(--foreground)]">
-                  <a href="mailto:info@bidpazar.com" className="hover:text-[var(--primary)]">info@bidpazar.com</a>
+                  <a href="mailto:bidpazar@gmail.com" className="hover:text-[var(--primary)]">bidpazar@gmail.com</a>
                 </p>
               </div>
 

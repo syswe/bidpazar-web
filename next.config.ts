@@ -9,6 +9,10 @@ const env = {
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   NEXT_PUBLIC_WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'ws://localhost:5001',
   NEXT_BACKEND_API_URL: process.env.NEXT_BACKEND_API_URL || 'http://localhost:5001/api',
+  NEXT_PUBLIC_TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:localhost:3478',
+  NEXT_PUBLIC_TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
+  NEXT_PUBLIC_TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || 'bidpazarpass',
+  NEXT_PUBLIC_STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || 'stun:localhost:3478',
 };
 
 // Log environment variables during build

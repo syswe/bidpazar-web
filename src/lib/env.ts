@@ -6,13 +6,17 @@
 import { useState, useEffect } from 'react';
 
 // Environment configuration interface
-interface EnvironmentConfig {
+export interface EnvironmentConfig {
   APP_URL: string;
   BACKEND_API_URL: string;
   API_URL: string;
   SOCKET_URL: string;
   WEBRTC_SERVER: string;
   NODE_ENV: string;
+  TURN_SERVER_URL?: string;
+  TURN_USERNAME?: string;
+  TURN_PASSWORD?: string;
+  STUN_SERVER_URL?: string;
 }
 
 // Window environment interface
@@ -20,10 +24,14 @@ declare global {
   interface Window {
     __ENV__?: {
       NEXT_PUBLIC_APP_URL?: string;
-      NEXT_BACKEND_API_URL?: string;
+      NEXT_PUBLIC_BACKEND_API_URL?: string;
       NEXT_PUBLIC_API_URL?: string;
       NEXT_PUBLIC_SOCKET_URL?: string;
       NEXT_PUBLIC_WEBRTC_SERVER?: string;
+      NEXT_PUBLIC_TURN_SERVER_URL?: string;
+      NEXT_PUBLIC_TURN_USERNAME?: string;
+      NEXT_PUBLIC_TURN_PASSWORD?: string;
+      NEXT_PUBLIC_STUN_SERVER_URL?: string;
     };
   }
 }
@@ -35,7 +43,11 @@ const defaults: EnvironmentConfig = {
   API_URL: 'http://localhost:3000/api',
   SOCKET_URL: 'ws://localhost:5001',
   WEBRTC_SERVER: 'http://localhost:5001',
-  NODE_ENV: 'development'
+  NODE_ENV: 'development',
+  TURN_SERVER_URL: 'turn:localhost:3478',
+  TURN_USERNAME: 'bidpazar',
+  TURN_PASSWORD: 'bidpazarpass',
+  STUN_SERVER_URL: 'stun:localhost:3478'
 };
 
 /**
@@ -50,15 +62,15 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   
   // Check if window.__ENV__ has been injected
   const hasRuntimeEnv = isBrowser && window.__ENV__ && 
-    typeof window.__ENV__.NEXT_BACKEND_API_URL === 'string' && 
-    window.__ENV__.NEXT_BACKEND_API_URL.length > 0;
+    typeof window.__ENV__.NEXT_PUBLIC_BACKEND_API_URL === 'string' && 
+    window.__ENV__.NEXT_PUBLIC_BACKEND_API_URL.length > 0;
   
   if (isBrowser) {
     console.log(`[env] Browser environment detected, window.__ENV__ available: ${!!window.__ENV__}`);
     if (window.__ENV__) {
       console.log('[env] Window.__ENV__ values:', {
         NEXT_PUBLIC_APP_URL: window.__ENV__.NEXT_PUBLIC_APP_URL,
-        NEXT_BACKEND_API_URL: window.__ENV__.NEXT_BACKEND_API_URL,
+        NEXT_PUBLIC_BACKEND_API_URL: window.__ENV__.NEXT_PUBLIC_BACKEND_API_URL,
         NEXT_PUBLIC_API_URL: window.__ENV__.NEXT_PUBLIC_API_URL,
         NEXT_PUBLIC_SOCKET_URL: window.__ENV__.NEXT_PUBLIC_SOCKET_URL,
         NEXT_PUBLIC_WEBRTC_SERVER: window.__ENV__.NEXT_PUBLIC_WEBRTC_SERVER
@@ -69,11 +81,15 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   // Construct environment with proper priority
   let configValues = {
     APP_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_APP_URL) || process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
-    BACKEND_API_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_BACKEND_API_URL) || process.env.NEXT_BACKEND_API_URL || defaults.BACKEND_API_URL,
+    BACKEND_API_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_BACKEND_API_URL) || process.env.NEXT_PUBLIC_BACKEND_API_URL || defaults.BACKEND_API_URL,
     API_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_API_URL) || process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
     SOCKET_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_SOCKET_URL) || process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
     WEBRTC_SERVER: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_WEBRTC_SERVER) || process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
-    NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV
+    NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
+    TURN_SERVER_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_TURN_SERVER_URL) || process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
+    TURN_USERNAME: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_TURN_USERNAME) || process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
+    TURN_PASSWORD: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_TURN_PASSWORD) || process.env.NEXT_PUBLIC_TURN_PASSWORD || defaults.TURN_PASSWORD,
+    STUN_SERVER_URL: (hasRuntimeEnv && window.__ENV__?.NEXT_PUBLIC_STUN_SERVER_URL) || process.env.NEXT_PUBLIC_STUN_SERVER_URL || defaults.STUN_SERVER_URL
   };
 
   // In browser environment, ensure URLs use localhost instead of container names
@@ -101,11 +117,15 @@ const getInitialEnvStore = () => {
   if (typeof window === 'undefined') {
     return {
       APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
-      BACKEND_API_URL: process.env.NEXT_BACKEND_API_URL || defaults.BACKEND_API_URL,
+      BACKEND_API_URL: process.env.NEXT_PUBLIC_BACKEND_API_URL || defaults.BACKEND_API_URL,
       API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
       SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
       WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
-      NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV
+      NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
+      TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
+      TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
+      TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || defaults.TURN_PASSWORD,
+      STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || defaults.STUN_SERVER_URL
     };
   }
   
@@ -123,7 +143,7 @@ const logEnvironment = (force = false) => {
       console.log('[env] Server-side environment being used:', ENV_STORE);
       console.log('[env] Process.env NEXT_PUBLIC values:', {
         APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-        BACKEND_API_URL: process.env.NEXT_BACKEND_API_URL,
+        BACKEND_API_URL: process.env.NEXT_PUBLIC_BACKEND_API_URL,
         API_URL: process.env.NEXT_PUBLIC_API_URL,
         SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
         WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER

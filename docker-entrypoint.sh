@@ -12,7 +12,11 @@ window.__ENV__ = {
   NEXT_PUBLIC_SOCKET_URL: "$NEXT_PUBLIC_SOCKET_URL",
   NEXT_PUBLIC_APP_URL: "$NEXT_PUBLIC_APP_URL", 
   NEXT_PUBLIC_WEBRTC_SERVER: "$NEXT_PUBLIC_WEBRTC_SERVER",
-  NEXT_BACKEND_API_URL: "$NEXT_BACKEND_API_URL"
+  NEXT_BACKEND_API_URL: "$NEXT_BACKEND_API_URL",
+  NEXT_PUBLIC_TURN_SERVER_URL: "$NEXT_PUBLIC_TURN_SERVER_URL",
+  NEXT_PUBLIC_TURN_USERNAME: "$NEXT_PUBLIC_TURN_USERNAME",
+  NEXT_PUBLIC_TURN_PASSWORD: "$NEXT_PUBLIC_TURN_PASSWORD",
+  NEXT_PUBLIC_STUN_SERVER_URL: "$NEXT_PUBLIC_STUN_SERVER_URL"
 };
 
 console.log('[env.js] Container environment variables loaded');
@@ -30,7 +34,11 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
     NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com/backend' : 'ws://localhost:5001',
     NEXT_PUBLIC_APP_URL: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
     NEXT_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
-    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'http://localhost:5001'
+    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'http://localhost:5001',
+    NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:bidpazar.com:3478' : 'turn:localhost:3478',
+    NEXT_PUBLIC_TURN_USERNAME: 'bidpazar',
+    NEXT_PUBLIC_TURN_PASSWORD: 'bidpazarpass',
+    NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:bidpazar.com:3478' : 'stun:localhost:3478'
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);

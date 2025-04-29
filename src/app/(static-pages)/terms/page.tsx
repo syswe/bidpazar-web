@@ -12,7 +12,7 @@ export default function TermsPage() {
 
         <div className="prose prose-lg text-[var(--foreground)] max-w-none">
           <p className="lead text-xl mb-6">
-            Son güncelleme: 1 Ocak 2025
+            Son güncelleme: 29 Nisan 2025
           </p>
 
           <section className="mb-8">

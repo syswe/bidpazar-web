@@ -179,7 +179,8 @@ export interface ChatMessage {
 // API istekleri için genel yardımcı fonksiyon
 const fetcher = async <T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit,
+  overrideUrl?: string
 ): Promise<T> => {
   const token = getToken();
   const headers = {
@@ -189,121 +190,66 @@ const fetcher = async <T>(
   };
 
   try {
-    // Get original URL from the env config
-    const originalUrl = constructApiUrl(endpoint);
-    // Get browser-compatible URL (replaces Docker hostnames if needed)
-    const url = getBrowserCompatibleUrl(originalUrl);
+    // Use override URL if provided, otherwise construct from API_URL
+    const url = overrideUrl || constructApiUrl(endpoint);
     
     console.log(`[DEBUG] Fetcher making request to: ${url}`);
     console.log(`[DEBUG] Request method: ${options?.method || 'GET'}`);
     console.log(`[DEBUG] Authorization header present: ${!!token}`);
 
-    // Determine credentials mode based on environment
-    // In development, we always include credentials
-    // In production, only include credentials for same-origin or specified domains
     const credentialsMode = process.env.NODE_ENV === 'development' 
       ? 'include' 
       : 'same-origin';
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        // Use consistent cors mode and credentials policy
-        mode: 'cors',
-        credentials: credentialsMode,
-      });
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      mode: 'cors',
+      credentials: credentialsMode,
+    });
 
-      console.log(
-        `[DEBUG] Fetcher got response: ${response.status} ${response.statusText}`
-      );
+    console.log(
+      `[DEBUG] Fetcher got response: ${response.status} ${response.statusText}`
+    );
 
-      // Check content type and status first
-      const contentType = response.headers.get("content-type");
-      console.log(`[DEBUG] Fetcher response content-type: ${contentType}`);
-      
-      // Standard response handling logic
-      if (!response.ok) {
-        // For error responses, try to parse as JSON first
-        if (contentType && contentType.includes("application/json")) {
-          const errorData = await response.json();
-          console.error("[DEBUG] Fetcher received JSON error:", errorData);
-          throw new Error(
-            errorData.message || errorData.error || "API isteği başarısız oldu"
-          );
-        } else {
-          // If not JSON, handle as text
-          const errorText = await response.text();
-          console.error("[DEBUG] Fetcher received non-JSON error:", errorText);
-          throw new Error(
-            `API isteği başarısız oldu: ${response.status} ${response.statusText}`
-          );
-        }
-      }
-
-      // For OK responses where content is expected
+    const contentType = response.headers.get("content-type");
+    console.log(`[DEBUG] Fetcher response content-type: ${contentType}`);
+    
+    if (!response.ok) {
       if (contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        console.log(`[DEBUG] Fetcher received JSON data:`, data);
-        return data as T;
+        const errorData = await response.json();
+        console.error("[DEBUG] Fetcher received JSON error:", errorData);
+        throw new Error(
+          errorData.message || errorData.error || "API isteği başarısız oldu"
+        );
+      } else {
+        const errorText = await response.text();
+        console.error("[DEBUG] Fetcher received non-JSON error:", errorText);
+        throw new Error(
+          `API isteği başarısız oldu: ${response.status} ${response.statusText}`
+        );
       }
+    }
 
-      // Handle empty responses or non-JSON responses
-      if (response.status === 204 || !contentType) {
-        console.log(`[DEBUG] Fetcher received no content (204 or no content-type)`);
-        return {} as T; // No content expected
-      }
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+      console.log(`[DEBUG] Fetcher received JSON data:`, data);
+      return data as T;
+    }
 
-      // Default case - still try to parse as JSON, but log a warning
-      console.warn(
-        `[DEBUG] Unexpected content type: ${contentType} for successful response`
-      );
-      try {
-        return (await response.json()) as T;
-      } catch (e) {
-        console.error("[DEBUG] Failed to parse response as JSON:", e);
-        throw new Error("Invalid response format");
-      }
-      
-    } catch (fetchError) {
-      // If the error might be due to hostname resolution, try with localhost
-      if (url.includes('http://api:') || url.includes('ws://api:') ||
-          url.includes('http://backend:') || url.includes('ws://backend:')) {
-        
-        console.warn('[DEBUG] Failed to connect to container hostname, trying with localhost instead');
-        
-        // Replace with localhost and retry
-        const localhostUrl = url
-          .replace(/http:\/\/api:/, 'http://localhost:')
-          .replace(/http:\/\/backend:/, 'http://localhost:')
-          .replace(/ws:\/\/api:/, 'ws://localhost:')
-          .replace(/ws:\/\/backend:/, 'ws://localhost:');
-          
-        console.log(`[DEBUG] Retrying with URL: ${localhostUrl}`);
-        
-        // Try again with the fallback URL
-        const retryResponse = await fetch(localhostUrl, {
-          ...options,
-          headers,
-          mode: 'cors',
-          credentials: credentialsMode,
-        });
-        
-        console.log(`[DEBUG] Retry response: ${retryResponse.status} ${retryResponse.statusText}`);
-        
-        // Process the retry response
-        if (!retryResponse.ok) {
-          const errorText = await retryResponse.text();
-          throw new Error(`API isteği başarısız oldu: ${retryResponse.status} ${retryResponse.statusText}`);
-        }
-        
-        const data = await retryResponse.json();
-        console.log(`[DEBUG] Retry succeeded, received data:`, data);
-        return data as T;
-      }
-      
-      // If not a hostname issue or retrying failed, rethrow
-      throw fetchError;
+    if (response.status === 204 || !contentType) {
+      console.log(`[DEBUG] Fetcher received no content (204 or no content-type)`);
+      return {} as T;
+    }
+
+    console.warn(
+      `[DEBUG] Unexpected content type: ${contentType} for successful response`
+    );
+    try {
+      return (await response.json()) as T;
+    } catch (e) {
+      console.error("[DEBUG] Failed to parse response as JSON:", e);
+      throw new Error("Invalid response format");
     }
   } catch (error) {
     console.error("[DEBUG] Fetcher error:", error);
@@ -351,21 +297,56 @@ export const deleteCategory = async (id: string): Promise<void> => {
 
 // Ürün işlemleri
 export const getProducts = async (): Promise<Product[]> => {
-  return fetcher<Product[]>("/products");
-};
-
-export const getProductById = async (id: string): Promise<Product> => {
-  const response = await fetch(`${API_URL}/products/${id}`);
+  const token = getToken();
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  
+  const url = `${backendBaseUrl}/products`;
+  console.log(`[DEBUG] Making direct request to backend URL: ${url}`);
+  
+  const response = await fetch(url, {
+    headers,
+    mode: 'cors',
+    credentials: process.env.NODE_ENV === 'development' ? 'include' : 'same-origin'
+  });
+  
   if (!response.ok) {
-    throw new Error("Failed to fetch product");
+    const error = await response.json().catch(() => ({ message: `Failed with status: ${response.status}` }));
+    throw new Error(error.message || `Failed to fetch products: ${response.statusText}`);
   }
+  
   return response.json();
 };
 
-export const getProductsByCategory = async (
-  categoryId: string
-): Promise<Product[]> => {
-  return fetcher<Product[]>(`/products/category/${categoryId}`);
+export const getProductById = async (id: string): Promise<Product> => {
+  const token = getToken();
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  
+  const url = `${backendBaseUrl}/products/${id}`;
+  console.log(`[DEBUG] Making direct request to backend URL: ${url}`);
+  
+  const response = await fetch(url, {
+    headers,
+    mode: 'cors',
+    credentials: process.env.NODE_ENV === 'development' ? 'include' : 'same-origin'
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: `Failed with status: ${response.status}` }));
+    throw new Error(error.message || `Failed to fetch product: ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+
+export const getProductsByCategory = async (categoryId: string): Promise<Product[]> => {
+  const url = `${backendBaseUrl}/products/category/${categoryId}`;
+  return fetcher<Product[]>(`/products/category/${categoryId}`, {}, url);
 };
 
 export const getUserProducts = async (): Promise<Product[]> => {
@@ -373,8 +354,9 @@ export const getUserProducts = async (): Promise<Product[]> => {
   if (!token) {
     throw new Error("Authentication required to fetch your products");
   }
-
-  return fetcher<Product[]>(`/products/user`);
+  
+  const url = `${backendBaseUrl}/products/user`;
+  return fetcher<Product[]>(`/products/user`, {}, url);
 };
 
 export const createProduct = async (data: {
