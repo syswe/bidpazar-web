@@ -34,6 +34,7 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
     NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com/backend' : 'ws://localhost:5001',
     NEXT_PUBLIC_APP_URL: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
     NEXT_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
+    NEXT_PUBLIC_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
     NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'http://localhost:5001',
     NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:bidpazar.com:3478' : 'turn:localhost:3478',
     NEXT_PUBLIC_TURN_USERNAME: 'bidpazar',
@@ -49,5 +50,30 @@ EOF
 echo "Generated env.js:"
 cat ./public/env.js
 
-# Start Next.js
-exec node server.js 
+# Create a temporary .env file to ensure server-side environment variables
+cat > ./.env << EOF
+NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+NEXT_PUBLIC_WEBRTC_SERVER=$NEXT_PUBLIC_WEBRTC_SERVER
+NEXT_BACKEND_API_URL=$NEXT_BACKEND_API_URL
+NEXT_PUBLIC_BACKEND_API_URL=$NEXT_PUBLIC_BACKEND_API_URL
+NEXT_PUBLIC_TURN_SERVER_URL=$NEXT_PUBLIC_TURN_SERVER_URL
+NEXT_PUBLIC_TURN_USERNAME=$NEXT_PUBLIC_TURN_USERNAME
+NEXT_PUBLIC_TURN_PASSWORD=$NEXT_PUBLIC_TURN_PASSWORD
+NEXT_PUBLIC_STUN_SERVER_URL=$NEXT_PUBLIC_STUN_SERVER_URL
+EOF
+
+# Start Next.js with environment variables explicitly passed
+exec env \
+  NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+  NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
+  NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+  NEXT_PUBLIC_WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER" \
+  NEXT_BACKEND_API_URL="$NEXT_BACKEND_API_URL" \
+  NEXT_PUBLIC_BACKEND_API_URL="$NEXT_PUBLIC_BACKEND_API_URL" \
+  NEXT_PUBLIC_TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL" \
+  NEXT_PUBLIC_TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME" \
+  NEXT_PUBLIC_TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD" \
+  NEXT_PUBLIC_STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL" \
+  node server.js 
