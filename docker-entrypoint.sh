@@ -1,6 +1,23 @@
 #!/bin/sh
 set -e
 
+# Set default values for variables if they're not set
+if [ -z "$NEXT_PUBLIC_TURN_SERVER_URL" ]; then
+  export NEXT_PUBLIC_TURN_SERVER_URL="turn:45.147.46.183:3478"
+fi
+
+if [ -z "$NEXT_PUBLIC_TURN_USERNAME" ]; then
+  export NEXT_PUBLIC_TURN_USERNAME="bidpazar"
+fi
+
+if [ -z "$NEXT_PUBLIC_TURN_PASSWORD" ]; then
+  export NEXT_PUBLIC_TURN_PASSWORD="bidpazarpass"
+fi
+
+if [ -z "$NEXT_PUBLIC_STUN_SERVER_URL" ]; then
+  export NEXT_PUBLIC_STUN_SERVER_URL="stun:45.147.46.183:3478"
+fi
+
 # Log environment
 echo "Starting with container environment variables"
 
@@ -13,6 +30,7 @@ window.__ENV__ = {
   NEXT_PUBLIC_APP_URL: "$NEXT_PUBLIC_APP_URL", 
   NEXT_PUBLIC_WEBRTC_SERVER: "$NEXT_PUBLIC_WEBRTC_SERVER",
   NEXT_BACKEND_API_URL: "$NEXT_BACKEND_API_URL",
+  NEXT_PUBLIC_BACKEND_API_URL: "$NEXT_PUBLIC_BACKEND_API_URL",
   NEXT_PUBLIC_TURN_SERVER_URL: "$NEXT_PUBLIC_TURN_SERVER_URL",
   NEXT_PUBLIC_TURN_USERNAME: "$NEXT_PUBLIC_TURN_USERNAME",
   NEXT_PUBLIC_TURN_PASSWORD: "$NEXT_PUBLIC_TURN_PASSWORD",
@@ -36,10 +54,10 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
     NEXT_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
     NEXT_PUBLIC_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
     NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'http://localhost:5001',
-    NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:bidpazar.com:3478' : 'turn:localhost:3478',
+    NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:45.147.46.183:3478' : 'turn:localhost:3478',
     NEXT_PUBLIC_TURN_USERNAME: 'bidpazar',
     NEXT_PUBLIC_TURN_PASSWORD: 'bidpazarpass',
-    NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:bidpazar.com:3478' : 'stun:localhost:3478'
+    NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:45.147.46.183:3478' : 'stun:localhost:3478'
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);

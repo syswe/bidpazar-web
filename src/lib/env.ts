@@ -62,8 +62,8 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   
   // Check if window.__ENV__ has been injected
   const hasRuntimeEnv = isBrowser && window.__ENV__ && 
-    typeof window.__ENV__.NEXT_PUBLIC_BACKEND_API_URL === 'string' && 
-    window.__ENV__.NEXT_PUBLIC_BACKEND_API_URL.length > 0;
+    typeof window.__ENV__.NEXT_PUBLIC_API_URL === 'string' && 
+    window.__ENV__.NEXT_PUBLIC_API_URL.length > 0;
   
   if (isBrowser) {
     console.log(`[env] Browser environment detected, window.__ENV__ available: ${!!window.__ENV__}`);
@@ -111,10 +111,35 @@ const getEnvironmentValues = (): EnvironmentConfig => {
   return configValues;
 };
 
+// Check if hostname suggests production environment
+const isProduction = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.hostname === 'bidpazar.com' || window.location.hostname === 'api.bidpazar.com';
+  }
+  return process.env.NODE_ENV === 'production';
+};
+
 // Create initial environment store based on server/client context
 const getInitialEnvStore = () => {
-  // On server side, use process.env or defaults
+  // On server side, use process.env or defaults with production awareness
   if (typeof window === 'undefined') {
+    // For server-side in production, we need to prefer production URLs
+    if (process.env.NODE_ENV === 'production') {
+      return {
+        APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'https://bidpazar.com',
+        BACKEND_API_URL: process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://bidpazar.com/backend',
+        API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
+        SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'wss://bidpazar.com/backend',
+        WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'https://bidpazar.com/backend',
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:bidpazar.com:3478',
+        TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
+        TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || 'bidpazarpass',
+        STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || 'stun:bidpazar.com:3478'
+      };
+    }
+    
+    // Development uses normal priority
     return {
       APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
       BACKEND_API_URL: process.env.NEXT_PUBLIC_BACKEND_API_URL || defaults.BACKEND_API_URL,
