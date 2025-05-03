@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "../../../../../components/AuthProvider";
+import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 import { env } from "@/lib/env";
 import { getToken } from "@/lib/frontend-auth";
@@ -13,7 +13,8 @@ export default function CreateListingPage() {
   const params = useParams();
   const router = useRouter();
   const { id } = params;
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = getToken();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

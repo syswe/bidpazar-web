@@ -12,11 +12,12 @@ const chatMessageSchema = z.object({
 // GET /api/live-streams/[id]/chat - Get chat messages
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const messages = await prisma.chatMessage.findMany({
-      where: { liveStreamId: params.id },
+      where: { liveStreamId: id },
       include: {
         user: {
           select: {
@@ -44,9 +45,10 @@ export async function GET(
 // POST /api/live-streams/[id]/chat - Send a chat message
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -59,7 +61,7 @@ export async function POST(
     const validatedData = chatMessageSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -80,7 +82,7 @@ export async function POST(
       data: {
         message: validatedData.message,
         userId: session.user.id,
-        liveStreamId: params.id,
+        liveStreamId: id,
       },
       include: {
         user: {

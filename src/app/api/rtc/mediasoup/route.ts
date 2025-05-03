@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import type { Worker, Router, WebRtcTransport } from 'mediasoup/node/lib/types';
-import mediasoup from 'mediasoup';
+import type { types } from 'mediasoup';
+import * as mediasoup from 'mediasoup';
 import { verifyToken } from '@/lib/auth';
 
 // MediaSoup workers
-let workers: Worker[] = [];
+let workers: types.Worker[] = [];
 let nextWorkerIndex = 0;
 
 // Initialize MediaSoup workers
@@ -42,8 +42,8 @@ initWorkers().catch(console.error);
 
 // Store active rooms
 const rooms = new Map<string, {
-  router: Router;
-  transports: Map<string, WebRtcTransport>;
+  router: types.Router;
+  transports: Map<string, types.WebRtcTransport>;
   producers: Map<string, any>;
   consumers: Map<string, any>;
 }>();

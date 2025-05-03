@@ -13,9 +13,10 @@ const mediaSchema = z.object({
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -34,7 +35,7 @@ export async function POST(
 
     // Check if product exists and belongs to user
     const existingProduct = await prisma.product.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!existingProduct) {
@@ -57,7 +58,7 @@ export async function POST(
     const media = await prisma.productMedia.create({
       data: {
         ...validatedData,
-        productId: params.id,
+        productId: id,
       },
     });
 

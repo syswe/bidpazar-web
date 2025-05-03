@@ -15,9 +15,11 @@ const moderationSchema = z.object({
 // GET /api/live-streams/[id]/moderation - Get moderation history
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -27,7 +29,7 @@ export async function GET(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -45,7 +47,7 @@ export async function GET(
     }
 
     const moderations = await prisma.streamModeration.findMany({
-      where: { liveStreamId: params.id },
+      where: { liveStreamId: id },
       include: {
         user: {
           select: {
@@ -71,9 +73,11 @@ export async function GET(
 // POST /api/live-streams/[id]/moderation - Create a moderation action
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -86,7 +90,7 @@ export async function POST(
     const validatedData = moderationSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -106,7 +110,7 @@ export async function POST(
     const moderation = await prisma.streamModeration.create({
       data: {
         ...validatedData,
-        liveStreamId: params.id,
+        liveStreamId: id,
         userId: session.user.id,
       },
     });

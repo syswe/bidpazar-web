@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
-import env from '../lib/env';
+import env from '@/lib/env';
 
 export default function TestWebRTC() {
   const [logs, setLogs] = useState<string[]>([]);

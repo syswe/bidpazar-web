@@ -8,7 +8,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN apk add --no-cache python3 py3-pip build-base cmake linux-headers \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder

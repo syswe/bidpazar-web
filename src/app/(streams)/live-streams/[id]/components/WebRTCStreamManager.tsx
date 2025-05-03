@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
 import { useAuth } from '@/components/AuthProvider';
-import env from "../../../../lib/env";
+import env from "@/lib/env";
 import Hls from 'hls.js';
 import DeviceSelector from './DeviceSelector';
+import { getAuth } from "@/lib/frontend-auth";
 
 // Log immediately when the function body executes
 console.log('[WebRTCStreamManager] Function body executing');
@@ -65,7 +66,8 @@ export default function WebRTCStreamManager({
   isStreamer,
 }: WebRTCStreamManagerProps) {
   // Get authentication token
-  const { token } = useAuth();
+  const { user } = useAuth();
+  const { token } = getAuth();
 
   // Log received props immediately
   console.log('[WebRTCStreamManager] Receiving props:', { streamId, userId, username, isStreamer });

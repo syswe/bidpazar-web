@@ -1,18 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { createLiveStream } from '@/lib/api';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Upload } from 'lucide-react';
+import { getToken } from '@/lib/frontend-auth';
 
 export default function CreateLiveStreamPage() {
   const router = useRouter();
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -22,11 +25,28 @@ export default function CreateLiveStreamPage() {
   });
 
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  
+  // Handle browser-only code in useEffect
+  useEffect(() => {
+    setIsMounted(true);
+    setToken(getToken());
+  }, []);
 
-  // Redirect if not authenticated
-  if (!isAuthenticated) {
-    router.push('/sign-in');
-    return null;
+  // Only run this after the component has mounted (client-side only)
+  useEffect(() => {
+    if (isMounted && (!isAuthenticated || !token)) {
+      router.push('/sign-in');
+    }
+  }, [isMounted, isAuthenticated, token, router]);
+
+  // Don't render anything during SSR or if not authenticated
+  if (!isMounted || !isAuthenticated || !token) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <p className="text-[var(--foreground)]">Yükleniyor...</p>
+      </div>
+    );
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

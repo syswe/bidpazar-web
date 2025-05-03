@@ -24,9 +24,10 @@ const shareSchema = z.object({
 // POST /api/live-streams/[id]/share - Share stream
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -39,7 +40,7 @@ export async function POST(
     const validatedData = shareSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         user: {
           select: {
@@ -66,7 +67,7 @@ export async function POST(
     // Create share record
     const share = await prisma.streamShare.create({
       data: {
-        liveStreamId: params.id,
+        liveStreamId: id,
         userId: session.user.id,
         platform: validatedData.platform,
         message,
@@ -97,9 +98,10 @@ export async function POST(
 // GET /api/live-streams/[id]/share - Get stream share stats
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -109,7 +111,7 @@ export async function GET(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -129,7 +131,7 @@ export async function GET(
     // Get share stats
     const shares = await prisma.streamShare.groupBy({
       by: ['platform'],
-      where: { liveStreamId: params.id },
+      where: { liveStreamId: id },
       _count: {
         platform: true,
       },

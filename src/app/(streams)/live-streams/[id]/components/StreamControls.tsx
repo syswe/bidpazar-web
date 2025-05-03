@@ -4,7 +4,7 @@ import axios, { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/AuthProvider';
 import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2 } from 'lucide-react';
-import { getToken } from "@/lib/frontend-auth";
+import { getAuth } from "@/lib/frontend-auth";
 import { env } from "@/lib/env";
 
 interface StreamDetails {
@@ -38,7 +38,8 @@ const StreamControls = ({
   viewerCount = 0,
   onEndStream
 }: StreamControlsProps) => {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
+  const { token } = getAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [detailedStreamInfo, setDetailedStreamInfo] = useState<StreamDetails | null>(null);
 

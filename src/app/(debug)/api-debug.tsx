@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getToken } from '../lib/auth';
+import { getAuth } from '@/lib/frontend-auth';
 import { env } from '@/lib/env'; // Import env config
 
 const ApiDebug: React.FC = () => {
@@ -16,7 +16,7 @@ const ApiDebug: React.FC = () => {
     setLoading(true);
     setError(null);
     setResponse(null);
-    const token = getToken();
+    const { token } = getAuth();
     
     try {
       const res = await fetch(`${url}/health`, { // Example: hitting backend health endpoint

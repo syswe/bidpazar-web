@@ -12,11 +12,13 @@ const bidSchema = z.object({
 // GET /api/live-streams/[id]/listings/[listingId]/bids - Get bids for a listing
 export async function GET(
   request: Request,
-  { params }: { params: { id: string; listingId: string } }
+  { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
+    const { listingId } = await params;
+    
     const bids = await prisma.bid.findMany({
-      where: { listingId: params.listingId },
+      where: { listingId },
       include: {
         user: {
           select: {
@@ -44,9 +46,11 @@ export async function GET(
 // POST /api/live-streams/[id]/listings/[listingId]/bids - Place a bid
 export async function POST(
   request: Request,
-  { params }: { params: { id: string; listingId: string } }
+  { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
+    const { listingId } = await params;
+    
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -59,7 +63,7 @@ export async function POST(
     const validatedData = bidSchema.parse(body);
 
     const listing = await prisma.auctionListing.findUnique({
-      where: { id: params.listingId },
+      where: { id: listingId },
       include: {
         liveStream: true,
         bids: {
@@ -111,7 +115,7 @@ export async function POST(
       data: {
         amount: validatedData.amount,
         userId: session.user.id,
-        listingId: params.listingId,
+        listingId,
       },
       include: {
         user: {
@@ -126,7 +130,7 @@ export async function POST(
 
     // Update the listing's winning bid
     await prisma.auctionListing.update({
-      where: { id: params.listingId },
+      where: { id: listingId },
       data: {
         winningBidId: bid.id,
       },

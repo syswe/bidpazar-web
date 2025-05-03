@@ -12,11 +12,12 @@ const updateCategorySchema = z.object({
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const category = await prisma.category.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         parent: true,
         children: true,
@@ -43,9 +44,10 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -80,7 +82,7 @@ export async function PUT(
 
       // Check if the new parent is not a child of the current category
       const isCircular = await checkCircularReference(
-        params.id,
+        id,
         validatedData.parentId
       );
       if (isCircular) {
@@ -92,7 +94,7 @@ export async function PUT(
     }
 
     const category = await prisma.category.update({
-      where: { id: params.id },
+      where: { id },
       data: validatedData,
       include: {
         parent: true,
@@ -126,9 +128,10 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -147,7 +150,7 @@ export async function DELETE(
 
     // Check if category has children
     const category = await prisma.category.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         children: true,
         products: true,
@@ -176,7 +179,7 @@ export async function DELETE(
     }
 
     await prisma.category.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json(

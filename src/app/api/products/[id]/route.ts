@@ -13,11 +13,11 @@ const updateProductSchema = z.object({
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Ensure params.id is valid
-    const { id } = params;
+    const { id } = await params;
     
     const product = await prisma.product.findUnique({
       where: { id },
@@ -53,9 +53,10 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -74,7 +75,7 @@ export async function PUT(
 
     // Check if product exists and belongs to user
     const existingProduct = await prisma.product.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!existingProduct) {
@@ -98,7 +99,7 @@ export async function PUT(
     });
 
     const product = await prisma.product.update({
-      where: { id: params.id },
+      where: { id },
       data: validatedData,
       include: {
         category: true,
@@ -125,9 +126,10 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -146,7 +148,7 @@ export async function DELETE(
 
     // Check if product exists and belongs to user
     const existingProduct = await prisma.product.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!existingProduct) {
@@ -165,12 +167,12 @@ export async function DELETE(
 
     // Delete product media first
     await prisma.productMedia.deleteMany({
-      where: { productId: params.id },
+      where: { productId: id },
     });
 
     // Delete the product
     await prisma.product.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return new NextResponse(null, { status: 204 });

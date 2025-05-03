@@ -19,11 +19,13 @@ const updateListingSchema = z.object({
 // GET /api/live-streams/[id]/listings - Get stream listings
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const listings = await prisma.auctionListing.findMany({
-      where: { liveStreamId: params.id },
+      where: { liveStreamId: id },
       include: {
         product: true,
         bids: {
@@ -59,9 +61,11 @@ export async function GET(
 // POST /api/live-streams/[id]/listings - Create a new listing
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -74,7 +78,7 @@ export async function POST(
     const validatedData = createListingSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -101,7 +105,7 @@ export async function POST(
     const listing = await prisma.auctionListing.create({
       data: {
         ...validatedData,
-        liveStreamId: params.id,
+        liveStreamId: id,
         status: 'ACTIVE',
       },
       include: {
@@ -128,9 +132,11 @@ export async function POST(
 // PUT /api/live-streams/[id]/listings - Update a listing
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(

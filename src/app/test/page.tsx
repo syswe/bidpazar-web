@@ -1,4 +1,4 @@
-import TestWebRTC from "../test-webrtc";
+import TestWebRTC from "@/app/(debug)/test-webrtc";
 
 export default function TestPage() {
   return (

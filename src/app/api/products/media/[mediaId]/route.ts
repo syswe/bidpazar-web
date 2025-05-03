@@ -4,9 +4,10 @@ import { getUserFromToken } from '@/lib/auth';
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { mediaId: string } }
+  { params }: { params: Promise<{ mediaId: string }> }
 ) {
   try {
+    const { mediaId } = await params;
     const token = request.headers.get('authorization')?.split(' ')[1];
     if (!token) {
       return NextResponse.json(
@@ -25,7 +26,7 @@ export async function DELETE(
 
     // Get the media and its associated product
     const media = await prisma.productMedia.findUnique({
-      where: { id: params.mediaId },
+      where: { id: mediaId },
       include: {
         product: true,
       },
@@ -48,7 +49,7 @@ export async function DELETE(
 
     // Delete the media
     await prisma.productMedia.delete({
-      where: { id: params.mediaId },
+      where: { id: mediaId },
     });
 
     return new NextResponse(null, { status: 204 });

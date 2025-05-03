@@ -7,16 +7,17 @@ import { logger } from '@/lib/logger';
 // GET /api/live-streams/[id] - Get a specific stream
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logger.info('API GET /api/live-streams/[id]', {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
-    params,
+    params: { id },
   });
   try {
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         user: {
           select: {
@@ -81,12 +82,13 @@ export async function GET(
 // DELETE /api/live-streams/[id] - Delete a stream
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   logger.info('API DELETE /api/live-streams/[id]', {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
-    params,
+    params: { id },
   });
   try {
     const session = await getServerSession(authOptions);
@@ -98,7 +100,7 @@ export async function DELETE(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -116,7 +118,7 @@ export async function DELETE(
     }
 
     await prisma.liveStream.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json(

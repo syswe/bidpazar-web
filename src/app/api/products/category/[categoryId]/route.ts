@@ -3,11 +3,12 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: Request,
-  { params }: { params: { categoryId: string } }
+  { params }: { params: Promise<{ categoryId: string }> }
 ) {
   try {
+    const { categoryId } = await params;
     const products = await prisma.product.findMany({
-      where: { categoryId: params.categoryId },
+      where: { categoryId },
       include: {
         media: true,
         user: {

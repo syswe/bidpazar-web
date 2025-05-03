@@ -6,8 +6,9 @@ import { prisma } from '@/lib/prisma';
 // GET /api/live-streams/[id]/analytics - Get detailed stream analytics
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -18,7 +19,7 @@ export async function GET(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         listings: {
           include: {
@@ -106,7 +107,7 @@ export async function GET(
     await prisma.streamAnalytics.create({
       data: {
         ...analyticsSnapshot,
-        liveStreamId: params.id,
+        liveStreamId: id,
       },
     });
 

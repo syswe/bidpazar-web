@@ -16,7 +16,8 @@ export default function AuthDebugPage() {
   const [isValidating, setIsValidating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   
-  const { refreshToken, isAuthenticated, isLoading, user, token } = useAuth();
+  const { refreshAuthState, isAuthenticated, isLoading, user } = useAuth();
+  const { token } = getAuth();
 
   useEffect(() => {
     const data = getAuth();
@@ -75,7 +76,7 @@ export default function AuthDebugPage() {
   };
   
   const handleContextTest = () => {
-    refreshToken();
+    refreshAuthState();
   };
 
   return (

@@ -14,9 +14,10 @@ const notificationSchema = z.object({
 // GET /api/live-streams/[id]/notifications - Get stream notifications
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -28,7 +29,7 @@ export async function GET(
     const notifications = await prisma.notification.findMany({
       where: {
         userId: session.user.id,
-        relatedId: params.id,
+        relatedId: id,
       },
       orderBy: {
         createdAt: 'desc',
@@ -48,9 +49,10 @@ export async function GET(
 // POST /api/live-streams/[id]/notifications - Create a notification
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -63,7 +65,7 @@ export async function POST(
     const validatedData = notificationSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -79,7 +81,7 @@ export async function POST(
         userId: stream.userId,
         content: validatedData.content,
         type: validatedData.type,
-        relatedId: validatedData.relatedId || params.id,
+        relatedId: validatedData.relatedId || id,
       },
     });
 
@@ -100,11 +102,12 @@ export async function POST(
 }
 
 // PUT /api/live-streams/[id]/notifications - Mark notifications as read
-export async function PUT(
+export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -116,7 +119,7 @@ export async function PUT(
     await prisma.notification.updateMany({
       where: {
         userId: session.user.id,
-        relatedId: params.id,
+        relatedId: id,
         isRead: false,
       },
       data: {

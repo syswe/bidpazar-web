@@ -300,8 +300,24 @@ function SignInContent() {
   );
 }
 
-// Main component that uses Suspense
+// Main component that wraps the Sign In logic in a Suspense boundary
 export default function SignInRedirect() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-[var(--foreground)]">Yükleniyor...</p>
+        </div>
+      </div>
+    }>
+      <SignInRedirectContent />
+    </Suspense>
+  );
+}
+
+// Component that handles the redirection logic
+function SignInRedirectContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');

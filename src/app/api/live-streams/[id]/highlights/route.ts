@@ -17,11 +17,12 @@ const highlightSchema = z.object({
 // GET /api/live-streams/[id]/highlights - Get stream highlights
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const highlights = await prisma.streamHighlight.findMany({
-      where: { liveStreamId: params.id },
+      where: { liveStreamId: id },
       orderBy: { timestamp: 'asc' },
     });
 
@@ -38,9 +39,10 @@ export async function GET(
 // POST /api/live-streams/[id]/highlights - Create a highlight
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -53,7 +55,7 @@ export async function POST(
     const validatedData = highlightSchema.parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -73,7 +75,7 @@ export async function POST(
     const highlight = await prisma.streamHighlight.create({
       data: {
         ...validatedData,
-        liveStreamId: params.id,
+        liveStreamId: id,
       },
     });
 
@@ -96,9 +98,10 @@ export async function POST(
 // PATCH /api/live-streams/[id]/highlights/[highlightId] - Update highlight metadata
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; highlightId: string } }
+  { params }: { params: Promise<{ id: string; highlightId: string }> }
 ) {
   try {
+    const { id, highlightId } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -111,7 +114,7 @@ export async function PATCH(
     const validatedData = highlightSchema.partial().parse(body);
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -129,7 +132,7 @@ export async function PATCH(
     }
 
     const highlight = await prisma.streamHighlight.update({
-      where: { id: params.highlightId },
+      where: { id: highlightId },
       data: validatedData,
     });
 
@@ -152,9 +155,10 @@ export async function PATCH(
 // DELETE /api/live-streams/[id]/highlights/[highlightId] - Delete a highlight
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string; highlightId: string } }
+  { params }: { params: Promise<{ id: string; highlightId: string }> }
 ) {
   try {
+    const { id, highlightId } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -164,7 +168,7 @@ export async function DELETE(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -182,7 +186,7 @@ export async function DELETE(
     }
 
     await prisma.streamHighlight.delete({
-      where: { id: params.highlightId },
+      where: { id: highlightId },
     });
 
     return NextResponse.json(

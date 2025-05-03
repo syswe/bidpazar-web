@@ -61,7 +61,8 @@ export default function LiveStreamPage() {
   const router = useRouter();
   const params = useParams();
   const streamId = params.id as string;
-  const { user, token } = useAuth();
+  const { user } = useAuth();
+  const { token } = getAuth();
   const userId = user?.id;
   const username = user?.username;
 

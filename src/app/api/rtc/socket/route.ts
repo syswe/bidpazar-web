@@ -1,20 +1,21 @@
 import { Server } from 'socket.io';
-import { NextApiRequest, NextApiResponse } from 'next';
 import { Server as NetServer } from 'http';
+import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 
-// Extend NextApiResponse to include socket.io
-type NextApiResponseWithSocket = NextApiResponse & {
-  socket: {
-    server: NetServer & {
-      io?: Server;
-    };
-  };
-};
+// Global variable to store the Socket.IO instance
+let io: Server;
 
-const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
-  if (!res.socket.server.io) {
-    const io = new Server(res.socket.server, {
+export async function GET(request: Request) {
+  // This is a workaround for Socket.IO in Next.js App Router
+  // We need to create a NextResponse that doesn't close the connection
+  const response = new NextResponse();
+  
+  // @ts-ignore - accessing internal properties
+  const socket = response.socket;
+  
+  if (socket && socket.server && !socket.server.io) {
+    io = new Server(socket.server as unknown as NetServer, {
       path: '/api/rtc/socket',
       addTrailingSlash: false,
       cors: {
@@ -90,11 +91,14 @@ const ioHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) => {
       });
     });
 
-    res.socket.server.io = io;
+    // @ts-ignore - storing io on the server
+    socket.server.io = io;
   }
 
-  res.end();
-};
+  return new Response('Socket.IO server initialized', { status: 200 });
+}
 
-export const GET = ioHandler;
-export const POST = ioHandler; 
+// Also export POST for WebSocket upgrade
+export async function POST(request: Request) {
+  return new Response('Socket.IO server is running', { status: 200 });
+} 

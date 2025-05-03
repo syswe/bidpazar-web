@@ -6,14 +6,15 @@ import { prisma } from '@/lib/prisma';
 // GET /api/live-streams/[id]/viewers - Get stream viewers
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const viewers = await prisma.user.findMany({
       where: {
         viewedStreams: {
           some: {
-            id: params.id,
+            id,
           },
         },
       },
@@ -37,9 +38,10 @@ export async function GET(
 // POST /api/live-streams/[id]/viewers - Join stream as viewer
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -49,7 +51,7 @@ export async function POST(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -68,7 +70,7 @@ export async function POST(
 
     // Add user to viewers
     await prisma.liveStream.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         viewers: {
           connect: {
@@ -97,9 +99,10 @@ export async function POST(
 // DELETE /api/live-streams/[id]/viewers - Leave stream
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
@@ -109,7 +112,7 @@ export async function DELETE(
     }
 
     const stream = await prisma.liveStream.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!stream) {
@@ -121,7 +124,7 @@ export async function DELETE(
 
     // Remove user from viewers
     await prisma.liveStream.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         viewers: {
           disconnect: {

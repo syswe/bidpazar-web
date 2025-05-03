@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getUserFromToken } from '@/lib/auth';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // Schema for profile update
 const updateProfileSchema = z.object({
