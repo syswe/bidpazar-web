@@ -3,10 +3,10 @@ description:
 globs: 
 alwaysApply: false
 ---
-# BidPazar Web Product Context
+# BidPazar Full-Stack Product Context
 
 ## Purpose
-Frontend application for a real-time auction marketplace with live streaming, allowing users to browse products, watch live auctions, place bids, and communicate with sellers.
+Full-stack real-time auction marketplace with live streaming, allowing users to browse products, watch live auctions, place bids, and communicate with sellers.
 
 ## Technical Problems Solved
 - Real-time UI updates for auction and bidding status
@@ -17,24 +17,30 @@ Frontend application for a real-time auction marketplace with live streaming, al
 - WebSocket event handling
 - Chat interface for live streams and private messaging
 - Auction countdown UI
+- Server-side rendering and API routes
+- Database integration with Prisma
+- Real-time WebSocket server
 
 ## Architecture
-- Next.js App Router for page routing
+- Next.js App Router for page routing and API routes
 - React components with TypeScript
 - Context API for state management
 - Custom hooks for shared logic
-- API services for backend communication
+- Server-side API routes
+- Prisma for database operations
 - Socket.io for real-time updates
 - WebRTC for stream consumption
 - TailwindCSS for responsive UI
 
 ## Data Flow
 1. User authentication → JWT storage → Protected routes
-2. Product browsing → API data fetching → UI rendering
+2. Product browsing → Server-side data fetching → UI rendering
 3. Stream viewing → WebRTC connection → Media consumption
-4. Bid placement → Form validation → API submission → Socket update
+4. Bid placement → Form validation → API route → Socket update
 5. Chat messaging → Socket events → UI updates
 6. Notifications → Real-time reception → Alert display
+7. Database operations → Prisma client → API routes
+8. WebSocket events → Server-side handling → Client updates
 
 ## User Experience Goals
 - Fast page loads with optimized assets
@@ -42,5 +48,7 @@ Frontend application for a real-time auction marketplace with live streaming, al
 - Reliable video streaming with fallback options
 - Intuitive navigation and information hierarchy
 - Responsive design for all device sizes
-
 - Real-time feedback for user actions
+- Server-side rendering for better SEO
+- Optimized database queries
+- Efficient WebSocket communication

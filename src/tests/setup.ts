@@ -1,20 +1,69 @@
 // Setup file for Jest environment
 import '@testing-library/jest-dom';
+import { config } from 'dotenv';
+import { join } from 'path';
 
-// Mock next/router
+// Load test environment variables
+config({ path: join(process.cwd(), '.env.test') });
+
+// Set test environment
+(process as any).env.NODE_ENV = 'test';
+
+// Mock Next.js router
 jest.mock('next/router', () => ({
   useRouter: () => ({
-    query: {},
-    pathname: '/',
-    asPath: '/',
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+    beforePopState: jest.fn(),
     events: {
       on: jest.fn(),
       off: jest.fn(),
+      emit: jest.fn(),
     },
-    push: jest.fn(),
-    prefetch: jest.fn(() => Promise.resolve()),
+    isFallback: false,
   }),
 }));
+
+// Mock Next.js image component
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: (props: any) => {
+    return {
+      type: 'img',
+      props: {
+        ...props,
+        alt: props.alt || '',
+      },
+    };
+  },
+}));
+
+// Mock WebSocket
+jest.mock('ws', () => {
+  return {
+    WebSocket: jest.fn().mockImplementation(() => ({
+      send: jest.fn(),
+      close: jest.fn(),
+      on: jest.fn(),
+      once: jest.fn(),
+      removeListener: jest.fn(),
+      removeAllListeners: jest.fn(),
+    })),
+  };
+});
+
+// Mock MediaSoup
+jest.mock('mediasoup-client', () => {
+  return {
+    Device: jest.fn().mockImplementation(() => ({
+      load: jest.fn(),
+      createSendTransport: jest.fn(),
+      createRecvTransport: jest.fn(),
+    })),
+  };
+});
 
 // Mock MediaStream and related objects
 if (typeof window !== 'undefined') {
@@ -336,4 +385,29 @@ global.fetch = jest.fn().mockImplementation(() =>
 
 // Set up some environment variables that Next.js might expect
 process.env.NEXT_PUBLIC_WEBSOCKET_URL = 'ws://localhost:3001';
-process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3000/api'; 
+process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3000/api';
+
+// Mock WebSocket
+jest.mock('ws', () => {
+  return {
+    WebSocket: jest.fn().mockImplementation(() => ({
+      send: jest.fn(),
+      close: jest.fn(),
+      on: jest.fn(),
+      once: jest.fn(),
+      removeListener: jest.fn(),
+      removeAllListeners: jest.fn(),
+    })),
+  };
+});
+
+// Mock MediaSoup
+jest.mock('mediasoup-client', () => {
+  return {
+    Device: jest.fn().mockImplementation(() => ({
+      load: jest.fn(),
+      createSendTransport: jest.fn(),
+      createRecvTransport: jest.fn(),
+    })),
+  };
+}); 

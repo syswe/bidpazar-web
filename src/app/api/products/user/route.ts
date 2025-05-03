@@ -1,25 +1,39 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, forwardAuthenticatedRequest } from "@/lib/backend-auth";
-import { env } from "@/lib/env";
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getUserFromToken } from '@/lib/auth';
 
-/**
- * GET handler for user products
- * Uses the withAuth utility to ensure authentication
- */
-export const GET = withAuth(async (req: NextRequest, token: string, userData: any) => {
-  const urlPath = req.nextUrl.pathname;
-  console.log(`[API][${urlPath}] GET request received. Authenticated user:`, userData?.username || 'Unknown');
-  // Get backend base URL from environment
-  const backendBaseUrl = env.BACKEND_API_URL;
-  const backendPath = '/api/products/user'; // Ensure this matches the backend route
-  console.log(`[API][${urlPath}] Forwarding authenticated request to backend: ${backendBaseUrl}${backendPath}`);
-  
-  // Use our utility to forward the request to the backend
-  // Ensure the utility logs internally or add more logging here if needed
-  return forwardAuthenticatedRequest(
-    req,
-    backendPath, // Use the correct path including /api if needed by backend
-    backendBaseUrl
-    // Add options if necessary, e.g., { method: 'GET' }
-  );
-}); 
+export async function GET(request: Request) {
+  try {
+    const token = request.headers.get('authorization')?.split(' ')[1];
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Kimlik doğrulama gereklidir' },
+        { status: 401 }
+      );
+    }
+
+    const user = await getUserFromToken(token);
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Kimlik doğrulama gereklidir' },
+        { status: 401 }
+      );
+    }
+
+    const products = await prisma.product.findMany({
+      where: { userId: user.id },
+      include: {
+        category: true,
+        media: true,
+      },
+    });
+
+    return NextResponse.json(products);
+  } catch (error: any) {
+    console.error('Kullanıcı ürünleri getirilirken hata:', error);
+    return NextResponse.json(
+      { error: 'Kullanıcı ürünleri getirilirken bir hata oluştu' },
+      { status: 500 }
+    );
+  }
+} 

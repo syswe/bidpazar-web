@@ -39,7 +39,8 @@ const mockLocalStorage = {
 };
 
 // Test configuration
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:5001/backend';
+// Use NEXT_PUBLIC_API_URL for backend tests (no separate BACKEND_API_URL)
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/backend';
 console.log(`Using backend URL: ${BACKEND_URL}`);
 
 const TEST_USER = {

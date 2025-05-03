@@ -3,15 +3,17 @@ description:
 globs: 
 alwaysApply: false
 ---
-# BidPazar Web Project Brief
+# BidPazar Full-Stack Project Brief
 
 ## Core Tech Stack
 - Next.js 15.2+
 - React 19+
 - TypeScript
 - TailwindCSS
-- Socket.io Client
-- Simple-Peer WebRTC
+- Prisma
+- PostgreSQL
+- Socket.io
+- MediaSoup
 
 ## Key Components
 - User authentication and account management
@@ -22,16 +24,20 @@ alwaysApply: false
 - Private messaging between users
 - Admin dashboard
 - Payment processing
+- Database management
+- WebSocket server
+- WebRTC streaming server
 
-## Frontend Architecture
-- Next.js App Router for routing
+## Full-Stack Architecture
+- Next.js App Router for routing and API routes
 - React components with TypeScript
 - TailwindCSS for styling
 - React Hook Form for form management
 - Zod for validation
-- Axios for API requests
+- Prisma for database operations
 - Socket.io for real-time updates
-- HLS.js and simple-peer for media streaming
+- MediaSoup for WebRTC streaming
+- Server-side rendering and API routes
 
 ## Pages/Routes
 - Home/landing
@@ -42,11 +48,14 @@ alwaysApply: false
 - Admin panel
 - Messaging interface
 - Static pages (About, Terms, FAQ)
+- API routes for all backend operations
 
 ## Integration Points
-- Backend REST API
-- WebSocket server
-- WebRTC streaming
+- Database operations with Prisma
+- WebSocket server for real-time updates
+- WebRTC streaming with MediaSoup
 - Payment processing
-
 - Notifications system
+- Authentication system
+- File storage
+- Email/SMS services

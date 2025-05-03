@@ -18,6 +18,10 @@ if [ -z "$NEXT_PUBLIC_STUN_SERVER_URL" ]; then
   export NEXT_PUBLIC_STUN_SERVER_URL="stun:45.147.46.183:3478"
 fi
 
+if [ -z "$NEXT_PUBLIC_WS_URL" ]; then
+  export NEXT_PUBLIC_WS_URL="/rtc/v1"
+fi
+
 # Log environment
 echo "Starting with container environment variables"
 
@@ -29,12 +33,11 @@ window.__ENV__ = {
   NEXT_PUBLIC_SOCKET_URL: "$NEXT_PUBLIC_SOCKET_URL",
   NEXT_PUBLIC_APP_URL: "$NEXT_PUBLIC_APP_URL", 
   NEXT_PUBLIC_WEBRTC_SERVER: "$NEXT_PUBLIC_WEBRTC_SERVER",
-  NEXT_BACKEND_API_URL: "$NEXT_BACKEND_API_URL",
-  NEXT_PUBLIC_BACKEND_API_URL: "$NEXT_PUBLIC_BACKEND_API_URL",
   NEXT_PUBLIC_TURN_SERVER_URL: "$NEXT_PUBLIC_TURN_SERVER_URL",
   NEXT_PUBLIC_TURN_USERNAME: "$NEXT_PUBLIC_TURN_USERNAME",
   NEXT_PUBLIC_TURN_PASSWORD: "$NEXT_PUBLIC_TURN_PASSWORD",
-  NEXT_PUBLIC_STUN_SERVER_URL: "$NEXT_PUBLIC_STUN_SERVER_URL"
+  NEXT_PUBLIC_STUN_SERVER_URL: "$NEXT_PUBLIC_STUN_SERVER_URL",
+  NEXT_PUBLIC_WS_URL: "$NEXT_PUBLIC_WS_URL"
 };
 
 console.log('[env.js] Container environment variables loaded');
@@ -49,18 +52,24 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
   
   window.__ENV__ = {
     NEXT_PUBLIC_API_URL: isProduction ? 'https://bidpazar.com/api' : 'http://localhost:5001/api',
-    NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com/backend' : 'ws://localhost:5001',
+    NEXT_PUBLIC_SOCKET_URL: isProduction ? '/rtc/v1' : '/rtc/v1',
     NEXT_PUBLIC_APP_URL: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
-    NEXT_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
-    NEXT_PUBLIC_BACKEND_API_URL: isProduction ? 'https://bidpazar.com/backend' : 'http://localhost:5001',
-    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'wss://bidpazar.com/backend' : 'http://localhost:5001',
+    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? '/rtc/v1' : '/rtc/v1',
     NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:45.147.46.183:3478' : 'turn:localhost:3478',
     NEXT_PUBLIC_TURN_USERNAME: 'bidpazar',
     NEXT_PUBLIC_TURN_PASSWORD: 'bidpazarpass',
-    NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:45.147.46.183:3478' : 'stun:localhost:3478'
+    NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:45.147.46.183:3478' : 'stun:localhost:3478',
+    NEXT_PUBLIC_WS_URL: isProduction ? '/rtc/v1' : '/rtc/v1'
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);
+}
+
+// Add fallback for WS_URL if necessary (adjust fallback value as needed)
+if (typeof window !== 'undefined' && window.__ENV__ && !window.__ENV__.NEXT_PUBLIC_WS_URL) {
+  const isProduction = window.location.hostname === 'bidpazar.com' || window.location.hostname === 'api.bidpazar.com';
+  window.__ENV__.NEXT_PUBLIC_WS_URL = isProduction ? '/rtc/v1' : '/rtc/v1';
+  console.log('[env.js] Added fallback NEXT_PUBLIC_WS_URL:', window.__ENV__.NEXT_PUBLIC_WS_URL);
 }
 EOF
 
@@ -74,12 +83,11 @@ NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 NEXT_PUBLIC_WEBRTC_SERVER=$NEXT_PUBLIC_WEBRTC_SERVER
-NEXT_BACKEND_API_URL=$NEXT_BACKEND_API_URL
-NEXT_PUBLIC_BACKEND_API_URL=$NEXT_PUBLIC_BACKEND_API_URL
 NEXT_PUBLIC_TURN_SERVER_URL=$NEXT_PUBLIC_TURN_SERVER_URL
 NEXT_PUBLIC_TURN_USERNAME=$NEXT_PUBLIC_TURN_USERNAME
 NEXT_PUBLIC_TURN_PASSWORD=$NEXT_PUBLIC_TURN_PASSWORD
 NEXT_PUBLIC_STUN_SERVER_URL=$NEXT_PUBLIC_STUN_SERVER_URL
+NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 EOF
 
 # Start Next.js with environment variables explicitly passed
@@ -88,10 +96,9 @@ exec env \
   NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
   NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
   NEXT_PUBLIC_WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER" \
-  NEXT_BACKEND_API_URL="$NEXT_BACKEND_API_URL" \
-  NEXT_PUBLIC_BACKEND_API_URL="$NEXT_PUBLIC_BACKEND_API_URL" \
   NEXT_PUBLIC_TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL" \
   NEXT_PUBLIC_TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME" \
   NEXT_PUBLIC_TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD" \
   NEXT_PUBLIC_STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL" \
+  NEXT_PUBLIC_WS_URL="$NEXT_PUBLIC_WS_URL" \
   node server.js 

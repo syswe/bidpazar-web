@@ -1,14 +1,34 @@
 ---
-description: 
+description: omponent structure and organization rules for BidPazar full-stack Next.js application
 globs: 
 alwaysApply: false
 ---
-# BidPazar Web Component Structure
+---
+description: Component structure and organization rules for BidPazar full-stack Next.js application
+globs: ["src/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+# BidPazar Full-Stack Component Structure
 
-## UI Component Organization
-- Atomic design principles
-- Component composition over inheritance
-- Separation of concerns between presentation and logic
+## Project Organization
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Authentication routes
+│   ├── (dashboard)/       # Dashboard routes
+│   ├── api/               # API routes
+│   └── layout.tsx         # Root layout
+├── components/            # Reusable components
+│   ├── ui/               # UI components
+│   ├── forms/            # Form components
+│   └── shared/           # Shared components
+├── lib/                  # Utility functions and services
+│   ├── auth/            # Authentication utilities
+│   ├── db/              # Database utilities
+│   ├── websocket/       # WebSocket utilities
+│   └── webrtc/          # WebRTC utilities
+└── types/               # TypeScript types
+```
 
 ## Core Components
 - **Layout**: Base page structure, navigation, footer
@@ -20,8 +40,20 @@ alwaysApply: false
 - **Messaging**: Chat interface, conversation list, message bubbles
 - **Admin**: Dashboard, user management, content moderation
 
+## API Routes Structure
+```
+src/app/api/
+├── auth/                # Authentication endpoints
+├── products/           # Product endpoints
+├── users/             # User endpoints
+├── messages/          # Message endpoints
+├── streams/           # Stream endpoints
+└── rtc/               # WebRTC endpoints
+```
+
 ## Component Patterns
 - Server vs. Client components
+- Route Handlers for API endpoints
 - Controlled forms with React Hook Form
 - Error boundaries for fault tolerance
 - Loading states and skeletons
@@ -34,6 +66,7 @@ alwaysApply: false
 - Form state with React Hook Form
 - API data fetching with SWR pattern
 - WebSocket event handling
+- Server-side state with Next.js
 
 ## Styling Approach
 - TailwindCSS utility classes
@@ -50,7 +83,4 @@ interface BaseProps {
 }
 
 interface ComponentProps extends BaseProps {
-  // Component-specific props
-}
-```
-
+  // Component-spe

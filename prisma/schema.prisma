@@ -1,0 +1,330 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum StreamStatus {
+  SCHEDULED  // Planlandı
+  LIVE       // Yayında
+  ENDED      // Bitti
+  CANCELLED  // İptal edildi
+}
+
+enum ListingStatus {
+  PENDING    // Beklemede
+  ACTIVE     // Aktif (teklif verilebilir)
+  COUNTDOWN  // Sayaç başladı
+  COMPLETED  // Tamamlandı (satıldı)
+  CANCELLED  // İptal edildi
+}
+
+enum NotificationType {
+  BID_WON      // User won a bid
+  BID_OUTBID   // User was outbid
+  MESSAGE      // New message received
+  SYSTEM       // System notification
+}
+
+enum RewardType {
+  VIEWER
+  BIDDER
+  CHATTER
+}
+
+enum SharePlatform {
+  TWITTER
+  FACEBOOK
+  WHATSAPP
+  TELEGRAM
+}
+
+model User {
+  id               String        @id @default(cuid())
+  email            String        @unique
+  username         String        @unique
+  password         String
+  name             String?
+  phoneNumber      String?       @unique
+  verificationCode String?
+  isVerified       Boolean       @default(false)
+  isAdmin          Boolean       @default(false)
+  videoDeviceId    String?       // Added for video device preference
+  audioDeviceId    String?       // Added for audio device preference
+  points           Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  
+  // Relations
+  products         Product[]
+  liveStreams      LiveStream[]  @relation("HostedStreams")
+  bids             Bid[]
+  chatMessages     ChatMessage[]
+  viewedStreams    LiveStream[]  @relation("StreamViewers")
+  
+  // Messaging relationships
+  sentMessages     Message[]     @relation("SentMessages")
+  receivedMessages Message[]     @relation("ReceivedMessages")
+  conversations    Conversation[] @relation("UserConversations")
+  
+  // Notifications
+  notifications    Notification[] @relation("UserNotifications")
+  
+  // Stream features
+  receivedRewards  StreamReward[] @relation("RewardRecipients")
+  streamShares     StreamShare[]
+  streamViewTimes  StreamViewTime[]
+  moderations      StreamModeration[] @relation("UserModerations")
+}
+
+// Ürün kategorileri
+model Category {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?
+  parent      Category?   @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children    Category[]  @relation("CategoryToCategory")
+  products    Product[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// Ürün modeli
+model Product {
+  id          String          @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  currency    String          @default("TRY")
+  userId      String
+  categoryId  String
+  user        User            @relation(fields: [userId], references: [id])
+  category    Category        @relation(fields: [categoryId], references: [id])
+  media       ProductMedia[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  // Canlı yayın satışları (Listing)
+  listings    AuctionListing[]
+}
+
+// Ürün medya (resim/video)
+model ProductMedia {
+  id        String   @id @default(cuid())
+  url       String
+  type      String   // "image" veya "video"
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Canlı yayın
+model LiveStream {
+  id            String           @id @default(cuid())
+  title         String
+  description   String?
+  thumbnailUrl  String?
+  status        String          @default("SCHEDULED") // Values: SCHEDULED, LIVE, ENDED, CANCELLED
+  startTime     DateTime?
+  endTime       DateTime?
+  userId        String
+  user          User             @relation("HostedStreams", fields: [userId], references: [id])
+  viewers       User[]           @relation("StreamViewers")
+  viewerCount   Int              @default(0)
+  listings      AuctionListing[]
+  chatMessages  ChatMessage[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  highlights    StreamHighlight[]
+  rewards       StreamReward[]
+  shares        StreamShare[]
+  viewTimes     StreamViewTime[]
+  moderations   StreamModeration[]
+  analytics     StreamAnalytics[]
+}
+
+// Canlı yayındaki ürün listeleri
+model AuctionListing {
+  id             String       @id @default(cuid())
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  liveStreamId   String
+  liveStream     LiveStream   @relation(fields: [liveStreamId], references: [id])
+  startPrice     Float
+  status         String       @default("PENDING") // Values: PENDING, ACTIVE, COUNTDOWN, COMPLETED, CANCELLED
+  countdownTime  Int?
+  countdownStart DateTime?
+  countdownEnd   DateTime?
+  bids           Bid[]
+  winningBidId   String?      @unique
+  winningBid     Bid?         @relation("WinningBid", fields: [winningBidId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Teklifler
+model Bid {
+  id              String          @id @default(cuid())
+  amount          Float
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  listingId       String
+  listing         AuctionListing  @relation(fields: [listingId], references: [id])
+  isWinning       Boolean         @default(false)
+  isBackup        Boolean         @default(false)
+  wonAuction      AuctionListing? @relation("WinningBid")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+// Chat mesajları
+model ChatMessage {
+  id           String     @id @default(cuid())
+  message      String
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  liveStreamId String
+  liveStream   LiveStream @relation(fields: [liveStreamId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+// Conversation model for private messaging
+model Conversation {
+  id          String    @id @default(cuid())
+  participants User[]    @relation("UserConversations")
+  messages     Message[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Message model for private messaging
+model Message {
+  id             String       @id @default(cuid())
+  content        String
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId     String
+  receiver       User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Notification model for system notifications
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserNotifications", fields: [userId], references: [id])
+  content     String
+  type        String   // Values: BID_WON, BID_OUTBID, MESSAGE, SYSTEM
+  isRead      Boolean  @default(false)
+  relatedId   String?  // Related entity ID (bid, message, etc.)
+  createdAt   DateTime @default(now())
+}
+
+// Stream highlights
+model StreamHighlight {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  timestamp     Int        // In seconds from stream start
+  duration      Int        // In seconds
+  thumbnailUrl  String?
+  videoUrl      String?    // URL to the highlight video clip
+  views         Int        @default(0)
+  likes         Int        @default(0)
+  liveStreamId  String
+  liveStream    LiveStream @relation(fields: [liveStreamId], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// Stream rewards
+model StreamReward {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  points        Int
+  type          String    // Values: VIEWER, BIDDER, CHATTER
+  condition     Json       // { type: string, value: number }
+  liveStreamId  String
+  userIds       String[]
+  liveStream    LiveStream @relation(fields: [liveStreamId], references: [id])
+  recipients    User[]     @relation("RewardRecipients")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// Stream shares
+model StreamShare {
+  id            String     @id @default(cuid())
+  platform      String     // Values: TWITTER, FACEBOOK, WHATSAPP, TELEGRAM
+  message       String?
+  liveStreamId  String
+  userId        String
+  liveStream    LiveStream @relation(fields: [liveStreamId], references: [id])
+  user          User       @relation(fields: [userId], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// Stream view time tracking
+model StreamViewTime {
+  id                String     @id @default(cuid())
+  userId            String
+  liveStreamId      String
+  durationInSeconds Int
+  user              User       @relation(fields: [userId], references: [id])
+  liveStream        LiveStream @relation(fields: [liveStreamId], references: [id])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@unique([userId, liveStreamId])
+}
+
+// Stream moderation
+model StreamModeration {
+  id            String     @id @default(cuid())
+  liveStreamId  String
+  liveStream    LiveStream @relation(fields: [liveStreamId], references: [id])
+  userId        String
+  user          User       @relation("UserModerations", fields: [userId], references: [id])
+  action        String     // Values: BAN, TIMEOUT, WARN, DELETE_MESSAGE
+  reason        String?
+  duration      Int?       // Duration in minutes for timeout
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+// Enhanced stream analytics
+model StreamAnalytics {
+  id            String     @id @default(cuid())
+  liveStreamId  String
+  liveStream    LiveStream @relation(fields: [liveStreamId], references: [id])
+  timestamp     DateTime
+  viewerCount   Int
+  messageCount  Int
+  bidCount      Int
+  revenue       Float
+  avgWatchTime  Int        // Average watch time in seconds
+  peakViewers   Int
+  engagement    Float      // Engagement score (0-100)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}

@@ -24,8 +24,8 @@ interface AuthResponse {
 
 import { env } from "./env";
 
-// Use the API_URL from our env utility
-const API_URL = env.BACKEND_API_URL;
+// Use env.API_URL for all API calls
+const API_URL = env.API_URL;
 
 console.log("Auth service initialized with API URL:", API_URL);
 
@@ -125,6 +125,7 @@ export const refreshToken = async (): Promise<boolean> => {
         Authorization: `Bearer ${currentToken}`,
         "Content-Type": "application/json",
       },
+      credentials: 'include',
     });
     
     if (!response.ok) {
@@ -182,18 +183,49 @@ export const register = async (
   phoneNumber?: string
 ): Promise<AuthResponse> => {
   try {
+    console.log(`Sending registration request to ${API_URL}/auth/register with data:`, {
+      email,
+      username,
+      password: '********',
+      name,
+      phoneNumber
+    });
+
     const response = await fetch(`${API_URL}/auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ email, password, username, name, phoneNumber }),
+      credentials: 'include',
     });
 
     const data = await response.json();
+    console.log('Registration response status:', response.status, 'data:', data);
 
     if (!response.ok) {
-      throw new Error(data.message || "Registration failed");
+      // Check if there are detailed validation errors
+      if (data.details && Array.isArray(data.details)) {
+        // Create a more detailed error message from Zod validation errors
+        const errorFields = data.details.map((err: any) => {
+          const field = err.path.join('.');
+          const message = err.message;
+          
+          // Create more user-friendly field names
+          let fieldName = field;
+          if (field === 'email') fieldName = 'E-posta';
+          if (field === 'username') fieldName = 'Kullanıcı adı';
+          if (field === 'password') fieldName = 'Şifre';
+          if (field === 'name') fieldName = 'Ad Soyad';
+          if (field === 'phoneNumber') fieldName = 'Telefon numarası';
+          
+          return `${fieldName}: ${message}`;
+        }).join(', ');
+        
+        throw new Error(`Validation error: ${errorFields}`);
+      }
+      
+      throw new Error(data.error || data.message || "Registration failed");
     }
 
     // If the user doesn't require verification, store auth data
@@ -222,6 +254,7 @@ export const login = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ emailOrUsername, password }),
+      credentials: 'include',
     });
 
     const data = await response.json();
@@ -233,8 +266,6 @@ export const login = async (
     // Only store auth data in localStorage if the user doesn't require verification
     if (!data.requireVerification) {
       setAuth(data.token, data.user);
-    } else {
-      console.log("User requires verification, not storing credentials yet");
     }
 
     return data;
@@ -247,7 +278,7 @@ export const login = async (
 /**
  * Logout a user
  */
-export const logout = (): void => {
+export const logout = async (): Promise<void> => {
   // Try to call logout endpoint if we have a token
   const token = getToken();
   if (token) {
@@ -256,13 +287,19 @@ export const logout = (): void => {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      credentials: 'include',
     }).catch(error => {
       console.error("Logout API call failed:", error);
     });
   }
-  
   // Always remove local auth data
   removeAuth();
+  if (typeof window !== 'undefined') {
+    await fetch('/api/auth/logout', { 
+      method: 'POST',
+      credentials: 'include',
+    });
+  }
 };
 
 /**
@@ -280,6 +317,8 @@ export const validateToken = async (): Promise<User | null> => {
     console.log("No token found in storage");
     return null;
   }
+
+  console.log("Token found in localStorage, length:", token.length);
 
   // Prevent too frequent validation requests
   const now = Date.now();
@@ -299,10 +338,12 @@ export const validateToken = async (): Promise<User | null> => {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
       },
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -358,15 +399,23 @@ export const verifyCode = async (
   userId: string
 ): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${API_URL}/auth/verify-code`, {
+    console.log(`Sending verification request to ${API_URL}/auth/verify with data:`, {
+      code,
+      userId,
+      isRegistration: false
+    });
+    
+    const response = await fetch(`${API_URL}/auth/verify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ code, userId, isRegistration: false }),
+      credentials: 'include',
     });
 
     const data = await response.json();
+    console.log('Verification response status:', response.status, 'data:', data);
 
     if (!response.ok) {
       throw new Error(data.message || "Verification failed");
@@ -389,7 +438,12 @@ export const resendVerificationCode = async (
   userId: string
 ): Promise<{ message: string }> => {
   try {
-    const response = await fetch(`${API_URL}/auth/resend-code`, {
+    console.log(`Sending resend verification request to ${API_URL}/auth/resend-verification with data:`, {
+      userId,
+      isRegistration: false
+    });
+    
+    const response = await fetch(`${API_URL}/auth/resend-verification`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -398,6 +452,7 @@ export const resendVerificationCode = async (
     });
 
     const data = await response.json();
+    console.log('Resend verification response status:', response.status, 'data:', data);
 
     if (!response.ok) {
       throw new Error(data.message || "Failed to resend verification code");

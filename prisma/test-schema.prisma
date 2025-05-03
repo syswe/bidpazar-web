@@ -1,0 +1,15 @@
+// This is your test Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("TEST_DATABASE_URL")
+}
+
+// Copy all models from the main schema
+// ... existing code ... 

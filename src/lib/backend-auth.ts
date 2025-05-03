@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
-// Use the API_URL from env utility
+// Use the API_URL from env utility (always same as API_URL for simplicity)
 const BACKEND_API_URL = env.BACKEND_API_URL;
 
 console.log("Server-side auth initialized with backend URL:", BACKEND_API_URL);

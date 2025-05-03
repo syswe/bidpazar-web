@@ -108,13 +108,45 @@ export default function Home() {
   useEffect(() => {
     async function loadProducts() {
       try {
+        console.log("Fetching products...");
         const data = await getProducts();
+        console.log("Products fetched successfully:", data);
         setProducts(data);
         setLoading(false);
       } catch (error) {
         console.error("Error loading products:", error);
-        setError('Ürünler yüklenirken bir hata oluştu.');
+        setError('Ürünler yüklenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
         setLoading(false);
+        
+        // Set mock data for development to avoid breaking the UI
+        if (process.env.NODE_ENV === 'development') {
+          setProducts([
+            {
+              id: "mock-1",
+              title: "Demo Ürün 1",
+              description: "Bu bir demo ürünüdür.",
+              price: 1200,
+              currency: "TRY",
+              userId: "user1",
+              categoryId: "cat1",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              category: { id: "cat1", name: "Antika", description: "Antika ürünler", createdAt: "", updatedAt: "" }
+            },
+            {
+              id: "mock-2",
+              title: "Demo Ürün 2",
+              description: "Bu bir başka demo ürünüdür.",
+              price: 2500,
+              currency: "TRY",
+              userId: "user2",
+              categoryId: "cat2",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              category: { id: "cat2", name: "Sanat", description: "Sanat eserleri", createdAt: "", updatedAt: "" }
+            }
+          ]);
+        }
       }
     }
 

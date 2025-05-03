@@ -12,7 +12,7 @@ export default function TestPage() {
           <div className="bg-white p-3 rounded shadow">
             <h3 className="font-semibold text-gray-700">API Settings</h3>
             <p className="text-sm text-gray-600">
-              Socket URL: {process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:5001'}
+              Socket URL: {process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3000'}
             </p>
             <p className="text-sm text-gray-600">
               Connection Path: /rtc/v1

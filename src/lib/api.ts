@@ -6,34 +6,27 @@ declare global {
   interface Window {
     __ENV__?: {
       NEXT_PUBLIC_API_URL?: string;
-      NEXT_PUBLIC_BACKEND_API_URL?: string;
-      NEXT_PUBLIC_SOCKET_URL?: string;
       NEXT_PUBLIC_APP_URL?: string;
+      NEXT_PUBLIC_SOCKET_URL?: string;
       NEXT_PUBLIC_WEBRTC_SERVER?: string;
     };
   }
 }
 
-// Log both backend and frontend API URLs for clarity
+// Log API URL for clarity
 console.log("--- Environment Variables ---");
-console.log(`env.BACKEND_API_URL: ${env.BACKEND_API_URL}`);
-console.log(`env.API_URL (Next.js API base): ${env.API_URL}`);
+console.log(`env.API_URL: ${env.API_URL}`);
 console.log(`env.SOCKET_URL: ${env.SOCKET_URL}`);
 console.log("-----------------------------");
 
 // URL constants - clearly named for their intended use
-export const backendBaseUrl = env.BACKEND_API_URL; // For direct backend calls
-export const nextApiBaseUrl = env.API_URL;         // For Next.js API routes
-
-// Deprecated - maintain for backward compatibility
-// TODO: Migrate all usages to either backendBaseUrl or nextApiBaseUrl
-const API_URL = env.API_URL;
+export const apiBaseUrl = env.API_URL;         // For Next.js API routes
 
 // Log API URL configuration for debugging purposes
 console.log("API configuration:");
 console.log(`NEXT_PUBLIC_API_URL env: ${process.env.NEXT_PUBLIC_API_URL}`);
 console.log(`window.__ENV__?.NEXT_PUBLIC_API_URL: ${typeof window !== 'undefined' ? window.__ENV__?.NEXT_PUBLIC_API_URL : 'N/A (server)'}`);
-console.log(`Using API_URL: ${API_URL}`);
+console.log(`Using API_URL: ${apiBaseUrl}`);
 console.log(`Environment mode: ${process.env.NODE_ENV}`);
 
 // Helper function to ensure proper URL construction for Next.js API routes
@@ -42,28 +35,34 @@ const constructApiUrl = (endpoint: string): string => {
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
 
   // Get the base URL without the trailing slash
-  const baseUrl = nextApiBaseUrl.endsWith("/") ? nextApiBaseUrl.slice(0, -1) : nextApiBaseUrl;
+  const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
   
   // If endpoint already starts with 'api/', we need to prevent duplication
+  let finalUrl = '';
   if (cleanEndpoint.startsWith('api/')) {
     // Extract the part after 'api/'
     const endpointWithoutApi = cleanEndpoint.substring(4);
     
     // Check if baseUrl already ends with '/api'
     if (baseUrl.endsWith('/api')) {
-      return `${baseUrl}/${endpointWithoutApi}`; 
+      finalUrl = `${baseUrl}/${endpointWithoutApi}`; 
     } else {
-      return `${baseUrl}/api/${endpointWithoutApi}`;
+      finalUrl = `${baseUrl}/api/${endpointWithoutApi}`;
     }
   } else {
     // Normal case - endpoint doesn't include 'api/'
     // Check if baseUrl already includes '/api'
     if (baseUrl.endsWith('/api')) {
-      return `${baseUrl}/${cleanEndpoint}`;
+      finalUrl = `${baseUrl}/${cleanEndpoint}`;
     } else {
-      return `${baseUrl}/api/${cleanEndpoint}`;
+      finalUrl = `${baseUrl}/api/${cleanEndpoint}`;
     }
   }
+  
+  // Log for debugging
+  console.debug(`[API] Constructed URL: ${finalUrl} from endpoint: ${endpoint}`);
+  
+  return finalUrl;
 };
 
 // Test URL construction
@@ -71,28 +70,6 @@ const testUrl = constructApiUrl('products');
 console.log(`Test URL construction for 'products': ${testUrl}`);
 const testUrl2 = constructApiUrl('api/products');
 console.log(`Test URL construction for 'api/products': ${testUrl2}`);
-
-// Function to get a browser-compatible URL (replaces Docker hostnames with localhost)
-const getBrowserCompatibleUrl = (url: string): string => {
-  if (typeof window === 'undefined') {
-    // We're on the server, return the URL as is
-    return url;
-  }
-  
-  // In browser, ensure Docker hostnames are replaced with localhost
-  return url
-    .replace(/http:\/\/api:/, 'http://localhost:')
-    .replace(/http:\/\/backend:/, 'http://localhost:')
-    .replace(/ws:\/\/api:/, 'ws://localhost:')
-    .replace(/ws:\/\/backend:/, 'ws://localhost:');
-};
-
-// Verify API URL format
-if (!API_URL.includes("/api")) {
-  console.warn(
-    'WARNING: API_URL may be misconfigured - missing "/api" path segment'
-  );
-}
 
 // Tip tanımlamaları
 export interface Category {
@@ -352,7 +329,12 @@ export const fetcher = async <T>(
     return data as T;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`API request failed: ${errorMessage}`, { url, options });
+    console.error(`API request failed: ${errorMessage}`, { 
+      url, 
+      options,
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      type: error instanceof Error ? error.constructor.name : typeof error
+    });
     
     if (returnEmptyOnError) {
       return defaultValue as T;
@@ -381,6 +363,7 @@ export const createCategory = async (data: {
   return fetcher<Category>("categories", {
     method: "POST",
     body: JSON.stringify(data),
+    requireAuth: true,
   });
 };
 
@@ -405,11 +388,12 @@ export const deleteCategory = async (id: string): Promise<void> => {
 
 // Ürün işlemleri
 export const getProducts = async (): Promise<Product[]> => {
-  // Use the correct API path, without doubling up on 'api'
-  return fetcher<Product[]>(`products`, {
+  // Use the correct API path (apiBaseUrl) to prevent double 'api' in the URL
+  // Also add returnEmptyOnError and specify a defaultValue for robustness
+  return fetcher<Product[]>('products', {
     returnEmptyOnError: true,
     defaultValue: []
-  });
+  }, `${apiBaseUrl}/products`); // Pass explicit URL to avoid path construction issues
 };
 
 export const getProductById = async (id: string): Promise<Product> => {
@@ -468,10 +452,10 @@ export const deleteProduct = async (id: string): Promise<void> => {
 };
 
 export const addProductMedia = async (
-  productId: string,
+  id: string,
   data: { url: string; type: string }
 ): Promise<ProductMedia> => {
-  return fetcher<ProductMedia>(`products/${productId}/media`, {
+  return fetcher<ProductMedia>(`products/${id}/media`, {
     method: "POST",
     body: data,
     requireAuth: true,
@@ -532,7 +516,7 @@ export const removeAdmin = async (id: string): Promise<User> => {
 
 // File upload functions
 export const uploadProductImages = async (
-  productId: string,
+  id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
   const token = getToken();
@@ -546,7 +530,7 @@ export const uploadProductImages = async (
   });
 
   const response = await fetch(
-    `${backendBaseUrl}/products/${productId}/upload/images`,
+    `${apiBaseUrl}/products/${id}/upload/images`,
     {
       method: "POST",
       headers: {
@@ -566,7 +550,7 @@ export const uploadProductImages = async (
 };
 
 export const uploadProductVideos = async (
-  productId: string,
+  id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
   const token = getToken();
@@ -580,7 +564,7 @@ export const uploadProductVideos = async (
   });
 
   const response = await fetch(
-    `${backendBaseUrl}/products/${productId}/upload/videos`,
+    `${apiBaseUrl}/products/${id}/upload/videos`,
     {
       method: "POST",
       headers: {
@@ -642,7 +626,7 @@ export const startLiveStream = async (
   id: string,
   token: string
 ): Promise<LiveStream> => {
-  const response = await fetch(`${backendBaseUrl}/live-streams/${id}/start`, {
+  const response = await fetch(`${apiBaseUrl}/live-streams/${id}/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -668,8 +652,7 @@ export const endLiveStream = async (
     }
 
     // Always try to update stream status in the API server
-    // Use backendBaseUrl directly for the primary API call
-    return fetcher<LiveStream>(`${backendBaseUrl}/live-streams/${id}/end`, {
+    return fetcher<LiveStream>(`${apiBaseUrl}/live-streams/${id}/end`, {
       method: "POST",
       headers: { // fetcher adds Authorization header automatically
         "Content-Type": "application/json",
@@ -686,8 +669,8 @@ export const deleteLiveStream = async (id: string): Promise<void> => {
   try {
     console.log(`Attempting to delete stream with ID: ${id}`);
 
-    // Use the fetcher helper with the backendBaseUrl
-    await fetcher<void>(`${backendBaseUrl}/live-streams/${id}`, {
+    // Use the fetcher helper with the apiBaseUrl
+    await fetcher<void>(`${apiBaseUrl}/live-streams/${id}`, {
       method: "DELETE",
       requireAuth: true // fetcher handles the token
     });
@@ -710,7 +693,7 @@ export const addListingToLiveStream = async (
   token: string
 ): Promise<AuctionListing> => {
   return fetcher<AuctionListing>(
-    `${backendBaseUrl}/live-streams/${liveStreamId}/listings`, // Use backendBaseUrl
+    `${apiBaseUrl}/live-streams/${liveStreamId}/listings`,
     {
       method: "POST",
       headers: {
@@ -729,12 +712,11 @@ export const getStreamVideo = async (streamId: string): Promise<{
   status: string;
   wsEndpoint: string;
 }> => {
-  // This likely needs to hit the backend directly
   return fetcher<{ message: string; streamId: string; status: string; wsEndpoint: string; }>(
-    `${backendBaseUrl}/stream/${streamId}/video`, // Use backendBaseUrl
+    `${apiBaseUrl}/stream/${streamId}/video`,
     {
       method: 'GET',
-      requireAuth: true // Assume auth might be needed
+      requireAuth: true
     }
   );
 };
@@ -897,9 +879,8 @@ export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
   }
   
   const url = constructApiUrl(`/diagnostics/test-bandwidth?size=${sizeKB}`);
-  const browserUrl = getBrowserCompatibleUrl(url);
   
-  const response = await fetch(browserUrl, {
+  const response = await fetch(url, {
     headers,
   });
   
@@ -988,6 +969,7 @@ export const addBidToListing = async (
   return fetcher<Bid>(`live-streams/listings/${listingId}/bids`, {
     method: 'POST',
     body: JSON.stringify({ amount }),
+    requireAuth: true,
   });
 };
 

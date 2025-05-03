@@ -31,7 +31,8 @@ export interface SimplePeerInstance {
   on(event: "close", callback: () => void): void;
   on(event: "error", callback: (err: Error) => void): void;
   on(event: string, callback: (data: unknown) => void): void;
-  removeListener(event: string, callback: (...args: unknown[]) => void): void;
+  removeAllListeners: (event: string) => void;
+  removeListener: (event: string, callback: (...args: unknown[]) => void) => void;
 }
 
 // Factory function type
@@ -241,8 +242,7 @@ export function useSimplePeer({
       events.forEach((event) => {
         try {
           debugLog(`Removing listeners for event: ${event}`);
-          // @ts-expect-error - simplePeer.removeAllListeners exists but TypeScript doesn't know
-          if (peer.removeAllListeners) peer.removeAllListeners(event);
+          peer.removeAllListeners(event);
         } catch (err) {
           // Ignore errors from removeAllListeners
           debugError(`Error removing listeners for event: ${event}`, err);

@@ -1,0 +1,24 @@
+services:
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49160-49200:49160-49200/udp"
+    environment:
+      - TURN_USERNAME=bidpazar
+      - TURN_PASSWORD=bidpazarpass
+      - TURN_REALM=bidpazar.com
+      - EXTERNAL_IP=192.168.1.12
+    command: >
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-cli
+      --no-tls
+      --no-dtls
+      --realm=bidpazar.com
+      --user=bidpazar:bidpazarpass
