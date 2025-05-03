@@ -94,6 +94,8 @@ export async function POST(request: Request) {
 
     const validatedData = createStreamSchema.parse(body);
 
+    logger.info('Creating stream with validated data', { validatedData });
+
     const stream = await prisma.liveStream.create({
       data: {
         ...validatedData,
@@ -147,6 +149,7 @@ export async function PUT(request: Request) {
     }
 
     const { id, ...updateData } = body;
+    logger.info('Updating stream', { id, updateData });
     
     if (!id) {
       return NextResponse.json(
