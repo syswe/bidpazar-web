@@ -2,11 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { getAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 import Image from 'next/image';
+import { 
+  Conversation as ApiConversation,
+  Notification as ApiNotification,
+  Message as ApiMessage,
+  getUserConversations, 
+  getUserNotifications, 
+  markNotificationsAsRead as apiMarkNotificationsAsRead,
+  findUserByUsername, 
+  User as ApiUser
+} from '@/lib/api';
 
 interface Conversation {
   id: string;
@@ -16,8 +25,8 @@ interface Conversation {
     username: string;
     name?: string;
   };
-  messages: Message[];
-  unreadCount: number;
+  latestMessage?: ApiMessage;
+  _count?: { messages: number };
 }
 
 interface Message {
@@ -59,62 +68,59 @@ export default function MessagesPage() {
 
   useEffect(() => {
     async function fetchConversationsAndNotifications() {
+      if (!isAuthenticated || !user) return;
+
       try {
         setLoading(true);
-        // Get token from auth
-        const { token } = getAuth();
-        
-        if (!token) {
-          console.error('No token available - user not properly authenticated');
-          setError('Authentication error - please try logging in again');
-          return;
-        }
-        
-        console.log('Fetching conversations with token');
-        
-        // Fetch conversations with explicit Authorization header
-        const conversationsResponse = await fetch('/api/messages/conversations', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        
-        if (!conversationsResponse.ok) {
-          const errorText = await conversationsResponse.text();
-          console.error(`Conversations API error (${conversationsResponse.status}):`, errorText);
-          throw new Error('Failed to fetch conversations');
-        }
-        
-        const conversationsData = await conversationsResponse.json();
-        setConversations(conversationsData);
+        setError(null);
 
-        // Fetch notifications with explicit Authorization header
-        const notificationsResponse = await fetch('/api/messages/notifications', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+        console.log('Fetching conversations and notifications using API functions');
+        
+        const [apiConversations, notificationsResult] = await Promise.all([
+          getUserConversations(),
+          getUserNotifications()
+        ]);
+
+        const mappedConversations: Conversation[] = (apiConversations || []).map((apiConvo: ApiConversation) => {
+          const otherParticipant = apiConvo.participants?.find(p => p.id !== user?.id) || 
+                                   apiConvo.participants?.[0] || 
+                                   { id: 'unknown', username: 'Unknown User' };
+
+          return {
+            id: apiConvo.id,
+            updatedAt: apiConvo.updatedAt,
+            otherParticipant: {
+              id: otherParticipant.id,
+              username: otherParticipant.username,
+              name: otherParticipant.name,
+            },
+            latestMessage: apiConvo.latestMessage,
+            _count: apiConvo._count,
+          };
         });
+
+        setConversations(mappedConversations);
         
-        if (!notificationsResponse.ok) {
-          const errorText = await notificationsResponse.text();
-          console.error(`Notifications API error (${notificationsResponse.status}):`, errorText);
-          throw new Error('Failed to fetch notifications');
-        }
-        
-        const notificationsData = await notificationsResponse.json();
-        setNotifications(notificationsData.notifications);
-        setUnreadNotificationsCount(notificationsData.unreadCount);
-      } catch (err) {
+        const mappedNotifications: Notification[] = (notificationsResult?.notifications || []).map((apiNotif: ApiNotification) => ({
+           id: apiNotif.id,
+           content: apiNotif.content,
+           type: apiNotif.type,
+           isRead: apiNotif.isRead,
+           createdAt: apiNotif.createdAt,
+        }));
+
+        setNotifications(mappedNotifications);
+        setUnreadNotificationsCount(notificationsResult?.unreadCount || 0);
+
+      } catch (err: any) {
         console.error('Error fetching data:', err);
-        setError('Failed to load your messages');
+        setError(err.message || 'Failed to load your messages');
       } finally {
         setLoading(false);
       }
     }
 
-    if (isAuthenticated && user) {
-      fetchConversationsAndNotifications();
-    }
+    fetchConversationsAndNotifications();
   }, [isAuthenticated, user]);
 
   const formatDate = (dateString: string) => {
@@ -135,19 +141,12 @@ export default function MessagesPage() {
 
   const markNotificationsAsRead = async (notificationIds: string[]) => {
     try {
-      const response = await fetch('/api/messages/notifications/read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ notificationIds }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to mark notifications as read');
+      const result = await apiMarkNotificationsAsRead();
+      
+      if (!result.success) {
+        throw new Error('Failed to mark notifications as read via API');
       }
-
-      // Update local state to mark these notifications as read
+      
       setNotifications(prevNotifications =>
         prevNotifications.map(notification =>
           notificationIds.includes(notification.id)
@@ -155,10 +154,9 @@ export default function MessagesPage() {
             : notification
         )
       );
-
-      // Update unread count
       setUnreadNotificationsCount(prev => Math.max(0, prev - notificationIds.length));
-    } catch (err) {
+
+    } catch (err: any) {
       console.error('Error marking notifications as read:', err);
     }
   };
@@ -169,58 +167,23 @@ export default function MessagesPage() {
     try {
       setSearchingUser(true);
       setUserSearchError(null);
-      const { token } = getAuth();
-      
-      if (!token) {
-        setUserSearchError('Kimlik doğrulama hatası - lütfen tekrar giriş yapın');
-        return;
-      }
       
       console.log(`Searching for user with username: ${newMessageUsername}`);
       
-      // Use our new messages API endpoint instead of the user API
-      const apiUrl = `/api/messages/find-user/${encodeURIComponent(newMessageUsername)}`;
-      console.log(`API URL (via messages API): ${apiUrl}`);
+      const foundUser: ApiUser | null = await findUserByUsername(newMessageUsername);
       
-      const response = await fetch(apiUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      // Log the full response for debugging
-      console.log(`Response status: ${response.status}`);
-      const responseData = await response.text();
-      console.log(`Response data: ${responseData}`);
-      
-      // Try to parse as JSON if possible
-      let userData;
-      try {
-        userData = JSON.parse(responseData);
-        
-        if (!response.ok) {
-          if (response.status === 404) {
-            setUserSearchError(userData.error || 'Kullanıcı bulunamadı');
-          } else {
-            setUserSearchError(userData.error || 'Kullanıcı aranırken bir hata oluştu');
-          }
-          return;
-        }
-        
-        // We have a successful user response
-        console.log('User found:', userData);
-        
-        // Navigate to conversation page with this user
-        // We know this is a user ID, our page component will handle creating/fetching the conversation
-        router.push(`/dashboard/messages/${userData.id}`);
-      } catch (parseError) {
-        console.error('Error parsing response:', parseError);
-        setUserSearchError('API yanıtı işlenirken bir hata oluştu');
+      if (foundUser) {
+        console.log('User found:', foundUser);
+        router.push(`/dashboard/messages/${foundUser.id}`);
+        setShowNewMessageForm(false);
+        setNewMessageUsername('');
+      } else {
+        setUserSearchError('Kullanıcı bulunamadı');
       }
-    } catch (err) {
+      
+    } catch (err: any) {
       console.error('Kullanıcı aranırken hata:', err);
-      setUserSearchError('Kullanıcı aranırken bir hata oluştu');
+      setUserSearchError(err.message || 'Kullanıcı aranırken bir hata oluştu');
     } finally {
       setSearchingUser(false);
     }
@@ -350,15 +313,13 @@ export default function MessagesPage() {
                         </time>
                       </div>
                       <p className="text-gray-600 dark:text-gray-300 truncate">
-                        {conversation.messages && conversation.messages.length > 0
-                          ? conversation.messages[0].content
-                          : "Henüz mesaj yok"}
+                        {conversation.latestMessage?.content || "Henüz mesaj yok"}
                       </p>
                     </div>
-                    {conversation.unreadCount > 0 && (
+                    {conversation._count && conversation._count.messages && conversation._count.messages > 0 && (
                       <div className="ml-4 flex-shrink-0">
                         <span className="bg-blue-500 text-white text-xs rounded-full px-2 py-1">
-                          {conversation.unreadCount}
+                          {conversation._count.messages}
                         </span>
                       </div>
                     )}

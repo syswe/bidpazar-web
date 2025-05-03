@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getUserLiveStreams, LiveStream, startLiveStream, endLiveStream } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
-import { getToken } from "@/lib/auth";
+import { getToken } from "@/lib/frontend-auth";
 import { env } from "@/lib/env"; // Import env config
 
 // Status badge component
@@ -86,7 +86,11 @@ export default function MyStreamsPage() {
   // Start stream handler
   const handleStartStream = async (streamId: string) => {
     try {
-      await startLiveStream(streamId, localStorage.getItem("token") || "");
+      const token = getToken(); // Get token using the imported function
+      if (!token) {
+        throw new Error("Authentication required to start a stream");
+      }
+      await startLiveStream(streamId, token);
       // Redirect to the stream page
       router.push(`/live-streams/${streamId}`);
     } catch (err) {

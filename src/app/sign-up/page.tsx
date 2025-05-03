@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { register, login, verifyCode, resendVerificationCode } from '@/lib/auth';
+import { register, login, verifyCode, resendVerificationCode, setAuth } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
 
 export default function SignUp() {
@@ -21,7 +21,7 @@ export default function SignUp() {
   const [tempToken, setTempToken] = useState('');
   const [isResending, setIsResending] = useState(false);
   const router = useRouter();
-  const { login: setAuth, isAuthenticated } = useAuth();
+  const { refreshAuthState, isAuthenticated } = useAuth();
 
   // Redirect if user is already authenticated
   useEffect(() => {
@@ -67,21 +67,38 @@ export default function SignUp() {
     setIsLoading(true);
 
     try {
+      console.log('Attempting to register with:', { 
+        email, 
+        username, 
+        name: name || undefined, 
+        phoneNumber: phoneNumber || undefined 
+      });
+      
       // Register the user
       const response = await register(email, password, username, name, phoneNumber);
+      
+      console.log('Registration response:', {
+        requireVerification: response.requireVerification,
+        userId: response.user?.id,
+        hasToken: !!response.token
+      });
 
       // If verification is required
       if (response.requireVerification) {
         setUserId(response.user.id);
         setTempToken(response.token);
         setShowVerification(true);
+        console.log('Verification required, showing verification form');
       } else {
         // Auto login if no verification needed
+        console.log('No verification required, logging in automatically');
         const loginResponse = await login(email, password);
         setAuth(loginResponse.token, loginResponse.user);
+        await refreshAuthState();
         router.push('/dashboard');
       }
     } catch (err) {
+      console.error('Registration error:', err);
       setError(err instanceof Error ? err.message : 'Kayıt başarısız');
     } finally {
       setIsLoading(false);
@@ -94,11 +111,31 @@ export default function SignUp() {
     setIsLoading(true);
 
     try {
+      console.log('Attempting to verify code:', {
+        code: verificationCode,
+        userId,
+        hasToken: !!tempToken
+      });
+      
       // Verify the code
       const response = await verifyCode(verificationCode, userId);
+      
+      console.log('Verification response:', {
+        success: true,
+        hasToken: !!response.token,
+        hasUser: !!response.user
+      });
+      
+      // Store authentication data
       setAuth(response.token, response.user);
+      
+      // Refresh the auth context state
+      await refreshAuthState();
+      
+      // Navigate to dashboard
       router.push('/dashboard');
     } catch (err) {
+      console.error('Verification error:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama başarısız');
     } finally {
       setIsLoading(false);

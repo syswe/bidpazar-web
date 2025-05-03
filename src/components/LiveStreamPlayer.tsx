@@ -3,7 +3,7 @@ import Hls from 'hls.js';
 import io from 'socket.io-client';
 import axios from 'axios';
 import { env } from '@/lib/env';
-import { getToken } from '@/lib/auth';
+import { getToken } from '@/lib/frontend-auth';
 
 const LiveStreamPlayer: React.FC<{ streamId: string }> = ({ streamId }) => {
   const [error, setError] = useState<string | null>(null);

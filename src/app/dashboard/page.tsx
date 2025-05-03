@@ -3,15 +3,17 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Product, getUserProducts } from '@/lib/api';
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshAuthState } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchUserProducts() {
@@ -19,18 +21,46 @@ export default function Dashboard() {
 
       try {
         setIsLoading(true);
+        // Use the API function which now calls the Next.js route via fetcher
         const data = await getUserProducts();
         setProducts(data);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Ürünler yüklenirken hata oluştu:', err);
-        setError('Ürünleriniz yüklenirken bir hata oluştu.');
+        
+        // Check if it's an auth error
+        if (err.message?.includes('Unauthorized') || err.status === 401) {
+          console.log('Authentication error, trying to refresh token...');
+          
+          // Try to refresh the auth state
+          await refreshAuthState();
+          
+          // If still no user after refresh, redirect to login
+          if (!user) {
+            console.log('Token refresh failed, redirecting to login');
+            router.push('/sign-in?redirect=/dashboard');
+            return;
+          }
+          
+          // Try fetching again after refresh
+          try {
+            const data = await getUserProducts();
+            setProducts(data);
+            setError(null);
+          } catch (refreshErr) {
+            setError('Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.');
+            logout();
+            router.push('/sign-in?redirect=/dashboard');
+          }
+        } else {
+          setError(err.message || 'Ürünleriniz yüklenirken bir hata oluştu.');
+        }
       } finally {
         setIsLoading(false);
       }
     }
 
     fetchUserProducts();
-  }, [user]);
+  }, [user, refreshAuthState, logout, router]);
 
   return (
     <ProtectedRoute>
@@ -131,7 +161,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-[var(--foreground)]">
                 <span className="border-b-3 border-[var(--accent)] pb-1">Yayınlarım</span>
-              </h2>
+                </h2>
               <Link
                 href="/dashboard/streams"
                 className="px-4 py-2 bg-[var(--accent)] text-white rounded-md hover:shadow-lg transition-all text-sm"
@@ -210,7 +240,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-[var(--foreground)]">
                 <span className="border-b-3 border-[var(--accent)] pb-1">Ürünlerim</span>
-              </h2>
+                </h2>
               <Link
                 href="/products/create"
                 className="px-4 py-2 bg-[var(--accent)] text-white rounded-md hover:shadow-lg transition-all text-sm"

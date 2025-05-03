@@ -37,10 +37,6 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning className={inter.variable}>
       <head>
-        {/* Runtime environment variables - load first */}
-        <script src="/env.js" />
-        {/* Check environment after loading */}
-        <script src="/check-env.js" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <link rel="icon" href="/favicon.ico" />
       </head>

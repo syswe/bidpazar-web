@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from './AuthProvider';
-import { getAuth, validateToken } from '@/lib/auth';
+import { validateToken } from '@/lib/frontend-auth';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -17,61 +17,119 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [isVerifying, setIsVerifying] = useState(true);
   const [adminVerified, setAdminVerified] = useState(false);
 
-  // First useEffect to handle the initial check and debug logging
+  // Verify admin status when authentication state changes
   useEffect(() => {
-    const { user: storedUser } = getAuth();
-    console.log('AdminLayout initial state:', { 
+    // Skip verification while still loading auth state
+    if (isLoading) {
+      setIsVerifying(true);
+      return;
+    }
+
+    console.log('Admin verification - Auth state:', { 
       isAuthenticated, 
       isLoading, 
-      user,
-      storedUser,
-      'user?.isAdmin': user?.isAdmin,
-      'storedUser?.isAdmin': storedUser?.isAdmin
+      user, 
+      isAdmin: user?.isAdmin 
     });
-  }, [isAuthenticated, isLoading, user]);
 
-  // Second useEffect to verify admin status with server
-  useEffect(() => {
-    // Only proceed if we're not loading and the user appears to be authenticated
-    if (!isLoading && isAuthenticated && user) {
-      setIsVerifying(true);
-      
-      // If user object shows admin status, we can validate that
-      if (user.isAdmin) {
-        setAdminVerified(true);
-        setIsVerifying(false);
+    // If not authenticated, redirect to sign-in
+    if (!isAuthenticated) {
+      console.log('Admin verification - Not authenticated, redirecting to sign-in');
+      router.push('/sign-in?redirect=/admin');
+      return;
+    }
+
+    // Verify admin status based on user object from context
+    if (user) {
+      // If we already verified admin status and it's true, don't re-verify
+      if (adminVerified) {
+        console.log('Admin verification - Already verified');
         return;
       }
-      
-      // Double-check with server if the admin status is missing or false
-      const verifyAdmin = async () => {
-        try {
-          const validatedUser = await validateToken();
-          console.log('Server validated user:', validatedUser);
-          
-          if (validatedUser?.isAdmin) {
-            setAdminVerified(true);
-          } else {
-            console.log('User is not admin according to server validation');
-            // Delay redirect slightly to avoid immediate jumps
-            setTimeout(() => {
-              router.push('/dashboard');
-            }, 100);
-          }
-        } catch (error) {
-          console.error('Error validating token:', error);
-        } finally {
-          setIsVerifying(false);
-        }
-      };
-      
-      verifyAdmin();
-    } else if (!isLoading && !isAuthenticated) {
-      // Only redirect if we're definitely not authenticated
-      console.log('Not authenticated, redirecting to sign-in');
+
+      if (user.isAdmin) {
+        // User is admin according to context, double-check with backend
+        console.log('Admin verification - Context says user is admin, checking with backend');
+        setIsVerifying(true);
+        
+        // Add timestamp to prevent cache
+        const timestamp = new Date().getTime();
+        
+        validateToken()
+          .then(validatedUser => {
+            // If validateToken returns null (network error) but user context shows admin,
+            // trust the client-side state (more graceful offline behavior)
+            if (!validatedUser && user.isAdmin) {
+              console.log('Admin verification - Backend validation failed but using local admin state');
+              setAdminVerified(true);
+              setIsVerifying(false);
+              return;
+            }
+            
+            console.log('Admin verification - Backend response:', validatedUser);
+            if (validatedUser?.isAdmin) {
+              console.log('Admin verification - Backend confirmed admin status');
+              setAdminVerified(true);
+            } else {
+              // Backend says not admin, redirect
+              console.log('Admin verification - Backend denied admin status, redirecting');
+              console.log('Admin verification - Expected true, but got:', validatedUser?.isAdmin);
+              
+              // If the backend returned a valid user but without admin privileges,
+              // this means the user may have lost admin privileges since login
+              if (validatedUser) {
+                router.push('/dashboard');
+              } else {
+                // If the backend didn't return a valid user at all, 
+                // this may indicate an authentication issue
+                router.push('/sign-in?redirect=/admin');
+              }
+            }
+          })
+          .catch((error) => {
+            // Validation failed, but don't immediately redirect
+            console.error('Admin verification - Backend validation failed:', error);
+            
+            // Give a 2nd chance if user is admin in context - better UX for network issues
+            if (user.isAdmin) {
+              console.log('Admin verification - Using local admin status after backend error');
+              setAdminVerified(true);
+            } else {
+              router.push('/sign-in?redirect=/admin');
+            }
+          })
+          .finally(() => {
+            setIsVerifying(false);
+          });
+      } else {
+        // User is definitely not admin, redirect
+        console.log('Admin verification - Context says user is not admin, redirecting');
+        router.push('/dashboard');
+      }
+    } else {
+      // Should not happen if isAuthenticated is true
+      console.log('Admin verification - No user object despite being authenticated, redirecting');
       router.push('/sign-in?redirect=/admin');
     }
-  }, [isAuthenticated, isLoading, router, user]);
+  }, [isAuthenticated, isLoading, user, router, adminVerified]);
+  
+  // Add a manual reset function
+  useEffect(() => {
+    // Add a global function to force reset login state in case of issues
+    // This can be called from browser console for debugging
+    (window as any).resetAdminAuth = () => {
+      console.log('Manual reset of auth state requested');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('auth');
+        window.location.href = '/sign-in?redirect=/admin';
+      }
+    };
+    
+    return () => {
+      // Clean up when component unmounts
+      (window as any).resetAdminAuth = undefined;
+    };
+  }, []);
 
   // Show loading state if still loading or verifying
   if (isLoading || isVerifying) {
@@ -89,11 +147,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   // If not admin, don't render anything (should have been redirected)
   if (!isAuthenticated || !adminVerified) {
-    console.log('AdminLayout access denied:', {
-      isAuthenticated,
-      adminVerified,
-      'user?.isAdmin': user?.isAdmin
-    });
     return null;
   }
 

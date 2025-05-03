@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { getToken } from "@/lib/auth";
+import { getToken } from "@/lib/frontend-auth";
 import { env } from "@/lib/env"; // Import env config
 
 interface StreamDiagnosticsProps {

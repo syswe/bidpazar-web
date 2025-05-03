@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "@/components/AuthProvider";
-import { getAuth } from "@/lib/auth";
+import { getAuth } from "@/lib/frontend-auth";
 
 interface BiddingInterfaceProps {
   streamId: string;

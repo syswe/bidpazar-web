@@ -77,7 +77,6 @@ export default function PackagesPage() {
       features: [
         '180 dakika canlı yayın süresi',
         '30 gün geçerlilik süresi',
-        'Yayın kaydı',
         'Temel destek'
       ],
       icon: <Clock className="h-10 w-10 text-[var(--accent)]" />
@@ -90,7 +89,6 @@ export default function PackagesPage() {
       features: [
         '600 dakika canlı yayın süresi',
         '60 gün geçerlilik süresi',
-        'Yayın kaydı',
         'Öncelikli destek',
         'Özel yayın saatleri'
       ],
@@ -105,7 +103,6 @@ export default function PackagesPage() {
       features: [
         '1500 dakika canlı yayın süresi',
         '90 gün geçerlilik süresi',
-        'Yayın kaydı',
         'Premium destek',
         'Özel yayın saatleri',
         'Analitik raporlar'

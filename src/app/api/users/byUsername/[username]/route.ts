@@ -1,31 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from "@/lib/auth";
+import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
 import { env } from "@/lib/env"; // Import env config
 
 // Removed sampleUsers array
 
 // This handler function follows Next.js 15.2.2 pattern for dynamic routes
 export async function GET(request: NextRequest) {
+  const url = request.nextUrl.pathname;
+  console.log(`[API][${url}] GET request received`);
   // Extract username from the URL path
   const { pathname } = request.nextUrl;
   const segments = pathname.split('/').filter(Boolean);
   const username = segments[segments.length - 1];
+  console.log(`[API][${url}] Extracted username: ${username}`);
 
   try {
     if (!username) {
+      console.warn(`[API][${url}] Bad Request (400): Username parameter is missing.`);
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
-    // Get auth token from headers
-    const token = getToken(); // Use getToken from auth library
+    // Get auth token from headers using backend-auth helper
+    const token = getTokenFromRequest(request);
+    console.log(`[API][${url}] Token found: ${!!token}`);
     
     if (!token) {
-      console.error('API route: No token found in request headers');
+      console.error(`[API][${url}] Unauthorized (401): No token found.`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Use the specific backend API URL from env
     const apiBaseUrl = env.BACKEND_API_URL;
+    console.log(`[API][${url}] Backend base URL from env: ${apiBaseUrl}`);
 
     // Remove potential trailing slash and /api suffix if present
     let cleanBaseUrl = apiBaseUrl.replace(/\/$/, "");
@@ -33,9 +39,9 @@ export async function GET(request: NextRequest) {
         cleanBaseUrl = cleanBaseUrl.slice(0, -4);
     }
 
-    const finalUrl = `${cleanBaseUrl}/users/byUsername/${username}`;
-
-    console.log(`Fetching user data from: ${finalUrl}`);
+    // Construct the final URL for the backend request
+    const finalUrl = `${cleanBaseUrl}/api/users/byUsername/${username}`;
+    console.log(`[API][${url}] Fetching user data from backend: ${finalUrl}`);
     
     // Make the API request
     const response = await fetch(finalUrl, {
@@ -44,18 +50,21 @@ export async function GET(request: NextRequest) {
       },
       cache: 'no-store', // Disable cache for user data
     });
+    console.log(`[API][${url}] Backend response status: ${response.status}`);
 
     // Handle the response
     if (!response.ok) {
       const errorMessage = await response.text();
-      console.error(`Backend API error (${response.status}):`, errorMessage);
+      console.error(`[API][${url}] Backend API error (${response.status}):`, errorMessage);
       
       try {
         // Try to parse error as JSON if possible
         const errorJson = JSON.parse(errorMessage);
+        console.log(`[API][${url}] Forwarding backend JSON error response.`);
         return NextResponse.json(errorJson, { status: response.status });
       } catch {
         // Otherwise return as text
+        console.log(`[API][${url}] Forwarding backend text error response.`);
         return NextResponse.json(
           { error: errorMessage || `Error: ${response.status}` }, 
           { status: response.status }
@@ -65,13 +74,15 @@ export async function GET(request: NextRequest) {
 
     // Parse and return successful response
     const data = await response.json();
+    console.log(`[API][${url}] Successfully fetched user data from backend.`);
     return NextResponse.json(data);
     
   } catch (error: any) {
-    console.error("Error fetching user by username:", error);
+    console.error(`[API][${url}] Unexpected error in GET handler:`, error);
     // Return detailed error if available, otherwise generic message
     const errorMessage = error.message || "Internal Server Error";
     const errorStatus = error.status || 500;
+    console.log(`[API][${url}] Returning error response (${errorStatus}): ${errorMessage}`);
     return NextResponse.json({ error: errorMessage }, { status: errorStatus });
   }
 }

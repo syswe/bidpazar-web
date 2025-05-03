@@ -14,7 +14,7 @@ import {
   getUserProducts
 } from "@/lib/api";
 import { formatDateTime, formatCurrency } from "@/lib/utils";
-import { getToken } from "@/lib/auth";
+import { getToken } from "@/lib/frontend-auth";
 
 export default function StreamDetailsPage() {
   // Use the useParams hook to get the id parameter

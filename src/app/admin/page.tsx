@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { getProducts, getCategories, getAllUsers, getLiveStreams } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
+import { validateToken } from '@/lib/frontend-auth';
 
 export default function AdminDashboard() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [validatedUser, setValidatedUser] = useState<any>(null);
 
   useEffect(() => {
     // Debug log for troubleshooting
@@ -24,6 +26,16 @@ export default function AdminDashboard() {
       user, 
       isAdmin: user?.isAdmin 
     });
+    
+    // Additional debug: Directly validate token to see what the backend returns
+    if (isAuthenticated && !authLoading) {
+      validateToken().then(response => {
+        console.log("Direct validateToken response:", response);
+        setValidatedUser(response);
+      }).catch(err => {
+        console.error("Direct validateToken error:", err);
+      });
+    }
   }, [isAuthenticated, authLoading, user]);
 
   useEffect(() => {
@@ -67,6 +79,12 @@ export default function AdminDashboard() {
             <p><strong>isAdmin:</strong> {user?.isAdmin ? 'Yes' : 'No'}</p>
             <p><strong>User ID:</strong> {user?.id || 'Not logged in'}</p>
             <p><strong>Username:</strong> {user?.username || 'Not logged in'}</p>
+            {validatedUser && (
+              <>
+                <p><strong>Validated isAdmin:</strong> {validatedUser?.isAdmin ? 'Yes' : 'No'}</p>
+                <p><strong>Validated Username:</strong> {validatedUser?.username || 'N/A'}</p>
+              </>
+            )}
           </div>
         </div>
       )}

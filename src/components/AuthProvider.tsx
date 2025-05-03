@@ -1,110 +1,96 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getAuth, setAuth, removeAuth } from '@/lib/auth';
-
-type User = {
-  id: string;
-  username: string;
-  email?: string;
-  avatar?: string;
-  isAdmin?: boolean;
-  name?: string;
-};
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+   import { getUser, isAuthenticated, initializeAuth, removeAuth, User, validateToken } from '../lib/frontend-auth';
 
 interface AuthContextType {
-  isAuthenticated: boolean;
-  isLoading: boolean;
   user: User | null;
-  token: string | null;
-  login: (token: string, user: User) => void;
+  isLoading: boolean;
+  isLoggedIn: boolean;
+  isAuthenticated: boolean;
   logout: () => void;
-  refreshToken: () => string | null;
+  setUser: (user: User | null) => void;
+  refreshAuthState: () => Promise<void>;
 }
 
-// Create context with default values to avoid the undefined check
 const AuthContext = createContext<AuthContextType>({
-  isAuthenticated: false,
-  isLoading: true,
   user: null,
-  token: null,
-  login: () => { },
-  logout: () => { },
-  refreshToken: () => null,
+  isLoading: true,
+  isLoggedIn: false,
+  isAuthenticated: false,
+  logout: () => {},
+  setUser: () => {},
+  refreshAuthState: async () => {},
 });
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+export const useAuth = () => useContext(AuthContext);
+
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize auth state on client side only
-  useEffect(() => {
+  const refreshAuthState = async () => {
+    setIsLoading(true);
     try {
-      const { token: storedToken, user: storedUser } = getAuth();
-      if (storedToken && storedUser) {
-        setIsAuthenticated(true);
-        setUser(storedUser);
-        setToken(storedToken);
-        console.log("Auth initialized from localStorage");
-      } else {
-        console.warn("Auth data found but token or user is missing");
-      }
+      // Call validateToken directly to verify with the backend
+      const userData = await validateToken();
+      setUser(userData);
     } catch (error) {
-      console.error('Failed to parse stored auth data:', error);
+      console.error('Auth validation error:', error);
+      setUser(null);
+      // If validation fails, remove auth data
       removeAuth();
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  const login = (authToken: string, authUser: User): void => {
-    setIsAuthenticated(true);
-    setUser(authUser);
-    setToken(authToken);
-
-    // Store auth data in localStorage using the updated auth module
-    try {
-      setAuth(authToken, authUser);
-      console.log("Auth data stored in localStorage");
-    } catch (error) {
-      console.error('Failed to store auth data:', error);
-    }
   };
 
   const logout = () => {
-    try {
-      removeAuth();
-      setIsAuthenticated(false);
-      setUser(null);
-      setToken(null);
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
+    // Remove auth data from localStorage
+    removeAuth();
+    // Update state
+    setUser(null);
   };
 
-  // Function to get the latest token, useful for socket connections
-  const refreshToken = (): string | null => {
-    try {
-      const { token: freshToken } = getAuth();
-      if (freshToken && freshToken !== token) {
-        setToken(freshToken);
+  useEffect(() => {
+    // Check for existing authentication on component mount
+    const checkAuth = async () => {
+      try {
+        // Get user from localStorage first for immediate UI update
+        const storedUser = getUser();
+        if (storedUser) {
+          setUser(storedUser);
+          
+          // Then validate with the server
+          await refreshAuthState();
+        } else {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Authentication check failed:', error);
+        // If validation fails, remove auth data
+        removeAuth();
+        setUser(null);
+        setIsLoading(false);
       }
-      return freshToken;
-    } catch (error) {
-      console.error('Failed to refresh token:', error);
-      return token;
-    }
+    };
+
+    checkAuth();
+  }, []);
+
+  const value = {
+    user,
+    isLoading,
+    isLoggedIn: !!user,
+    isAuthenticated: !!user,
+    logout,
+    setUser,
+    refreshAuthState,
   };
 
-  return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, token, login, logout, refreshToken }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-export function useAuth() {
-  return useContext(AuthContext);
-} 
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}; 

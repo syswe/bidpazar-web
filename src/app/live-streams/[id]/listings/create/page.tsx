@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../../../../components/AuthProvider";
 import Link from "next/link";
 import { env } from "@/lib/env";
-import { getToken } from "@/lib/auth";
+import { getToken } from "@/lib/frontend-auth";
 
 export default function CreateListingPage() {
   const params = useParams();

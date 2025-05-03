@@ -4,7 +4,7 @@ import axios, { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/AuthProvider';
 import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2 } from 'lucide-react';
-import { getToken } from "@/lib/auth";
+import { getToken } from "@/lib/frontend-auth";
 import { env } from "@/lib/env";
 
 interface StreamDetails {

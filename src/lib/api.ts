@@ -1,5 +1,18 @@
-import { getToken } from "./auth";
+import { getToken } from "./frontend-auth";
 import { env } from './env';
+
+// Add window.__ENV__ interface to fix TypeScript error
+declare global {
+  interface Window {
+    __ENV__?: {
+      NEXT_PUBLIC_API_URL?: string;
+      NEXT_PUBLIC_BACKEND_API_URL?: string;
+      NEXT_PUBLIC_SOCKET_URL?: string;
+      NEXT_PUBLIC_APP_URL?: string;
+      NEXT_PUBLIC_WEBRTC_SERVER?: string;
+    };
+  }
+}
 
 // Log both backend and frontend API URLs for clarity
 console.log("--- Environment Variables ---");
@@ -8,11 +21,12 @@ console.log(`env.API_URL (Next.js API base): ${env.API_URL}`);
 console.log(`env.SOCKET_URL: ${env.SOCKET_URL}`);
 console.log("-----------------------------");
 
-// Example usage (can be removed if not needed)
-export const backendBaseUrl = env.BACKEND_API_URL;
-export const frontendApiBaseUrl = env.API_URL;
+// URL constants - clearly named for their intended use
+export const backendBaseUrl = env.BACKEND_API_URL; // For direct backend calls
+export const nextApiBaseUrl = env.API_URL;         // For Next.js API routes
 
-// Use the API_URL from our env utility
+// Deprecated - maintain for backward compatibility
+// TODO: Migrate all usages to either backendBaseUrl or nextApiBaseUrl
 const API_URL = env.API_URL;
 
 // Log API URL configuration for debugging purposes
@@ -22,16 +36,41 @@ console.log(`window.__ENV__?.NEXT_PUBLIC_API_URL: ${typeof window !== 'undefined
 console.log(`Using API_URL: ${API_URL}`);
 console.log(`Environment mode: ${process.env.NODE_ENV}`);
 
-// Helper function to ensure proper URL construction
+// Helper function to ensure proper URL construction for Next.js API routes
 const constructApiUrl = (endpoint: string): string => {
   // Remove any leading slashes from the endpoint
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
 
-  // Remove any trailing slashes from the API_URL
-  const baseUrl = API_URL.endsWith("/") ? API_URL.slice(0, -1) : API_URL;
-
-  return `${baseUrl}/${cleanEndpoint}`;
+  // Get the base URL without the trailing slash
+  const baseUrl = nextApiBaseUrl.endsWith("/") ? nextApiBaseUrl.slice(0, -1) : nextApiBaseUrl;
+  
+  // If endpoint already starts with 'api/', we need to prevent duplication
+  if (cleanEndpoint.startsWith('api/')) {
+    // Extract the part after 'api/'
+    const endpointWithoutApi = cleanEndpoint.substring(4);
+    
+    // Check if baseUrl already ends with '/api'
+    if (baseUrl.endsWith('/api')) {
+      return `${baseUrl}/${endpointWithoutApi}`; 
+    } else {
+      return `${baseUrl}/api/${endpointWithoutApi}`;
+    }
+  } else {
+    // Normal case - endpoint doesn't include 'api/'
+    // Check if baseUrl already includes '/api'
+    if (baseUrl.endsWith('/api')) {
+      return `${baseUrl}/${cleanEndpoint}`;
+    } else {
+      return `${baseUrl}/api/${cleanEndpoint}`;
+    }
+  }
 };
+
+// Test URL construction
+const testUrl = constructApiUrl('products');
+console.log(`Test URL construction for 'products': ${testUrl}`);
+const testUrl2 = constructApiUrl('api/products');
+console.log(`Test URL construction for 'api/products': ${testUrl2}`);
 
 // Function to get a browser-compatible URL (replaces Docker hostnames with localhost)
 const getBrowserCompatibleUrl = (url: string): string => {
@@ -176,101 +215,170 @@ export interface ChatMessage {
   updatedAt: string;
 }
 
-// API istekleri için genel yardımcı fonksiyon
-const fetcher = async <T>(
-  endpoint: string,
-  options?: RequestInit,
-  overrideUrl?: string
+/**
+ * Generic fetch wrapper with authentication and error handling (Simplified)
+ * Handles relative paths (assumed to be Next.js API routes) and absolute URLs.
+ */
+export const fetcher = async <T>(
+  url: string,
+  options: {
+    method?: string;
+    body?: any;
+    headers?: any;
+    requireAuth?: boolean;
+    returnEmptyOnError?: boolean;
+    defaultValue?: T;
+    autoRefreshToken?: boolean;
+  } = {},
+  overrideUrl: boolean | string = false
 ): Promise<T> => {
-  const token = getToken();
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options?.headers || {}),
-  };
+  const {
+    method = "GET",
+    body,
+    headers: additionalHeaders = {},
+    requireAuth = false,
+    returnEmptyOnError = false,
+    defaultValue = null,
+    autoRefreshToken = true, // By default, try to refresh token on 401
+  } = options;
 
   try {
-    // Use override URL if provided, otherwise construct from API_URL
-    const url = overrideUrl || constructApiUrl(endpoint);
-    
-    console.log(`[DEBUG] Fetcher making request to: ${url}`);
-    console.log(`[DEBUG] Request method: ${options?.method || 'GET'}`);
-    console.log(`[DEBUG] Authorization header present: ${!!token}`);
+    // Determine the full URL
+    let fullUrl: string;
+    if (overrideUrl && typeof overrideUrl === "string") {
+      fullUrl = overrideUrl;
+    } else if (url.startsWith("http")) {
+      fullUrl = url; // Absolute URL
+    } else {
+      // Assume relative URL is for Next.js API
+      fullUrl = constructApiUrl(url);
+    }
 
-    const credentialsMode = process.env.NODE_ENV === 'development' 
-      ? 'include' 
-      : 'same-origin';
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      mode: 'cors',
-      credentials: credentialsMode,
-    });
-
-    console.log(
-      `[DEBUG] Fetcher got response: ${response.status} ${response.statusText}`
-    );
-
-    const contentType = response.headers.get("content-type");
-    console.log(`[DEBUG] Fetcher response content-type: ${contentType}`);
-    
-    if (!response.ok) {
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        console.error("[DEBUG] Fetcher received JSON error:", errorData);
-        throw new Error(
-          errorData.message || errorData.error || "API isteği başarısız oldu"
-        );
-      } else {
-        const errorText = await response.text();
-        console.error("[DEBUG] Fetcher received non-JSON error:", errorText);
-        throw new Error(
-          `API isteği başarısız oldu: ${response.status} ${response.statusText}`
-        );
+    // Get token if authentication is required
+    let token = null;
+    if (requireAuth) {
+      token = getToken();
+      if (!token) {
+        console.error("Authentication required but no token available");
+        throw new Error("Authentication required. Please log in.");
       }
     }
 
-    if (contentType && contentType.includes("application/json")) {
-      const data = await response.json();
-      console.log(`[DEBUG] Fetcher received JSON data:`, data);
-      return data as T;
+    // Prepare headers
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...additionalHeaders,
+    };
+
+    // Add auth token if available
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
-    if (response.status === 204 || !contentType) {
-      console.log(`[DEBUG] Fetcher received no content (204 or no content-type)`);
-      return {} as T;
+    // Log the request for debugging (only in development)
+    if (process.env.NODE_ENV === "development") {
+      console.debug(`API Request: ${method} ${fullUrl}`);
+      if (method !== "GET" && body) {
+        console.debug("Request body:", typeof body === "string" ? body : JSON.stringify(body));
+      }
+      console.debug("Request headers:", headers);
     }
 
-    console.warn(
-      `[DEBUG] Unexpected content type: ${contentType} for successful response`
-    );
-    try {
-      return (await response.json()) as T;
-    } catch (e) {
-      console.error("[DEBUG] Failed to parse response as JSON:", e);
-      throw new Error("Invalid response format");
+    // Prepare request options
+    const requestOptions: RequestInit = {
+      method,
+      headers,
+      credentials: "include", // Include cookies
+    };
+
+    // Add body if not GET
+    if (method !== "GET" && body) {
+      requestOptions.body =
+        typeof body === "string" ? body : JSON.stringify(body);
     }
+
+    // Execute fetch
+    const response = await fetch(fullUrl, requestOptions);
+
+    // Check if response is JSON
+    const contentType = response.headers.get("content-type");
+    const isJson = contentType && contentType.includes("application/json");
+
+    // Parse response
+    let data: any;
+    if (isJson) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    // Log the response for debugging (only in development)
+    if (process.env.NODE_ENV === "development") {
+      console.debug(`API Response: ${response.status} ${response.statusText}`);
+      if (isJson) {
+        console.debug("Response data:", data);
+      }
+    }
+
+    // Handle error responses
+    if (!response.ok) {
+      const errorMessage = isJson && data.message ? data.message : `API error: ${response.status}`;
+      console.error(`API Error: ${errorMessage}`, { status: response.status, data });
+      
+      // Handle authentication errors with token refresh if enabled
+      if (response.status === 401 && requireAuth && autoRefreshToken) {
+        console.warn("Authentication error - attempting token refresh");
+        
+        // Import refreshToken dynamically to avoid circular dependencies
+        const { refreshToken } = await import('./frontend-auth');
+        const refreshed = await refreshToken();
+        
+        if (refreshed) {
+          console.log("Token refreshed, retrying request");
+          // Retry the request with the new token (but don't auto-refresh again to avoid loops)
+          return fetcher<T>(url, {
+            ...options,
+            autoRefreshToken: false, // Prevent infinite refresh loops
+          }, overrideUrl);
+        } else {
+          console.error("Token refresh failed");
+          throw new Error("Authentication failed. Please log in again.");
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    return data as T;
   } catch (error) {
-    console.error("[DEBUG] Fetcher error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`API request failed: ${errorMessage}`, { url, options });
+    
+    if (returnEmptyOnError) {
+      return defaultValue as T;
+    }
+    
     throw error;
   }
 };
 
 // Kategori işlemleri
 export const getCategories = async (): Promise<Category[]> => {
-  return fetcher<Category[]>("/categories");
+  return fetcher<Category[]>(`categories`, {
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const getCategoryById = async (id: string): Promise<Category> => {
-  return fetcher<Category>(`/categories/${id}`);
+  return fetcher<Category>(`categories/${id}`);
 };
 
 export const createCategory = async (data: {
   name: string;
   description?: string;
 }): Promise<Category> => {
-  return fetcher<Category>("/categories", {
+  return fetcher<Category>("categories", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -283,80 +391,44 @@ export const updateCategory = async (
     description?: string;
   }
 ): Promise<Category> => {
-  return fetcher<Category>(`/categories/${id}`, {
+  return fetcher<Category>(`categories/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 };
 
 export const deleteCategory = async (id: string): Promise<void> => {
-  return fetcher<void>(`/categories/${id}`, {
+  return fetcher<void>(`categories/${id}`, {
     method: "DELETE",
   });
 };
 
 // Ürün işlemleri
 export const getProducts = async (): Promise<Product[]> => {
-  const token = getToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
-  
-  const url = `${backendBaseUrl}/products`;
-  console.log(`[DEBUG] Making direct request to backend URL: ${url}`);
-  
-  const response = await fetch(url, {
-    headers,
-    mode: 'cors',
-    credentials: process.env.NODE_ENV === 'development' ? 'include' : 'same-origin'
+  // Use the correct API path, without doubling up on 'api'
+  return fetcher<Product[]>(`products`, {
+    returnEmptyOnError: true,
+    defaultValue: []
   });
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: `Failed with status: ${response.status}` }));
-    throw new Error(error.message || `Failed to fetch products: ${response.statusText}`);
-  }
-  
-  return response.json();
 };
 
 export const getProductById = async (id: string): Promise<Product> => {
-  const token = getToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
-  
-  const url = `${backendBaseUrl}/products/${id}`;
-  console.log(`[DEBUG] Making direct request to backend URL: ${url}`);
-  
-  const response = await fetch(url, {
-    headers,
-    mode: 'cors',
-    credentials: process.env.NODE_ENV === 'development' ? 'include' : 'same-origin'
-  });
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: `Failed with status: ${response.status}` }));
-    throw new Error(error.message || `Failed to fetch product: ${response.statusText}`);
-  }
-  
-  return response.json();
+  return fetcher<Product>(`products/${id}`);
 };
 
 export const getProductsByCategory = async (categoryId: string): Promise<Product[]> => {
-  const url = `${backendBaseUrl}/products/category/${categoryId}`;
-  return fetcher<Product[]>(`/products/category/${categoryId}`, {}, url);
+  return fetcher<Product[]>(`products/category/${categoryId}`, {
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const getUserProducts = async (): Promise<Product[]> => {
-  const token = getToken();
-  if (!token) {
-    throw new Error("Authentication required to fetch your products");
-  }
-  
-  const url = `${backendBaseUrl}/products/user`;
-  return fetcher<Product[]>(`/products/user`, {}, url);
+  return fetcher<Product[]>(`products/user`, {
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const createProduct = async (data: {
@@ -365,9 +437,10 @@ export const createProduct = async (data: {
   price: number;
   categoryId: string;
 }): Promise<Product> => {
-  return fetcher<Product>("/products", {
+  return fetcher<Product>("products", {
     method: "POST",
-    body: JSON.stringify(data),
+    body: data,
+    requireAuth: true,
   });
 };
 
@@ -380,15 +453,17 @@ export const updateProduct = async (
     categoryId?: string;
   }
 ): Promise<Product> => {
-  return fetcher<Product>(`/products/${id}`, {
+  return fetcher<Product>(`products/${id}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: data,
+    requireAuth: true,
   });
 };
 
 export const deleteProduct = async (id: string): Promise<void> => {
-  return fetcher<void>(`/products/${id}`, {
+  return fetcher<void>(`products/${id}`, {
     method: "DELETE",
+    requireAuth: true,
   });
 };
 
@@ -396,19 +471,24 @@ export const addProductMedia = async (
   productId: string,
   data: { url: string; type: string }
 ): Promise<ProductMedia> => {
-  return fetcher<ProductMedia>(`/products/${productId}/media`, {
+  return fetcher<ProductMedia>(`products/${productId}/media`, {
     method: "POST",
-    body: JSON.stringify(data),
+    body: data,
+    requireAuth: true,
   });
 };
 
 // Admin işlemleri
 export const getAllUsers = async (): Promise<User[]> => {
-  return fetcher<User[]>("/users");
+  return fetcher<User[]>(`users`, {
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const getUserById = async (id: string): Promise<User> => {
-  return fetcher<User>(`/users/${id}`);
+  return fetcher<User>(`users/${id}`, { requireAuth: true });
 };
 
 export const updateUser = async (
@@ -422,27 +502,31 @@ export const updateUser = async (
     isAdmin?: boolean;
   }
 ): Promise<User> => {
-  return fetcher<User>(`/users/${id}`, {
+  return fetcher<User>(`users/${id}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: data,
+    requireAuth: true,
   });
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  return fetcher<void>(`/users/${id}`, {
+  return fetcher<void>(`users/${id}`, {
     method: "DELETE",
+    requireAuth: true,
   });
 };
 
 export const makeAdmin = async (id: string): Promise<User> => {
-  return fetcher<User>(`/users/${id}/make-admin`, {
+  return fetcher<User>(`users/${id}/make-admin`, {
     method: "POST",
+    requireAuth: true,
   });
 };
 
 export const removeAdmin = async (id: string): Promise<User> => {
-  return fetcher<User>(`/users/${id}/remove-admin`, {
+  return fetcher<User>(`users/${id}/remove-admin`, {
     method: "POST",
+    requireAuth: true,
   });
 };
 
@@ -462,7 +546,7 @@ export const uploadProductImages = async (
   });
 
   const response = await fetch(
-    `${API_URL}/products/${productId}/upload/images`,
+    `${backendBaseUrl}/products/${productId}/upload/images`,
     {
       method: "POST",
       headers: {
@@ -496,7 +580,7 @@ export const uploadProductVideos = async (
   });
 
   const response = await fetch(
-    `${API_URL}/products/${productId}/upload/videos`,
+    `${backendBaseUrl}/products/${productId}/upload/videos`,
     {
       method: "POST",
       headers: {
@@ -517,28 +601,18 @@ export const uploadProductVideos = async (
 
 // LiveStream API functions
 export const getLiveStreams = async (): Promise<LiveStream[]> => {
-  const response = await fetch(`${API_URL}/live-streams`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch live streams");
-  }
-  return response.json();
+  return fetcher<LiveStream[]>(`live-streams`, {
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const getLiveStreamById = async (id: string): Promise<LiveStream> => {
-  const response = await fetch(`${API_URL}/live-streams/${id}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch live stream");
-  }
-  return response.json();
+  return fetcher<LiveStream>(`live-streams/${id}`);
 };
 
 export const getUserLiveStreams = async (): Promise<LiveStream[]> => {
-  const token = getToken();
-  if (!token) {
-    throw new Error("Authentication required to fetch your streams");
-  }
-
-  return fetcher<LiveStream[]>(`/live-streams/user/streams`);
+  return fetcher<LiveStream[]>(`live-streams/user/streams`, { requireAuth: true });
 };
 
 export const createLiveStream = async (
@@ -554,12 +628,13 @@ export const createLiveStream = async (
   if (!authToken) {
     throw new Error('No authentication token available');
   }
-  return fetcher(`/live-streams`, {
+  return fetcher(`live-streams`, {
     method: 'POST',
     body: JSON.stringify(data),
     headers: {
       Authorization: `Bearer ${authToken}`,
     },
+    requireAuth: true,
   });
 };
 
@@ -567,7 +642,7 @@ export const startLiveStream = async (
   id: string,
   token: string
 ): Promise<LiveStream> => {
-  const response = await fetch(`${API_URL}/live-streams/${id}/start`, {
+  const response = await fetch(`${backendBaseUrl}/live-streams/${id}/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -592,38 +667,14 @@ export const endLiveStream = async (
       throw new Error("Token is required to end a live stream");
     }
 
-    // Try to end the stream on WebRTC server, but don't fail if it's not available
-    const webrtcServer = env.WEBRTC_SERVER;
-    if (webrtcServer) {
-      try {
-        const response = await fetch(`${webrtcServer}/stream/${id}/end`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          console.warn(
-            "Warning: Failed to end stream on WebRTC server, but continuing with API server update"
-          );
-        } else {
-          console.log("Successfully ended stream on WebRTC server");
-        }
-      } catch (webRtcError) {
-        console.warn("WebRTC server might not be available:", webRtcError);
-        // Continue execution - don't throw here
-      }
-    } else {
-      console.warn(
-        "NEXT_PUBLIC_WEBRTC_SERVER environment variable not defined, skipping WebRTC server notification"
-      );
-    }
-
     // Always try to update stream status in the API server
-    return fetcher<LiveStream>(`/live-streams/${id}/end`, {
+    // Use backendBaseUrl directly for the primary API call
+    return fetcher<LiveStream>(`${backendBaseUrl}/live-streams/${id}/end`, {
       method: "POST",
+      headers: { // fetcher adds Authorization header automatically
+        "Content-Type": "application/json",
+      },
+      requireAuth: true // Ensure token is included by fetcher
     });
   } catch (error) {
     console.error("Error ending stream:", error);
@@ -633,86 +684,19 @@ export const endLiveStream = async (
 
 export const deleteLiveStream = async (id: string): Promise<void> => {
   try {
-    const token = getToken();
-    if (!token) {
-      throw new Error("Authentication required to delete a stream");
-    }
-
     console.log(`Attempting to delete stream with ID: ${id}`);
-    console.log(`API_URL is: ${API_URL}`); // Debug log to verify API_URL
 
-    // Try both ways to delete the stream - direct fetch and our helper
-    try {
-      // First attempt - direct fetch with improved URL handling
-      // Make sure we're using the correct API URL format
-      const apiUrl = API_URL.endsWith("/")
-        ? `${API_URL}live-streams/${id}`
-        : `${API_URL}/live-streams/${id}`;
+    // Use the fetcher helper with the backendBaseUrl
+    await fetcher<void>(`${backendBaseUrl}/live-streams/${id}`, {
+      method: "DELETE",
+      requireAuth: true // fetcher handles the token
+    });
 
-      console.log(`Sending DELETE request to: ${apiUrl}`); // Debug log
+    console.log("Stream deleted successfully");
 
-      const directResponse = await fetch(apiUrl, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (directResponse.ok) {
-        console.log("Stream deleted successfully via direct fetch");
-        // If successful, return early
-        return;
-      }
-
-      // Check the response status code
-      console.log(`Response status code: ${directResponse.status}`);
-      console.log(`Response status text: ${directResponse.statusText}`);
-
-      // Check if the response is JSON before trying to parse it
-      const contentType = directResponse.headers.get("content-type");
-      console.log(`Content-Type of response: ${contentType}`);
-
-      if (contentType && contentType.includes("application/json")) {
-        // Safe to parse as JSON
-        const errorData = await directResponse.json();
-        console.error("Server error response:", errorData);
-        throw new Error(errorData.message || "Failed to delete stream");
-      } else {
-        // Not JSON, handle as text
-        const errorText = await directResponse.text();
-        console.error("Server returned non-JSON response:", errorText);
-
-        // Check if we're getting a 404 which likely means incorrect endpoint
-        if (directResponse.status === 404) {
-          throw new Error(
-            `Stream deletion failed: API endpoint not found. Please check server configuration.`
-          );
-        } else {
-          throw new Error(
-            `Server error (${directResponse.status}): ${
-              directResponse.statusText || "Unknown error"
-            }`
-          );
-        }
-      }
-    } catch (innerError) {
-      console.error("First deletion attempt failed:", innerError);
-
-      // Try the second method as a fallback with better error handling
-      try {
-        console.log(`Trying fallback method with fetcher helper`);
-        return await fetcher<void>(`/live-streams/${id}`, {
-          method: "DELETE",
-        });
-      } catch (fetcherError) {
-        console.error("Second deletion attempt failed:", fetcherError);
-        throw fetcherError;
-      }
-    }
   } catch (error) {
     console.error("Error deleting live stream:", error);
-    throw error;
+    throw error; // Re-throw the error for the caller to handle
   }
 };
 
@@ -725,24 +709,18 @@ export const addListingToLiveStream = async (
   },
   token: string
 ): Promise<AuctionListing> => {
-  const response = await fetch(
-    `${API_URL}/live-streams/${liveStreamId}/listings`,
+  return fetcher<AuctionListing>(
+    `${backendBaseUrl}/live-streams/${liveStreamId}/listings`, // Use backendBaseUrl
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        // Authorization is handled by fetcher
       },
-      body: JSON.stringify(data),
+      body: data,
+      requireAuth: true // Ensure token is added by fetcher
     }
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Failed to add listing to live stream");
-  }
-
-  return response.json();
 };
 
 export const getStreamVideo = async (streamId: string): Promise<{
@@ -751,14 +729,14 @@ export const getStreamVideo = async (streamId: string): Promise<{
   status: string;
   wsEndpoint: string;
 }> => {
-  const response = await fetch(`${API_URL}/stream/${streamId}/video`);
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Failed to get stream video");
-  }
-
-  return response.json();
+  // This likely needs to hit the backend directly
+  return fetcher<{ message: string; streamId: string; status: string; wsEndpoint: string; }>(
+    `${backendBaseUrl}/stream/${streamId}/video`, // Use backendBaseUrl
+    {
+      method: 'GET',
+      requireAuth: true // Assume auth might be needed
+    }
+  );
 };
 
 // Message and Conversation interfaces
@@ -805,7 +783,11 @@ export interface Notification {
 
 // Message API functions
 export const getUserConversations = async (): Promise<Conversation[]> => {
-  return fetcher<Conversation[]>('/messages/conversations');
+  return fetcher<Conversation[]>(`messages/conversations`, {
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
 };
 
 export const getConversationMessages = async (
@@ -814,20 +796,21 @@ export const getConversationMessages = async (
   limit: number = 20
 ): Promise<{ messages: Message[]; totalCount: number }> => {
   return fetcher<{ messages: Message[]; totalCount: number }>(
-    `/messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
+    `messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`,
+    { requireAuth: true }
   );
 };
 
 export const getOrCreateConversation = async (
   otherUserId: string
 ): Promise<Conversation> => {
-  return fetcher<Conversation>(`/messages/conversations/${otherUserId}`);
+  return fetcher<Conversation>(`messages/conversations/${otherUserId}`, { requireAuth: true });
 };
 
 export const getConversationDetails = async (
   conversationId: string
 ): Promise<Conversation> => {
-  return fetcher<Conversation>(`/messages/conversations/details/${conversationId}`);
+  return fetcher<Conversation>(`messages/conversations/details/${conversationId}`);
 };
 
 export const sendMessage = async (
@@ -835,16 +818,21 @@ export const sendMessage = async (
   content: string,
   receiverId: string
 ): Promise<Message> => {
-  return fetcher<Message>('/messages/messages', {
+  return fetcher<Message>('messages/messages', {
     method: 'POST',
-    body: JSON.stringify({ conversationId, content, receiverId }),
+    body: { conversationId, content, receiverId },
+    requireAuth: true
   });
 };
 
 export const findUserByUsername = async (
   username: string
 ): Promise<User | null> => {
-  return fetcher<User | null>(`/messages/find-user/${username}`);
+  return fetcher<User | null>(`users/byUsername/${username}`, {
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: null
+  });
 };
 
 // Notification API functions
@@ -852,18 +840,25 @@ export const getUserNotifications = async (): Promise<{
   notifications: Notification[];
   unreadCount: number;
 }> => {
-  return fetcher<{ notifications: Notification[]; unreadCount: number }>('/messages/notifications');
+  return fetcher<{ notifications: Notification[]; unreadCount: number; }>(`notifications`, {
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: { notifications: [], unreadCount: 0 }
+  });
 };
 
 export const markNotificationsAsRead = async (): Promise<{ success: boolean }> => {
-  return fetcher<{ success: boolean }>('/messages/notifications/read', {
+  return fetcher<{ success: boolean }>(`notifications/read`, {
     method: 'POST',
+    requireAuth: true,
+    returnEmptyOnError: true,
+    defaultValue: { success: false }
   });
 };
 
 // Health API functions
 export const healthCheck = async (): Promise<{ status: string }> => {
-  return fetcher<{ status: string }>('/health');
+  return fetcher<{ status: string }>('health', {}, true);
 };
 
 export const detailedHealthCheck = async (): Promise<{
@@ -879,14 +874,14 @@ export const detailedHealthCheck = async (): Promise<{
     uptime: number;
     memory: object;
     env: string;
-  }>('/health/detailed');
+  }>('health/detailed');
 };
 
 export const socketHealthCheck = async (): Promise<{
   status: string;
   activeConnections: number;
 }> => {
-  return fetcher<{ status: string; activeConnections: number }>('/health/socket');
+  return fetcher<{ status: string; activeConnections: number }>('health/socket');
 };
 
 // Diagnostics API functions
@@ -968,7 +963,7 @@ export const requestVerificationCode = async (
 
 // Additional Product API functions
 export const deleteProductMedia = async (mediaId: string): Promise<void> => {
-  return fetcher<void>(`/products/media/${mediaId}`, {
+  return fetcher<void>(`/api/products/media/${mediaId}`, {
     method: 'DELETE',
   });
 };
@@ -977,20 +972,20 @@ export const deleteProductMedia = async (mediaId: string): Promise<void> => {
 export const getActiveListing = async (
   liveStreamId: string
 ): Promise<AuctionListing | null> => {
-  return fetcher<AuctionListing | null>(`/live-streams/${liveStreamId}/active-listing`);
+  return fetcher<AuctionListing | null>(`live-streams/${liveStreamId}/active-listing`);
 };
 
 export const checkIsStreamer = async (
   liveStreamId: string
 ): Promise<{ isStreamer: boolean }> => {
-  return fetcher<{ isStreamer: boolean }>(`/live-streams/${liveStreamId}/check-streamer`);
+  return fetcher<{ isStreamer: boolean }>(`live-streams/${liveStreamId}/check-streamer`);
 };
 
 export const addBidToListing = async (
   listingId: string,
   amount: number
 ): Promise<Bid> => {
-  return fetcher<Bid>(`/live-streams/listings/${listingId}/bids`, {
+  return fetcher<Bid>(`live-streams/listings/${listingId}/bids`, {
     method: 'POST',
     body: JSON.stringify({ amount }),
   });
@@ -1009,7 +1004,7 @@ export const testSocketConnection = async (): Promise<{
     socketEnabled: boolean;
     path: string;
     timestamp: number;
-  }>('/live-streams/socket-test');
+  }>('live-streams/socket-test');
 };
 
 export const addSimplifiedListingToLiveStream = async (
@@ -1020,8 +1015,19 @@ export const addSimplifiedListingToLiveStream = async (
     countdownTime?: number;
   }
 ): Promise<AuctionListing> => {
-  return fetcher<AuctionListing>(`/live-streams/${liveStreamId}/listings/simplified`, {
+  return fetcher<AuctionListing>(`live-streams/${liveStreamId}/listings/simplified`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 };
+
+/**
+ * HTTP methods for use with API requests
+ */
+export const HttpMethod = {
+  GET: 'GET',
+  POST: 'POST',
+  PUT: 'PUT',
+  DELETE: 'DELETE',
+  PATCH: 'PATCH'
+} as const;

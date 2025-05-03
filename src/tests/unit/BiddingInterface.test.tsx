@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom';
 import BiddingInterface from '@/app/live-streams/[id]/components/BiddingInterface';
 import { useAuth } from '@/components/AuthProvider';
-import { getAuth } from '@/lib/auth'; // Assuming this is used alongside useAuth
+import { getAuth } from '@/lib/frontend-auth'; // Assuming this is used alongside useAuth
 import io from 'socket.io-client';
 
 // --- Mocks ---

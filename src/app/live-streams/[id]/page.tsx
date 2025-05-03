@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
-import { getAuth } from "@/lib/auth";
+import { getAuth } from "@/lib/frontend-auth";
 import { toast } from "sonner";
 import { env } from "@/lib/env";
 import {

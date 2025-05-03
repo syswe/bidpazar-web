@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getAuth, validateToken } from '@/lib/auth';
+import { getAuth, validateToken } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
 import { env } from "@/lib/env";
 

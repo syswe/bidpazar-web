@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { login, verifyCode, resendVerificationCode } from '@/lib/auth';
+import { login, verifyCode, resendVerificationCode } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
 
 // Create a separate component to handle the params to avoid the error
@@ -23,95 +23,121 @@ function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
-  const { login: setAuth, isAuthenticated } = useAuth();
+  const { setUser, isLoggedIn, isLoading: authLoading } = useAuth();
+
+  // Log initial state and props
+  useEffect(() => {
+    console.log('[SignInContent] Initializing - isLoggedIn:', isLoggedIn, 'authLoading:', authLoading, 'redirectPath:', redirectPath);
+  }, []); // Run only once on mount
 
   // Redirect if user is already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
+    console.log('[SignInContent] Auth state check - isLoggedIn:', isLoggedIn, 'authLoading:', authLoading);
+    if (isLoggedIn && !authLoading) {
+      console.log('[SignInContent] Already logged in, redirecting to:', redirectPath);
       router.push(redirectPath);
     }
-  }, [isAuthenticated, router, redirectPath]);
+  }, [isLoggedIn, authLoading, router, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[SignInContent] handleSubmit started');
     setError('');
     setIsLoading(true);
     setDebugInfo(null);
 
     try {
-      console.log('Giriş yapılıyor:', { emailOrUsername, password });
+      console.log('[SignInContent] Calling login API with:', { emailOrUsername, password });
       const response = await login(emailOrUsername, password);
-      console.log('Giriş cevabı:', response);
-      setDebugInfo(response);
+      console.log('[SignInContent] Login API response:', response);
+      setDebugInfo(response); // Keep debug info
 
       // Check if verification is required
       if (response.requireVerification) {
+        console.log('[SignInContent] Verification required');
         // Make sure we have a userId, either from response.user.id or response.userId
         const userIdToUse = response.userId || (response.user && response.user.id);
+        console.log('[SignInContent] User ID for verification:', userIdToUse);
 
         if (!userIdToUse) {
+          console.error('[SignInContent] User ID missing in verification response');
           throw new Error('Kullanıcı ID bulunamadı. Doğrulama işlemi yapılamaz.');
         }
 
         setUserId(userIdToUse);
         setShowVerification(true);
+        console.log('[SignInContent] State updated: showVerification = true, userId =', userIdToUse);
       } else {
-        setAuth(response.token, response.user);
+        console.log('[SignInContent] Login successful, no verification needed');
+        // No verification needed, set the user in context
+        setUser(response.user);
+        console.log('[SignInContent] User set in AuthContext:', response.user);
+        console.log('[SignInContent] Redirecting to:', redirectPath);
         router.push(redirectPath);
       }
     } catch (err) {
-      console.error('Giriş hatası:', err);
+      console.error('[SignInContent] Login API error:', err);
       setError(err instanceof Error ? err.message : 'Giriş başarısız');
     } finally {
+      console.log('[SignInContent] handleSubmit finished');
       setIsLoading(false);
     }
   };
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[SignInContent] handleVerifyCode started');
     setError('');
     setIsLoading(true);
     setDebugInfo(null);
 
     try {
-      console.log('Doğrulama yapılıyor:', { verificationCode, userId });
+      console.log('[SignInContent] Calling verifyCode API with:', { verificationCode, userId });
       // Verify the code
       const response = await verifyCode(verificationCode, userId);
-      console.log('Doğrulama cevabı:', response);
-      setDebugInfo(response);
+      console.log('[SignInContent] verifyCode API response:', response);
+      setDebugInfo(response); // Keep debug info
 
-      setAuth(response.token, response.user);
+      // Set the user in context directly
+      setUser(response.user);
+      console.log('[SignInContent] User set in AuthContext after verification:', response.user);
+      console.log('[SignInContent] Redirecting to:', redirectPath);
       router.push(redirectPath);
     } catch (err) {
-      console.error('Doğrulama hatası:', err);
+      console.error('[SignInContent] verifyCode API error:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama başarısız');
     } finally {
+      console.log('[SignInContent] handleVerifyCode finished');
       setIsLoading(false);
     }
   };
 
   const handleResendCode = async () => {
+    console.log('[SignInContent] handleResendCode started');
     setError('');
     setIsResending(true);
     setDebugInfo(null);
 
     try {
-      console.log('Doğrulama kodu tekrar gönderiliyor. Kullanıcı ID:', userId);
+      console.log('[SignInContent] Calling resendVerificationCode API for userId:', userId);
       const response = await resendVerificationCode(userId);
-      console.log('Tekrar gönderim cevabı:', response);
-      setDebugInfo(response);
+      console.log('[SignInContent] resendVerificationCode API response:', response);
+      setDebugInfo(response); // Keep debug info
 
-      setError('Doğrulama kodu tekrar gönderildi');
+      setError('Doğrulama kodu tekrar gönderildi'); // Using setError to display success message as per original logic
+      console.log('[SignInContent] Resend successful message set');
     } catch (err) {
-      console.error('Tekrar gönderim hatası:', err);
+      console.error('[SignInContent] resendVerificationCode API error:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama kodu gönderilemedi');
     } finally {
+      console.log('[SignInContent] handleResendCode finished');
       setIsResending(false);
     }
   };
 
   // If already authenticated, show loading while redirecting
-  if (isAuthenticated) {
+  if (isLoggedIn) {
+    console.log('[SignInContent] Rendering loading state (already logged in)');
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
         <div className="text-center">
@@ -122,6 +148,7 @@ function SignInContent() {
   }
 
   if (showVerification) {
+    console.log('[SignInContent] Rendering verification form');
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
         <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">
@@ -191,6 +218,7 @@ function SignInContent() {
     );
   }
 
+  console.log('[SignInContent] Rendering login form');
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
       <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">

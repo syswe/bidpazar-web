@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from "@/lib/auth";
+import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
 import { env } from "@/lib/env"; // Import env config
 
 // Sample users with proper fields
@@ -47,11 +47,14 @@ const sampleUsers = [
 ];
 
 export async function GET(req: NextRequest) {
+  const url = req.nextUrl.pathname;
+  console.log(`[API][${url}] GET request received`);
   try {
-    const token = getToken(); // Use getToken from auth library
+    const token = getTokenFromRequest(req); // Use backend-auth helper
+    console.log(`[API][${url}] Token found: ${!!token}`);
 
     if (!token) {
-      console.error('API route /api/users: No token found in request headers');
+      console.error(`[API][${url}] Unauthorized: No token found`);
       return NextResponse.json({ error: 'Unauthorized - no token' }, { status: 401 });
     }
 
@@ -63,29 +66,34 @@ export async function GET(req: NextRequest) {
 
     // Try to fetch real users first
     try {
-      console.log(`Trying to fetch users from: ${apiUrl}`);
+      console.log(`[API][${url}] Fetching users from backend: ${apiUrl}`);
       const response = await fetch(apiUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
+      console.log(`[API][${url}] Backend response status: ${response.status}`);
 
       if (response.ok) {
         const data = await response.json();
-        return NextResponse.json(Array.isArray(data) ? data : data.users || []);
+        const users = Array.isArray(data) ? data : data.users || [];
+        console.log(`[API][${url}] Successfully fetched ${users.length} users from backend`);
+        return NextResponse.json(users);
       }
       
-      console.log(`Users API returned ${response.status} - falling back to sample data`);
+      console.warn(`[API][${url}] Backend fetch failed (${response.status}). Falling back to sample data.`);
     } catch (error) {
-      console.error("Error accessing users API:", error);
+      console.error(`[API][${url}] Error fetching from backend API:`, error);
     }
     
     // Return sample data if API call fails
-    console.log('Returning sample users data');
+    console.log(`[API][${url}] Returning sample users data`);
     return NextResponse.json(sampleUsers);
   } catch (error) {
-    console.error('Error in users API route:', error);
-    return NextResponse.json(sampleUsers);
+    console.error(`[API][${url}] Unexpected error in GET handler:`, error);
+    console.log(`[API][${url}] Returning sample users data due to error`);
+    // Ensure fallback returns something consistent
+    return NextResponse.json(sampleUsers, { status: 500 }); // Return 500 but still provide sample data
   }
 } 
