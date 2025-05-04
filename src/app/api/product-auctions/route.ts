@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getUserFromToken } from '@/lib/auth';
 import { logger } from '@/lib/logger';
-import { type ProductMedia } from '@/lib/api';
 
 // Schema for product auction creation
 const createProductAuctionSchema = z.object({
@@ -37,43 +36,41 @@ export async function GET(request: Request) {
 
     logger.debug('Executing prisma query with filters', { where });
     
-    // Execute prisma query with transaction for consistency
-    const auctions = await prisma.$transaction(async (tx) => {
-      return tx.productAuction.findMany({
-        where,
-        include: {
-          product: {
-            include: {
-              media: true,
-              category: true,
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                  name: true,
-                },
+    // Execute prisma query
+    const auctions = await (prisma as any).productAuction.findMany({
+      where,
+      include: {
+        product: {
+          include: {
+            media: true,
+            category: true,
+            user: {
+              select: {
+                id: true,
+                username: true,
+                name: true,
               },
             },
           },
-          bids: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                },
+        },
+        bids: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
               },
             },
-            orderBy: {
-              amount: 'desc',
-            },
-            take: 10,
           },
+          orderBy: {
+            amount: 'desc',
+          },
+          take: 10,
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
     
     // Add images property to products by filtering media items of type 'image'
@@ -83,7 +80,7 @@ export async function GET(request: Request) {
       ...auction,
       product: auction.product ? {
         ...auction.product,
-        images: auction.product.media?.filter((m: ProductMedia) => m.type === 'image') || []
+        images: auction.product.media?.filter((m: any) => m.type === 'image') || []
       } : null
     }));
     
@@ -188,15 +185,13 @@ export async function POST(request: Request) {
 
     // Check if there's already an active auction for this product
     logger.debug('Checking for existing active auctions', { productId: validatedData.productId });
-    const existingAuction = await prisma.$transaction(async (tx) => {
-      return tx.productAuction.findFirst({
-        where: {
-          productId: validatedData.productId,
-          status: {
-            in: ['PENDING', 'ACTIVE']
-          }
+    const existingAuction = await prisma.productAuction.findFirst({
+      where: {
+        productId: validatedData.productId,
+        status: {
+          in: ['PENDING', 'ACTIVE']
         }
-      });
+      }
     });
 
     if (existingAuction) {
@@ -224,27 +219,25 @@ export async function POST(request: Request) {
       endTime: endTime.toISOString()
     });
     
-    // Execute create in a transaction for data consistency
-    const auction = await prisma.$transaction(async (tx) => {
-      return tx.productAuction.create({
-        data: {
-          productId: validatedData.productId,
-          startPrice: validatedData.startPrice,
-          currentPrice: validatedData.startPrice,
-          duration: validatedData.duration,
-          status: 'ACTIVE',
-          startTime,
-          endTime,
-        },
-        include: {
-          product: {
-            include: {
-              media: true,
-              category: true,
-            },
+    // Execute create
+    const auction = await prisma.productAuction.create({
+      data: {
+        productId: validatedData.productId,
+        startPrice: validatedData.startPrice,
+        currentPrice: validatedData.startPrice,
+        duration: validatedData.duration,
+        status: 'ACTIVE',
+        startTime,
+        endTime,
+      },
+      include: {
+        product: {
+          include: {
+            media: true,
+            category: true,
           },
         },
-      });
+      },
     });
 
     logger.info('Product auction created successfully', { 
@@ -259,7 +252,7 @@ export async function POST(request: Request) {
       ...auction,
       product: auction.product ? {
         ...auction.product,
-        images: auction.product.media?.filter((m: ProductMedia) => m.type === 'image') || []
+        images: auction.product.media?.filter((m: any) => m.type === 'image') || []
       } : null
     };
 

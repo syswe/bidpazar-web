@@ -5,16 +5,17 @@ import { getUserFromTokenInNode } from '@/lib/auth';
 
 // GET /api/live-streams/[id] - Get a specific stream
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  logger.info('API GET /api/live-streams/[id]', {
-    headers: Object.fromEntries(request.headers.entries()),
-    url: request.url,
-    params: { id },
-  });
   try {
+    const { id } = await params;
+    logger.info('API GET /api/live-streams/[id]', {
+      headers: Object.fromEntries(request.headers.entries()),
+      url: request.url,
+      params: { id },
+    });
+    
     const stream = await prisma.liveStream.findUnique({
       where: { id },
       include: {

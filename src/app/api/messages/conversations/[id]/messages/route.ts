@@ -18,7 +18,7 @@ export async function GET(
   }
 
   try {
-    // Await the params Promise to get the id
+    // Get the conversationId from context params
     const { id: conversationId } = await params;
     console.log(`[API][${urlPath}] Extracted conversationId: ${conversationId}`);
     const page = queryParams.get("page") || "1";

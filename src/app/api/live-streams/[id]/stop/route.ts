@@ -6,18 +6,18 @@ import { getUserFromTokenInNode } from '@/lib/auth';
 // POST /api/live-streams/[id]/stop - End a live stream
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Ensure params is awaited before accessing properties
-  const { id } = await params;
-  
+  try {
+    // Get the id from context params
+    const { id } = await params;
+    
   logger.info('API POST /api/live-streams/[id]/stop', {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
     params: { id },
   });
 
-  try {
     // Extract token from authorization header
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') 

@@ -1,18 +1,26 @@
-import { NextResponse, NextRequest } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getUserFromTokenInNode } from '@/lib/auth';
 
+// Removed separate Context type alias
+
 // GET /api/live-streams/{id}/check-streamer - Check if the authenticated user is the streamer for this stream
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const streamId = params.id;
-  logger.info('[API] GET /api/live-streams/[id]/check-streamer', {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const urlPath = request.nextUrl.pathname;
+  logger.info(`[API] GET ${urlPath}`, {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
-    streamId,
   });
 
   try {
+    // Extract the stream ID from params
+    const { id: streamId } = await params;
+    logger.info(`[API] GET ${urlPath} - Extracted streamId: ${streamId}`);
+
     // Extract token from authorization header
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') 
@@ -20,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       : request.cookies.get('token')?.value;
     
     if (!token) {
-      logger.warn('[API] GET /api/live-streams/[id]/check-streamer - Missing authentication token');
+      logger.warn(`[API] GET ${urlPath} - Missing authentication token`);
       return NextResponse.json(
         { isStreamer: false, reason: "Unauthorized - No token provided" },
         { status: 401 }
@@ -30,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     // Verify token and get user
     const user = await getUserFromTokenInNode(token);
     if (!user) {
-      logger.warn('[API] GET /api/live-streams/[id]/check-streamer - Invalid token or user not found');
+      logger.warn(`[API] GET ${urlPath} - Invalid token or user not found`);
       return NextResponse.json(
         { isStreamer: false, reason: "Unauthorized - Invalid token" },
         { status: 401 }
@@ -44,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     });
 
     if (!stream) {
-      logger.warn(`[API] GET /api/live-streams/[id]/check-streamer - Stream not found: ${streamId}`);
+      logger.warn(`[API] GET ${urlPath} - Stream not found: ${streamId}`);
       return NextResponse.json(
         { isStreamer: false, reason: "Stream not found" },
         { status: 404 }
@@ -53,7 +61,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     // Check if the authenticated user is the streamer
     const isStreamer = stream.userId === user.id;
-    logger.info(`[API] GET /api/live-streams/[id]/check-streamer - Result: isStreamer=${isStreamer}`, {
+    logger.info(`[API] GET ${urlPath} - Result: isStreamer=${isStreamer}`, {
       streamId,
       userId: user.id,
       streamUserId: stream.userId
@@ -65,7 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       streamUserId: stream.userId
     });
   } catch (error) {
-    logger.error('[API] Error in check-streamer endpoint', error);
+    logger.error(`[API] Error in ${urlPath}`, error);
     return NextResponse.json(
       { isStreamer: false, reason: "Internal server error" },
       { status: 500 }

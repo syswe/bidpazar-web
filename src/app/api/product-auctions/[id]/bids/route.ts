@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getUserFromToken } from '@/lib/auth';
@@ -11,7 +11,7 @@ const bidSchema = z.object({
 
 // GET /api/product-auctions/[id]/bids - Get bids for a product auction
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -66,7 +66,7 @@ export async function GET(
 
 // POST /api/product-auctions/[id]/bids - Place a bid on a product auction
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -109,17 +109,15 @@ export async function POST(
 
     // Find the auction using Prisma client
     logger.debug('Retrieving auction details', { auctionId: id });
-    const auction = await prisma.$transaction(async (tx) => {
-      return tx.productAuction.findUnique({
-        where: { id },
-        include: {
-          product: true,
-          bids: {
-            orderBy: { amount: 'desc' },
-            take: 1,
-          },
+    const auction = await prisma.productAuction.findUnique({
+      where: { id },
+      include: {
+        product: true,
+        bids: {
+          orderBy: { amount: 'desc' },
+          take: 1,
         },
-      });
+      },
     });
 
     if (!auction) {
@@ -246,14 +244,12 @@ export async function POST(
     });
     
     // Use transaction to ensure data consistency
-    await prisma.$transaction(async (tx) => {
-      await tx.productAuction.update({
-        where: { id },
-        data: {
-          currentPrice: validatedData.amount,
-          winningBidId: bid.id,
-        },
-      });
+    await prisma.productAuction.update({
+      where: { id },
+      data: {
+        currentPrice: validatedData.amount,
+        winningBidId: bid.id,
+      },
     });
 
     // Create notification for product owner

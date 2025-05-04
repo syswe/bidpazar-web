@@ -5,18 +5,18 @@ import { logger } from '@/lib/logger';
 // GET /api/live-streams/[id]/status - Get current stream status
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Ensure params is awaited before accessing properties
-  const { id } = await params;
-  
+  try {
+    // Get the id from context params
+    const { id } = await params;
+    
   logger.info('API GET /api/live-streams/[id]/status', {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
     params: { id },
   });
 
-  try {
     // Find the stream
     const stream = await prisma.liveStream.findUnique({
       where: { id },

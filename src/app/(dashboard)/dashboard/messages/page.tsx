@@ -81,7 +81,12 @@ export default function MessagesPage() {
           getUserNotifications()
         ]);
 
-        const mappedConversations: Conversation[] = (apiConversations || []).map((apiConvo: ApiConversation) => {
+        console.log('API conversations result:', apiConversations);
+        console.log('API notifications result:', notificationsResult);
+
+        // Ensure apiConversations is an array before mapping
+        const conversationsArray = Array.isArray(apiConversations) ? apiConversations : [];
+        const mappedConversations: Conversation[] = conversationsArray.map((apiConvo: ApiConversation) => {
           const otherParticipant = apiConvo.participants?.find(p => p.id !== user?.id) || 
                                    apiConvo.participants?.[0] || 
                                    { id: 'unknown', username: 'Unknown User' };
@@ -99,9 +104,12 @@ export default function MessagesPage() {
           };
         });
 
+        console.log('Mapped conversations:', mappedConversations);
         setConversations(mappedConversations);
         
-        const mappedNotifications: Notification[] = (notificationsResult?.notifications || []).map((apiNotif: ApiNotification) => ({
+        // Ensure notifications array exists before mapping
+        const notificationsArray = notificationsResult?.notifications || [];
+        const mappedNotifications: Notification[] = notificationsArray.map((apiNotif: ApiNotification) => ({
            id: apiNotif.id,
            content: apiNotif.content,
            type: apiNotif.type,
@@ -109,6 +117,7 @@ export default function MessagesPage() {
            createdAt: apiNotif.createdAt,
         }));
 
+        console.log('Mapped notifications:', mappedNotifications);
         setNotifications(mappedNotifications);
         setUnreadNotificationsCount(notificationsResult?.unreadCount || 0);
 
