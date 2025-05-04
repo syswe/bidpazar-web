@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { getUserFromTokenInNode } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 
 // Validation schema
 const moderationSchema = z.object({
@@ -14,16 +14,37 @@ const moderationSchema = z.object({
 
 // GET /api/live-streams/[id]/moderation - Get moderation history
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    logger.info('API GET /api/live-streams/[id]/moderation', {
+      headers: Object.fromEntries(request.headers.entries()),
+      url: request.url,
+      params: { id },
+    });
     
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
+    if (!token) {
+      logger.warn('API GET /api/live-streams/[id]/moderation - Missing authentication token');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - No token provided' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('API GET /api/live-streams/[id]/moderation - Invalid token or user not found');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       );
     }
@@ -39,7 +60,7 @@ export async function GET(
       );
     }
 
-    if (stream.userId !== session.user.id) {
+    if (stream.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to view moderation history' },
         { status: 403 }
@@ -62,7 +83,7 @@ export async function GET(
 
     return NextResponse.json(moderations);
   } catch (error) {
-    console.error('Error fetching moderation history:', error);
+    logger.error('Error fetching moderation history:', error);
     return NextResponse.json(
       { error: 'Failed to fetch moderation history' },
       { status: 500 }
@@ -72,16 +93,37 @@ export async function GET(
 
 // POST /api/live-streams/[id]/moderation - Create a moderation action
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    logger.info('API POST /api/live-streams/[id]/moderation', {
+      headers: Object.fromEntries(request.headers.entries()),
+      url: request.url,
+      params: { id },
+    });
     
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
+    if (!token) {
+      logger.warn('API POST /api/live-streams/[id]/moderation - Missing authentication token');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - No token provided' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('API POST /api/live-streams/[id]/moderation - Invalid token or user not found');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       );
     }
@@ -100,7 +142,7 @@ export async function POST(
       );
     }
 
-    if (stream.userId !== session.user.id) {
+    if (stream.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to moderate this stream' },
         { status: 403 }
@@ -111,7 +153,7 @@ export async function POST(
       data: {
         ...validatedData,
         liveStreamId: id,
-        userId: session.user.id,
+        userId: user.id, // Use the correct field name according to the schema
       },
     });
 
@@ -123,7 +165,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    console.error('Error creating moderation action:', error);
+    logger.error('Error creating moderation action:', error);
     return NextResponse.json(
       { error: 'Failed to create moderation action' },
       { status: 500 }

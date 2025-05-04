@@ -1,65 +1,74 @@
-import { NextResponse } from "next/server";
-import { env } from "@/lib/env"; // Import the updated env config
+import { NextResponse, NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { getUserFromTokenInNode } from '@/lib/auth';
 
-// Removing the second parameter completely and using request.url to get the ID
-export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const urlPath = requestUrl.pathname;
-  console.log(`[API][${urlPath}] GET request received`);
+// GET /api/live-streams/{id}/check-streamer - Check if the authenticated user is the streamer for this stream
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const streamId = params.id;
+  logger.info('[API] GET /api/live-streams/[id]/check-streamer', {
+    headers: Object.fromEntries(request.headers.entries()),
+    url: request.url,
+    streamId,
+  });
+
   try {
-    // Extract the ID from the URL path
-    const pathParts = urlPath.split('/');
-    // Example: /api/live-streams/stream123/check-streamer -> [ '', 'api', 'live-streams', 'stream123', 'check-streamer' ]
-    const streamId = pathParts.length >= 3 ? pathParts[pathParts.length - 2] : null;
-    console.log(`[API][${urlPath}] Extracted streamId: ${streamId}`);
-
-    if (!streamId) {
-      console.error(`[API][${urlPath}] Bad Request (400): Could not extract streamId from path.`);
-      return NextResponse.json({ error: 'Missing stream ID' }, { status: 400 });
-    }
-
-    // Get token from Authorization header
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader ? authHeader.split(" ")[1] : null;
-    console.log(`[API][${urlPath}] Token found in header: ${!!token}`);
-
-    // If no token in header, return false immediately (don't check cookies)
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
     if (!token) {
-      console.log(`[API][${urlPath}] Unauthorized (401): No token provided.`);
-      // Returning isStreamer: false for unauthorized, but could return 401
-      return NextResponse.json({ isStreamer: false, reason: "Unauthorized" });
+      logger.warn('[API] GET /api/live-streams/[id]/check-streamer - Missing authentication token');
+      return NextResponse.json(
+        { isStreamer: false, reason: "Unauthorized - No token provided" },
+        { status: 401 }
+      );
     }
 
-    // Construct backend URL
-    const backendUrl = `${env.BACKEND_API_URL}/api/live-streams/${streamId}/check-streamer`;
-    console.log(`[API][${urlPath}] Calling backend: ${backendUrl}`);
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('[API] GET /api/live-streams/[id]/check-streamer - Invalid token or user not found');
+      return NextResponse.json(
+        { isStreamer: false, reason: "Unauthorized - Invalid token" },
+        { status: 401 }
+      );
+    }
 
-    // Call backend API to check if user is streamer
-    const response = await fetch(backendUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: 'no-store', // Avoid caching this check
+    // Find the stream and check if the user is the streamer
+    const stream = await prisma.liveStream.findUnique({
+      where: { id: streamId },
+      select: { userId: true }
     });
-    console.log(`[API][${urlPath}] Backend response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.warn(`[API][${urlPath}] Backend check failed (${response.status}): ${errorText}. Returning isStreamer: false.`);
-      // Determine reason based on status
-      let reason = "Backend error";
-      if (response.status === 403) reason = "Forbidden";
-      if (response.status === 404) reason = "Stream not found";
-      return NextResponse.json({ isStreamer: false, reason });
+    if (!stream) {
+      logger.warn(`[API] GET /api/live-streams/[id]/check-streamer - Stream not found: ${streamId}`);
+      return NextResponse.json(
+        { isStreamer: false, reason: "Stream not found" },
+        { status: 404 }
+      );
     }
 
-    const data = await response.json();
-    console.log(`[API][${urlPath}] Backend response data:`, data);
-    console.log(`[API][${urlPath}] Returning backend response.`);
-    return NextResponse.json(data);
+    // Check if the authenticated user is the streamer
+    const isStreamer = stream.userId === user.id;
+    logger.info(`[API] GET /api/live-streams/[id]/check-streamer - Result: isStreamer=${isStreamer}`, {
+      streamId,
+      userId: user.id,
+      streamUserId: stream.userId
+    });
+
+    return NextResponse.json({ 
+      isStreamer,
+      userId: user.id,
+      streamUserId: stream.userId
+    });
   } catch (error) {
-    console.error(`[API][${urlPath}] Unexpected error in GET handler:`, error);
-    console.log(`[API][${urlPath}] Returning isStreamer: false due to error.`);
-    return NextResponse.json({ isStreamer: false, reason: "Internal server error" }, { status: 500 });
+    logger.error('[API] Error in check-streamer endpoint', error);
+    return NextResponse.json(
+      { isStreamer: false, reason: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

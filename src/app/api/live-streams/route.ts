@@ -1,10 +1,9 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
+import { getUserFromTokenInNode } from '@/lib/auth';
 
 // Constants
 const STREAM_STATUS = ['SCHEDULED', 'LIVE', 'ENDED', 'CANCELLED'] as const;
@@ -15,7 +14,15 @@ const createStreamSchema = z.object({
   title: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   thumbnailUrl: z.string().url().optional(),
-  startTime: z.string().datetime().optional(),
+  startTime: z.string()
+    .refine(
+      (val) => {
+        // Accept ISO date format with or without seconds
+        return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([.]\d+)?(([+-]\d{2}:\d{2})|Z)?$/.test(val);
+      },
+      { message: "Invalid datetime format. Expected ISO 8601 format." }
+    )
+    .optional(),
 });
 
 const updateStreamSchema = z.object({
@@ -23,6 +30,15 @@ const updateStreamSchema = z.object({
   description: z.string().max(500).optional(),
   thumbnailUrl: z.string().url().optional(),
   status: z.enum(STREAM_STATUS).optional(),
+  startTime: z.string()
+    .refine(
+      (val) => {
+        // Accept ISO date format with or without seconds
+        return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([.]\d+)?(([+-]\d{2}:\d{2})|Z)?$/.test(val);
+      },
+      { message: "Invalid datetime format. Expected ISO 8601 format." }
+    )
+    .optional(),
 });
 
 // GET /api/live-streams - List all streams
@@ -74,7 +90,7 @@ export async function GET(request: Request) {
 }
 
 // POST /api/live-streams - Create a new stream
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const headers = Object.fromEntries(request.headers.entries());
   let body;
   try {
@@ -84,22 +100,49 @@ export async function POST(request: Request) {
   }
   logger.info('API POST /api/live-streams', { headers, body });
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
+    if (!token) {
+      logger.warn('API POST /api/live-streams - Missing authentication token');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - No token provided' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('API POST /api/live-streams - Invalid token or user not found');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       );
     }
 
     const validatedData = createStreamSchema.parse(body);
 
-    logger.info('Creating stream with validated data', { validatedData });
+    // Convert the partial date format to a complete ISO datetime if it exists
+    if (validatedData.startTime) {
+      // Add seconds and timezone if they're missing
+      if (!validatedData.startTime.includes('Z') && !validatedData.startTime.includes('+')) {
+        // If we have "YYYY-MM-DDThh:mm", convert to "YYYY-MM-DDThh:mm:00Z"
+        if (validatedData.startTime.length === 16) { // YYYY-MM-DDThh:mm format
+          validatedData.startTime = `${validatedData.startTime}:00Z`;
+        }
+      }
+    }
+
+    logger.info('Creating stream with validated data', { validatedData, userId: user.id });
 
     const stream = await prisma.liveStream.create({
       data: {
         ...validatedData,
-        userId: session.user.id,
+        userId: user.id,
         status: 'SCHEDULED',
       },
       include: {
@@ -130,7 +173,7 @@ export async function POST(request: Request) {
 }
 
 // PUT /api/live-streams - Update a stream
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   const headers = Object.fromEntries(request.headers.entries());
   let body;
   try {
@@ -140,10 +183,26 @@ export async function PUT(request: Request) {
   }
   logger.info('API PUT /api/live-streams', { headers, body });
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
+    if (!token) {
+      logger.warn('API PUT /api/live-streams - Missing authentication token');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - No token provided' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('API PUT /api/live-streams - Invalid token or user not found');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       );
     }
@@ -170,7 +229,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    if (existingStream.userId !== session.user.id) {
+    if (existingStream.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to update this stream' },
         { status: 403 }
@@ -178,6 +237,17 @@ export async function PUT(request: Request) {
     }
 
     const validatedData = updateStreamSchema.parse(updateData);
+
+    // Convert the partial date format to a complete ISO datetime if it exists
+    if (validatedData.startTime) {
+      // Add seconds and timezone if they're missing
+      if (!validatedData.startTime.includes('Z') && !validatedData.startTime.includes('+')) {
+        // If we have "YYYY-MM-DDThh:mm", convert to "YYYY-MM-DDThh:mm:00Z"
+        if (validatedData.startTime.length === 16) { // YYYY-MM-DDThh:mm format
+          validatedData.startTime = `${validatedData.startTime}:00Z`;
+        }
+      }
+    }
 
     const stream = await prisma.liveStream.update({
       where: { id },

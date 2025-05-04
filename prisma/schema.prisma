@@ -118,6 +118,9 @@ model Product {
   
   // Canlı yayın satışları (Listing)
   listings    AuctionListing[]
+  
+  // Regular timed auctions
+  auctions    ProductAuction[]
 }
 
 // Ürün medya (resim/video)
@@ -181,11 +184,14 @@ model Bid {
   amount          Float
   userId          String
   user            User            @relation(fields: [userId], references: [id])
-  listingId       String
-  listing         AuctionListing  @relation(fields: [listingId], references: [id])
+  listingId       String?
+  listing         AuctionListing? @relation(fields: [listingId], references: [id])
+  productAuctionId String?
+  productAuction  ProductAuction? @relation(fields: [productAuctionId], references: [id])
   isWinning       Boolean         @default(false)
   isBackup        Boolean         @default(false)
   wonAuction      AuctionListing? @relation("WinningBid")
+  wonProductAuction ProductAuction? @relation("WinningProductBid")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
@@ -327,4 +333,22 @@ model StreamAnalytics {
   engagement    Float      // Engagement score (0-100)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+}
+
+// Regular product auctions (not in live streams)
+model ProductAuction {
+  id             String       @id @default(cuid())
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  startPrice     Float
+  currentPrice   Float        @default(0)
+  duration       Int          // Duration in days (1, 3, 5, or 7)
+  status         String       @default("PENDING") // Values: PENDING, ACTIVE, COMPLETED, CANCELLED
+  startTime      DateTime?
+  endTime        DateTime?
+  bids           Bid[]
+  winningBidId   String?      @unique
+  winningBid     Bid?         @relation("WinningProductBid", fields: [winningBidId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }

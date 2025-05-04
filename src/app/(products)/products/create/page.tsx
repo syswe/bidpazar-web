@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Category, getCategories, createProduct, uploadProductImages, uploadProductVideos } from '@/lib/api';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { logger } from '@/lib/logger';
 
 export default function CreateProductPage() {
   const router = useRouter();
@@ -27,12 +28,18 @@ export default function CreateProductPage() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
+        logger.info('Fetching categories for product creation form');
         const data = await getCategories();
+        logger.debug('Categories fetched successfully', { 
+          count: data.length,
+          categoryIds: data.map(c => c.id)
+        });
         setCategories(data);
         if (data.length > 0) {
           setCategoryId(data[0].id);
         }
       } catch (err) {
+        logger.error('Failed to load categories', { error: err });
         console.error('Kategoriler yüklenirken hata oluştu:', err);
         setError('Kategoriler yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.');
       }
@@ -45,15 +52,27 @@ export default function CreateProductPage() {
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
+      logger.debug('Image files selected', { 
+        count: newFiles.length,
+        fileNames: newFiles.map(f => f.name),
+        fileSizes: newFiles.map(f => f.size),
+        fileTypes: newFiles.map(f => f.type)
+      });
 
       // Check if adding these files would exceed the limit
       if (imageFiles.length + newFiles.length > 5) {
+        logger.warn('Image upload limit exceeded', { 
+          currentCount: imageFiles.length, 
+          attemptedToAdd: newFiles.length,
+          maxAllowed: 5
+        });
         setError('En fazla 5 resim yükleyebilirsiniz.');
         return;
       }
 
       // Create preview URLs for the images
       const newPreviewUrls = newFiles.map(file => URL.createObjectURL(file));
+      logger.debug('Image preview URLs created', { count: newPreviewUrls.length });
 
       setImageFiles([...imageFiles, ...newFiles]);
       setImagePreviewUrls([...imagePreviewUrls, ...newPreviewUrls]);
@@ -64,15 +83,27 @@ export default function CreateProductPage() {
   const handleVideoUpload = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
+      logger.debug('Video files selected', { 
+        count: newFiles.length,
+        fileNames: newFiles.map(f => f.name),
+        fileSizes: newFiles.map(f => f.size),
+        fileTypes: newFiles.map(f => f.type)
+      });
 
       // Check if adding these files would exceed the limit
       if (videoFiles.length + newFiles.length > 2) {
+        logger.warn('Video upload limit exceeded', { 
+          currentCount: videoFiles.length, 
+          attemptedToAdd: newFiles.length,
+          maxAllowed: 2
+        });
         setError('En fazla 2 video yükleyebilirsiniz.');
         return;
       }
 
       // Create preview URLs for the videos
       const newPreviewUrls = newFiles.map(file => URL.createObjectURL(file));
+      logger.debug('Video preview URLs created', { count: newPreviewUrls.length });
 
       setVideoFiles([...videoFiles, ...newFiles]);
       setVideoPreviewUrls([...videoPreviewUrls, ...newPreviewUrls]);
@@ -111,8 +142,15 @@ export default function CreateProductPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    logger.info('Product form submission started');
 
     if (!title || !description || !price || !categoryId) {
+      logger.warn('Product form validation failed - missing required fields', {
+        hasTitle: !!title,
+        hasDescription: !!description,
+        hasPrice: !!price,
+        hasCategoryId: !!categoryId
+      });
       setError('Lütfen tüm zorunlu alanları doldurun.');
       return;
     }
@@ -121,32 +159,66 @@ export default function CreateProductPage() {
       setIsLoading(true);
       setError(null);
 
-      // Ürün oluştur
+      // Create product
+      logger.debug('Creating product', { 
+        title, 
+        hasDescription: !!description,
+        price: parseFloat(price),
+        categoryId
+      });
+      
       const product = await createProduct({
         title,
         description,
         price: parseFloat(price),
         categoryId
       });
+      
+      logger.info('Product created successfully', { 
+        productId: product.id,
+        title: product.title
+      });
 
       // Upload images if any
       if (imageFiles.length > 0) {
+        logger.debug('Uploading product images', { 
+          productId: product.id,
+          count: imageFiles.length,
+          fileNames: imageFiles.map(f => f.name)
+        });
+        
         await uploadProductImages(product.id, imageFiles);
+        logger.info('Images uploaded successfully', { productId: product.id });
       }
 
       // Upload videos if any
       if (videoFiles.length > 0) {
+        logger.debug('Uploading product videos', { 
+          productId: product.id,
+          count: videoFiles.length,
+          fileNames: videoFiles.map(f => f.name)
+        });
+        
         await uploadProductVideos(product.id, videoFiles);
+        logger.info('Videos uploaded successfully', { productId: product.id });
       }
 
+      logger.info('Product creation complete', { productId: product.id });
       setSuccess('Ürün başarıyla oluşturuldu!');
 
-      // Kısa bir süre sonra ürün detay sayfasına yönlendir
+      // Redirect to product detail page after a short delay
+      logger.debug('Redirecting to product detail page', { productId: product.id });
       setTimeout(() => {
         router.push(`/products/${product.id}`);
       }, 1500);
 
-    } catch (err) {
+    } catch (err: any) {
+      logger.error('Product creation failed', { 
+        error: err.message,
+        stack: err.stack,
+        title,
+        categoryId
+      });
       console.error('Ürün oluşturulurken hata:', err);
       setError('Ürün oluşturulurken bir hata meydana geldi. Lütfen tekrar deneyin.');
     } finally {

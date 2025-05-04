@@ -38,6 +38,17 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  // Increase API body size limit to 10MB for file uploads
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    responseLimit: false,
+  },
+  // Configure server actions body size limit
+  serverActions: {
+    bodySizeLimit: '10mb',
+  },
 };
 
 export default nextConfig;

@@ -1,5 +1,6 @@
 import { getToken } from "./frontend-auth";
 import { env } from './env';
+import { logger } from './logger';
 
 // Add window.__ENV__ interface to fix TypeScript error
 declare global {
@@ -165,10 +166,28 @@ export interface AuctionListing {
   updatedAt: string;
 }
 
+export interface ProductAuction {
+  id: string;
+  productId: string;
+  startPrice: number;
+  currentPrice: number;
+  duration: number; // Duration in days (1, 3, 5, or 7)
+  status: "PENDING" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  startTime?: string;
+  endTime?: string;
+  winningBidId?: string;
+  product?: Product;
+  bids?: Bid[];
+  winningBid?: Bid;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Bid {
   id: string;
   amount: number;
-  listingId: string;
+  listingId?: string;
+  productAuctionId?: string;
   userId: string;
   isWinning: boolean;
   isBackup: boolean;
@@ -519,68 +538,158 @@ export const uploadProductImages = async (
   id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
+  logger.info('Uploading product images', { 
+    productId: id, 
+    fileCount: files.length,
+    fileNames: files.map(f => f.name),
+    fileSizes: files.map(f => f.size)
+  });
+
   const token = getToken();
   if (!token) {
+    logger.error('Authentication required for image upload', { productId: id });
     throw new Error("Authentication required");
   }
 
   const formData = new FormData();
   files.forEach((file) => {
-    formData.append("images", file);
+    formData.append("files", file);
+    logger.debug('Added file to form data', { 
+      fileName: file.name, 
+      fileSize: file.size, 
+      fileType: file.type 
+    });
   });
 
-  const response = await fetch(
-    `${apiBaseUrl}/products/${id}/upload/images`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
+  try {
+    logger.debug('Sending image upload request', { 
+      productId: id, 
+      endpoint: `${apiBaseUrl}/products/${id}/upload`
+    });
+    
+    const response = await fetch(
+      `${apiBaseUrl}/products/${id}/upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    logger.debug('Received upload response', { 
+      productId: id, 
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type')
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Failed to upload images', { 
+        productId: id, 
+        status: response.status, 
+        error: data.error 
+      });
+      throw new Error(data.error || "Failed to upload images");
     }
-  );
 
-  const data = await response.json();
+    logger.info('Images uploaded successfully', { 
+      productId: id, 
+      uploadedCount: data.length,
+      mediaIds: data.map((m: any) => m.id)
+    });
 
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to upload images");
+    return data;
+  } catch (error: any) {
+    logger.error('Error in uploadProductImages', { 
+      productId: id, 
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
   }
-
-  return data.media;
 };
 
 export const uploadProductVideos = async (
   id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
+  logger.info('Uploading product videos', { 
+    productId: id, 
+    fileCount: files.length,
+    fileNames: files.map(f => f.name),
+    fileSizes: files.map(f => f.size)
+  });
+
   const token = getToken();
   if (!token) {
+    logger.error('Authentication required for video upload', { productId: id });
     throw new Error("Authentication required");
   }
 
   const formData = new FormData();
   files.forEach((file) => {
-    formData.append("videos", file);
+    formData.append("files", file);
+    logger.debug('Added video to form data', { 
+      fileName: file.name, 
+      fileSize: file.size, 
+      fileType: file.type 
+    });
   });
 
-  const response = await fetch(
-    `${apiBaseUrl}/products/${id}/upload/videos`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
+  try {
+    logger.debug('Sending video upload request', { 
+      productId: id, 
+      endpoint: `${apiBaseUrl}/products/${id}/upload`
+    });
+    
+    const response = await fetch(
+      `${apiBaseUrl}/products/${id}/upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    logger.debug('Received upload response', { 
+      productId: id, 
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type')
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Failed to upload videos', { 
+        productId: id, 
+        status: response.status, 
+        error: data.error 
+      });
+      throw new Error(data.error || "Failed to upload videos");
     }
-  );
 
-  const data = await response.json();
+    logger.info('Videos uploaded successfully', { 
+      productId: id, 
+      uploadedCount: data.length,
+      mediaIds: data.map((m: any) => m.id)
+    });
 
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to upload videos");
+    return data;
+  } catch (error: any) {
+    logger.error('Error in uploadProductVideos', { 
+      productId: id, 
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
   }
-
-  return data.media;
 };
 
 // LiveStream API functions
@@ -1000,6 +1109,62 @@ export const addSimplifiedListingToLiveStream = async (
   return fetcher<AuctionListing>(`live-streams/${liveStreamId}/listings/simplified`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+};
+
+// Product Auction functions
+export const getProductAuctions = async (): Promise<ProductAuction[]> => {
+  return fetcher<ProductAuction[]>('product-auctions', {
+    returnEmptyOnError: true,
+    defaultValue: []
+  });
+};
+
+export const getProductAuctionById = async (id: string): Promise<ProductAuction> => {
+  return fetcher<ProductAuction>(`product-auctions/${id}`);
+};
+
+export const createProductAuction = async (data: {
+  productId: string;
+  startPrice: number;
+  duration: 1 | 3 | 5 | 7; // Only allow these specific durations
+}): Promise<ProductAuction> => {
+  return fetcher<ProductAuction>("product-auctions", {
+    method: "POST",
+    body: data,
+    requireAuth: true,
+  });
+};
+
+export const updateProductAuction = async (
+  id: string,
+  data: {
+    startPrice?: number;
+    status?: "PENDING" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  }
+): Promise<ProductAuction> => {
+  return fetcher<ProductAuction>(`product-auctions/${id}`, {
+    method: "PUT",
+    body: data,
+    requireAuth: true,
+  });
+};
+
+export const cancelProductAuction = async (id: string): Promise<ProductAuction> => {
+  return fetcher<ProductAuction>(`product-auctions/${id}/cancel`, {
+    method: "POST",
+    requireAuth: true,
+  });
+};
+
+export const addBidToProductAuction = async (
+  auctionId: string,
+  amount: number
+): Promise<Bid> => {
+  return fetcher<Bid>(`product-auctions/${auctionId}/bids`, {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+    requireAuth: true,
   });
 };
 

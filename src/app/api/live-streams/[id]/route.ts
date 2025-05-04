@@ -1,8 +1,7 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { getUserFromTokenInNode } from '@/lib/auth';
 
 // GET /api/live-streams/[id] - Get a specific stream
 export async function GET(
@@ -69,7 +68,13 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(stream);
+    // Add the creatorId field to make it clear who created the stream
+    const responseWithCreatorId = {
+      ...stream,
+      creatorId: stream.userId // Add creatorId field that matches the userId field
+    };
+
+    return NextResponse.json(responseWithCreatorId);
   } catch (error) {
     logger.error('Error fetching stream', error);
     return NextResponse.json(
@@ -81,7 +86,7 @@ export async function GET(
 
 // DELETE /api/live-streams/[id] - Delete a stream
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -91,10 +96,26 @@ export async function DELETE(
     params: { id },
   });
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Extract token from authorization header
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : request.cookies.get('token')?.value;
+    
+    if (!token) {
+      logger.warn('API DELETE /api/live-streams/[id] - Missing authentication token');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - No token provided' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      logger.warn('API DELETE /api/live-streams/[id] - Invalid token or user not found');
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       );
     }
@@ -110,7 +131,7 @@ export async function DELETE(
       );
     }
 
-    if (stream.userId !== session.user.id) {
+    if (stream.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to delete this stream' },
         { status: 403 }
