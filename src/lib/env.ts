@@ -9,6 +9,7 @@ export interface EnvironmentConfig {
   BACKEND_API_URL: string;
   SOCKET_URL: string;
   WEBRTC_SERVER: string;
+  WS_URL: string;
   NODE_ENV: string;
   TURN_SERVER_URL?: string;
   TURN_USERNAME?: string;
@@ -23,6 +24,7 @@ const defaults: EnvironmentConfig = {
   BACKEND_API_URL: 'http://localhost:3000/api',
   SOCKET_URL: 'ws://localhost:3000',
   WEBRTC_SERVER: 'http://localhost:3000',
+  WS_URL: '/api/rtc/socket',
   NODE_ENV: 'development',
   TURN_SERVER_URL: 'turn:localhost:3478',
   TURN_USERNAME: 'bidpazar',
@@ -45,6 +47,7 @@ const getEnvironmentValues = (): EnvironmentConfig => {
       BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
       SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'wss://bidpazar.com',
       WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'https://bidpazar.com',
+      WS_URL: process.env.NEXT_PUBLIC_WS_URL || '/api/rtc/socket',
       NODE_ENV: 'production',
       TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:45.147.46.183:3478',
       TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
@@ -61,6 +64,7 @@ const getEnvironmentValues = (): EnvironmentConfig => {
       BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.BACKEND_API_URL,
       SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
       WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
+      WS_URL: process.env.NEXT_PUBLIC_WS_URL || defaults.WS_URL,
       NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
       TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
       TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
@@ -81,6 +85,7 @@ const getEnvironmentValues = (): EnvironmentConfig => {
       BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
       SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'wss://bidpazar.com',
       WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'https://bidpazar.com',
+      WS_URL: process.env.NEXT_PUBLIC_WS_URL || '/api/rtc/socket',
       NODE_ENV: 'production',
       TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:45.147.46.183:3478',
       TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
@@ -96,6 +101,7 @@ const getEnvironmentValues = (): EnvironmentConfig => {
     BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.BACKEND_API_URL,
     SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
     WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
+    WS_URL: process.env.NEXT_PUBLIC_WS_URL || defaults.WS_URL,
     NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
     TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
     TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
@@ -115,7 +121,8 @@ const logEnvironment = () => {
       APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       API_URL: process.env.NEXT_PUBLIC_API_URL,
       SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
-      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER
+      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER,
+      WS_URL: process.env.NEXT_PUBLIC_WS_URL
     });
   } else {
     console.log('[env] Client-side environment config:', ENV_STORE);

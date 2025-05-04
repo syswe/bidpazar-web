@@ -82,32 +82,170 @@ export default function LiveStreamPage() {
 
   const logMessage = useCallback((message: string, level: 'info' | 'warn' | 'error' | 'debug' = 'info', data?: unknown) => {
     const timestamp = new Date().toISOString();
-    console.log(`[${level.toUpperCase()}] ${timestamp}: ${message}`, data ?? '');
-    setLogs(prevLogs => [{ timestamp, message, data, level }, ...prevLogs.slice(0, 199)]);
+    const pagePrefix = '[LiveStreamPage]';
+    const formattedLevel = level.toUpperCase().padEnd(5, ' ');
+    
+    // Format the message with timestamp and metadata
+    let consoleMessage = `${timestamp} ${pagePrefix} [${formattedLevel}] ${message}`;
+    
+    // Format data for better readability
+    let formattedData = '';
+    if (data !== undefined && data !== null) {
+      try {
+        if (typeof data === 'object') {
+          formattedData = JSON.stringify(data, (key, value) => {
+            // Handle circular references and functions
+            if (typeof value === 'function') return '[Function]';
+            if (key === 'password' || key === 'token') return '[REDACTED]';
+            if (typeof value === 'object' && value !== null) {
+              // Handle DOM elements and special objects
+              if (value instanceof HTMLElement) return `[HTMLElement:${value.tagName}]`;
+              if (value instanceof WebSocket) {
+                return `[WebSocket:${['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][value.readyState]}]`;
+              }
+            }
+            return value;
+          }, 2);
+        } else {
+          formattedData = String(data);
+        }
+      } catch (e) {
+        formattedData = '[Unserializable data]';
+      }
+    }
+    
+    // Styled console logging with appropriate level
+    switch (level) {
+      case 'error':
+        console.error(`%c${consoleMessage}`, 'color: #FF5555', formattedData ? formattedData : '');
+        break;
+      case 'warn':
+        console.warn(`%c${consoleMessage}`, 'color: #FFAA55', formattedData ? formattedData : '');
+        break;
+      case 'debug':
+        console.log(`%c${consoleMessage}`, 'color: #55AAFF', formattedData ? formattedData : '');
+        break;
+      case 'info':
+      default:
+        console.log(`%c${consoleMessage}`, 'color: #AAAAAA', formattedData ? formattedData : '');
+    }
+    
+    // Add to logs state for UI display
+    setLogs(prevLogs => {
+      const newLog = { timestamp, message, data, level };
+      // Keep max 200 most recent logs
+      return [newLog, ...prevLogs.slice(0, 199)];
+    });
+    
+    // Mark performance timeline for tracing
+    try {
+      performance.mark(`livestreampage-${level}-${Date.now()}`);
+    } catch (e) {
+      // Ignore if performance API not available
+    }
   }, []);
 
+  // Add system information diagnostics
+  const collectSystemDiagnostics = useCallback(() => {
+    const diag = {
+      browser: {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: (navigator as any).deviceMemory || 'unknown',
+        connection: (navigator as any).connection ? {
+          effectiveType: (navigator as any).connection.effectiveType,
+          downlink: (navigator as any).connection.downlink,
+          rtt: (navigator as any).connection.rtt,
+          saveData: (navigator as any).connection.saveData
+        } : 'unknown'
+      },
+      screen: {
+        width: window.screen.width,
+        height: window.screen.height,
+        pixelRatio: window.devicePixelRatio,
+        colorDepth: window.screen.colorDepth
+      },
+      webRTC: {
+        RTCPeerConnection: !!window.RTCPeerConnection,
+        RTCDataChannel: !!window.RTCDataChannel,
+        RTCSessionDescription: !!window.RTCSessionDescription,
+        mediaDevices: !!navigator.mediaDevices,
+        getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+      },
+      environment: {
+        protocol: window.location.protocol,
+        host: window.location.host,
+        pathname: window.location.pathname,
+        appUrl: env.APP_URL,
+        apiUrl: env.API_URL,
+        socketUrl: env.SOCKET_URL,
+        wsUrl: env.WS_URL,
+        webrtcServer: env.WEBRTC_SERVER,
+        turnServer: env.TURN_SERVER_URL,
+        stunServer: env.STUN_SERVER_URL
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    logMessage('System diagnostic information collected', 'debug', diag);
+    return diag;
+  }, [logMessage]);
+
   const fetchStreamDetails = useCallback(async () => {
+    const fetchStartTime = performance.now();
+    
     if (!streamId) {
       setError("Stream ID is missing.");
       setIsLoading(false);
       logMessage("Fetch cancelled: Stream ID missing", 'warn');
       return;
     }
-    logMessage(`Fetching stream details for ID: ${streamId}`, 'debug');
+    
+    logMessage(`Fetching stream details for ID: ${streamId}`, 'debug', {
+      time: new Date().toISOString(), 
+      streamId,
+      userId
+    });
+    
     setIsLoading(true);
     setError(null);
 
     try {
       const authToken = token ?? getCookie('token') as string | undefined;
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
-        logMessage("Using auth token for fetch", 'debug');
+        logMessage("Using auth token for fetch", 'debug', { 
+          tokenLength: authToken.length,
+          tokenPrefix: authToken.substring(0, 10) + '...'
+        });
       } else {
         logMessage("No auth token found for fetch", 'warn');
       }
 
+      // Log the request URL and headers
+      logMessage("Making API request", 'debug', {
+        method: 'GET',
+        url: `${env.BACKEND_API_URL}/live-streams/${streamId}`,
+        headers: Object.keys(headers)
+      });
+
+      // Track performance
+      performance.mark('stream-fetch-start');
+      
       const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}`, { headers });
+      
+      performance.mark('stream-fetch-end');
+      performance.measure('stream-fetch-duration', 'stream-fetch-start', 'stream-fetch-end');
+      
+      const fetchDuration = performance.getEntriesByName('stream-fetch-duration')[0]?.duration || 0;
+      logMessage(`API response received in ${fetchDuration.toFixed(2)}ms`, 'debug', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries([...response.headers.entries()])
+      });
 
       if (!response.ok) {
         let errorMsg = `HTTP error ${response.status}`;
@@ -118,76 +256,160 @@ export default function LiveStreamPage() {
 
         if (response.status === 404) {
           setError("Stream not found.");
-          logMessage(`Fetch failed: Stream not found (404)`, 'error');
+          logMessage(`Fetch failed: Stream not found (404)`, 'error', {
+            status: response.status, 
+            streamId
+          });
         } else {
           setError(`Failed to load stream information (${response.status}). ${errorMsg}`);
-          logMessage(`Fetch failed: ${errorMsg}`, 'error');
+          logMessage(`Fetch failed: ${errorMsg}`, 'error', {
+            status: response.status, 
+            streamId, 
+            duration: `${fetchDuration.toFixed(2)}ms`
+          });
         }
         setStreamDetails(null);
         return;
       }
 
       const data: LiveStreamDetails = await response.json();
-      logMessage('Stream details fetched successfully', 'info', { id: data.id, status: data.status, creatorId: data.creatorId, title: data.title });
+      
+      // Track parse performance
+      const parseTime = performance.now() - fetchStartTime - fetchDuration;
+      
+      logMessage('Stream details fetched successfully', 'info', { 
+        id: data.id, 
+        status: data.status, 
+        creatorId: data.creatorId, 
+        title: data.title,
+        fetchTime: `${fetchDuration.toFixed(2)}ms`,
+        parseTime: `${parseTime.toFixed(2)}ms`,
+        totalTime: `${(performance.now() - fetchStartTime).toFixed(2)}ms`
+      });
+      
       setStreamDetails(data);
 
       // Check if the user is the streamer (compare user ID with creatorId)
       const currentIsStreamer = !!userId && data.creatorId === userId;
       logMessage(`User ${userId} ${currentIsStreamer ? 'IS' : 'IS NOT'} the streamer (Creator ID: ${data.creatorId})`, 'info');
 
+      // Collect system diagnostics on successful fetch
+      collectSystemDiagnostics();
+
     } catch (err: any) {
+      const fetchDuration = performance.now() - fetchStartTime;
       console.error('Error fetching stream details:', err);
+      
       const errorMsg = err.message || 'Unknown fetch error';
-      logMessage(`Fetch failed: ${errorMsg}`, 'error', err);
+      logMessage(`Fetch failed: ${errorMsg}`, 'error', {
+        err,
+        streamId,
+        fetchTime: `${fetchDuration.toFixed(2)}ms`,
+        stack: err.stack
+      });
+      
       toast.error("Could not load stream details. Please try refreshing the page.");
       setError("Failed to load stream information");
       setStreamDetails(null);
     } finally {
       setIsLoading(false);
-      logMessage("Fetch stream details finished.", 'debug');
+      logMessage("Fetch stream details finished.", 'debug', {
+        totalTime: `${(performance.now() - fetchStartTime).toFixed(2)}ms`
+      });
     }
-  }, [streamId, userId, token, getCookie, logMessage]);
+  }, [streamId, userId, token, getCookie, logMessage, collectSystemDiagnostics]);
 
   useEffect(() => {
+    // Log component mount
+    logMessage('LiveStreamPage component mounted', 'info', {
+      streamId,
+      userId: userId || 'not authenticated',
+      url: window.location.href
+    });
+    
     fetchStreamDetails();
-  }, [fetchStreamDetails]);
+    
+    // Return cleanup function
+    return () => {
+      logMessage('LiveStreamPage component unmounting', 'debug');
+    };
+  }, [fetchStreamDetails, logMessage, streamId, userId]);
 
+  // Derive stream status and permissions
   const currentStreamStatus = streamDetails?.status ?? null;
-  // Use the creatorId field from the API response
   const isStreamer = !!userId && !!streamDetails && streamDetails.creatorId === userId;
-
-  const shouldRenderWebRTC = !isLoading && !!streamDetails && !!userId && !!username && !!streamId;
+  // Remove user authentication requirement for viewers
+  const shouldRenderWebRTC = !isLoading && !!streamDetails && !!streamId;
   const canRenderWebRTC = shouldRenderWebRTC && (currentStreamStatus === 'LIVE' || (isStreamer && currentStreamStatus === 'SCHEDULED'));
 
   useEffect(() => {
+    // Log whenever important state changes
     logMessage('[LiveStreamPage] Render check variables:', 'debug', {
-        isLoading,
-        hasStreamDetails: !!streamDetails,
-        userId,
-        username,
-        streamId,
-        derivedStatus: currentStreamStatus,
-        derivedIsStreamer: isStreamer,
-        shouldRenderBase: shouldRenderWebRTC,
-        canRenderFinal: canRenderWebRTC,
+      isLoading,
+      hasStreamDetails: !!streamDetails,
+      userId,
+      username,
+      streamId,
+      derivedStatus: currentStreamStatus,
+      derivedIsStreamer: isStreamer,
+      shouldRenderBase: shouldRenderWebRTC,
+      canRenderFinal: canRenderWebRTC,
+      env: {
+        SOCKET_URL: env.SOCKET_URL,
+        WS_URL: env.WS_URL,
+        WEBRTC_SERVER: env.WEBRTC_SERVER,
+        API_URL: env.API_URL,
+        BACKEND_API_URL: env.BACKEND_API_URL
+      },
+      browser: {
+        userAgent: navigator.userAgent,
+        language: navigator.language
+      },
+      performance: {
+        memory: (performance as any).memory ? {
+          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+          totalJSHeapSize: (performance as any).memory.totalJSHeapSize
+        } : 'not available'
+      }
     });
   }, [isLoading, streamDetails, userId, username, streamId, currentStreamStatus, isStreamer, shouldRenderWebRTC, canRenderWebRTC, logMessage]);
 
   const handleStartStream = async () => {
-    logMessage('Streamer attempting to start the stream', 'info');
+    const startTime = performance.now();
+    logMessage('Streamer attempting to start the stream', 'info', {
+      streamId, 
+      isStreamer, 
+      currentStatus: currentStreamStatus
+    });
+    
     if (!streamId || !isStreamer) {
-      logMessage('Start stream cancelled: Invalid streamId or user is not streamer', 'warn', { streamId, isStreamer });
+      logMessage('Start stream cancelled: Invalid streamId or user is not streamer', 'warn', { 
+        streamId, 
+        isStreamer, 
+        userId, 
+        creatorId: streamDetails?.creatorId 
+      });
       toast.error("Cannot start stream.");
       return;
     }
+    
     setIsLoading(true);
     try {
       if (!token) {
-        logMessage("Start stream failed: No auth token from context", "error");
+        logMessage("Start stream failed: No auth token from context", "error", {
+          isAuthenticated: !!user,
+          hasToken: !!token
+        });
         throw new Error("Authentication token not found.");
       }
 
-      logMessage('[LiveStreamPage] Calling /start endpoint...', 'debug');
+      performance.mark('stream-start-api-call-begin');
+      logMessage('[LiveStreamPage] Calling /start endpoint...', 'debug', {
+        url: `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
+        method: 'POST',
+        hasToken: !!token
+      });
+      
       const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}/start`, {
         method: 'POST',
         headers: {
@@ -195,6 +417,13 @@ export default function LiveStreamPage() {
           Authorization: `Bearer ${token}`
         }
       });
+      
+      performance.mark('stream-start-api-call-end');
+      performance.measure('stream-start-api-call', 
+                         'stream-start-api-call-begin', 
+                         'stream-start-api-call-end');
+      
+      const apiCallDuration = performance.getEntriesByName('stream-start-api-call')[0]?.duration || 0;
 
       if (!response.ok) {
         let errorMsg = `Error starting stream: ${response.status}`;
@@ -202,20 +431,35 @@ export default function LiveStreamPage() {
             const errorText = await response.text();
             errorMsg += ` - ${errorText}`;
         } catch (e) { /* Ignore */ }
+        
         console.error(errorMsg);
-        logMessage(`Start stream failed: ${errorMsg}`, 'error');
+        logMessage(`Start stream failed: ${errorMsg}`, 'error', {
+          status: response.status,
+          duration: `${apiCallDuration.toFixed(2)}ms`,
+          streamId
+        });
         throw new Error(errorMsg);
       }
 
       const data = await response.json();
-      logMessage('Stream started successfully via API', 'info', data);
+      logMessage('Stream started successfully via API', 'info', {
+        ...data,
+        apiDuration: `${apiCallDuration.toFixed(2)}ms`,
+        totalDuration: `${(performance.now() - startTime).toFixed(2)}ms`
+      });
+      
       toast.success('Stream started successfully!');
 
+      // Refresh stream details to get updated status
       await fetchStreamDetails();
 
     } catch (err: any) {
       console.error('Error in handleStartStream:', err);
-      logMessage(`Start stream process failed: ${err.message}`, 'error');
+      logMessage(`Start stream process failed: ${err.message}`, 'error', {
+        error: err,
+        stack: err.stack,
+        duration: `${(performance.now() - startTime).toFixed(2)}ms`
+      });
       toast.error('Failed to start stream. Please try again.');
       setIsLoading(false);
     }
@@ -480,13 +724,19 @@ export default function LiveStreamPage() {
             </div>
           )}
 
-          {canRenderWebRTC && userId && username && (
-            <WebRTCStreamManager
-              streamId={streamId}
-              userId={userId}
-              username={username}
-              isStreamer={isStreamer}
-            />
+          {canRenderWebRTC && (
+            <div className="relative w-full h-full">
+              <Suspense fallback={<div className="flex items-center justify-center h-96 bg-gray-900">
+                <Loader2 className="w-10 h-10 animate-spin text-white" />
+              </div>}>
+                <WebRTCStreamManager
+                  streamId={streamId}
+                  userId={userId || ''}
+                  username={username || ''}
+                  isStreamer={isStreamer}
+                />
+              </Suspense>
+            </div>
           )}
 
           {/* Video overlay with stream info */}

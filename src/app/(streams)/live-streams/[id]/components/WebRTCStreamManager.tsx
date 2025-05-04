@@ -5,9 +5,112 @@ import env from "@/lib/env";
 import Hls from 'hls.js';
 import DeviceSelector from './DeviceSelector';
 import { getAuth } from "@/lib/frontend-auth";
+import { v4 as uuidv4 } from 'uuid';
+import { io, Socket } from 'socket.io-client';
+
+// Enhanced logging utility
+const DEBUG_LEVEL = {
+  ERROR: 0,
+  WARN: 1,
+  INFO: 2,
+  DEBUG: 3,
+  TRACE: 4
+} as const;
+
+type DebugLevel = typeof DEBUG_LEVEL[keyof typeof DEBUG_LEVEL];
+type LogData = Record<string, any> | null | undefined;
+
+const CURRENT_DEBUG_LEVEL = DEBUG_LEVEL.TRACE; // Set to maximum verbosity
+
+const enhancedLog = (level: DebugLevel, message: string, data: LogData = null) => {
+  const timestamp = new Date().toISOString();
+  const prefix = '[WebRTCStreamManager]';
+  let formattedData = '';
+  
+  if (data) {
+    try {
+      if (typeof data === 'object') {
+        formattedData = JSON.stringify(data, (key, value) => {
+          // Handle circular references and functions
+          if (typeof value === 'function') return 'function() { ... }';
+          if (typeof value === 'object' && value !== null) {
+            if (Object.prototype.toString.call(value) === '[object RTCPeerConnection]') {
+              return `[RTCPeerConnection:${value.connectionState || 'unknown'}]`;
+            }
+          }
+          return value;
+        }, 2);
+      } else {
+        formattedData = String(data);
+      }
+    } catch (e) {
+      formattedData = '[Unserializable data]';
+    }
+  }
+  
+  const logMessage = `${timestamp} ${prefix} ${message}`;
+  
+  switch (level) {
+    case DEBUG_LEVEL.ERROR:
+      if (CURRENT_DEBUG_LEVEL >= DEBUG_LEVEL.ERROR) {
+        console.error(logMessage, formattedData ? formattedData : '');
+      }
+      break;
+    case DEBUG_LEVEL.WARN:
+      if (CURRENT_DEBUG_LEVEL >= DEBUG_LEVEL.WARN) {
+        console.warn(logMessage, formattedData ? formattedData : '');
+      }
+      break;
+    case DEBUG_LEVEL.INFO:
+      if (CURRENT_DEBUG_LEVEL >= DEBUG_LEVEL.INFO) {
+        console.info(logMessage, formattedData ? formattedData : '');
+      }
+      break;
+    case DEBUG_LEVEL.DEBUG:
+      if (CURRENT_DEBUG_LEVEL >= DEBUG_LEVEL.DEBUG) {
+        console.log(`%c${logMessage}`, 'color: #6495ED', formattedData ? formattedData : '');
+      }
+      break;
+    case DEBUG_LEVEL.TRACE:
+      if (CURRENT_DEBUG_LEVEL >= DEBUG_LEVEL.TRACE) {
+        console.log(`%c${logMessage}`, 'color: #9932CC', formattedData ? formattedData : '');
+      }
+      break;
+  }
+  
+  // Also track in performance marks for timeline view
+  try {
+    performance.mark(`rtc-${level}-${Date.now()}`);
+  } catch (e) {
+    // Ignore if performance API not supported
+  }
+};
+
+// Type-safe logging functions
+const logError = (message: string, data: LogData = null) => enhancedLog(DEBUG_LEVEL.ERROR, message, data);
+const logWarn = (message: string, data: LogData = null) => enhancedLog(DEBUG_LEVEL.WARN, message, data);
+const logInfo = (message: string, data: LogData = null) => enhancedLog(DEBUG_LEVEL.INFO, message, data);
+const logDebug = (message: string, data: LogData = null) => enhancedLog(DEBUG_LEVEL.DEBUG, message, data);
+const logTrace = (message: string, data: LogData = null) => enhancedLog(DEBUG_LEVEL.TRACE, message, data);
+
+// Helper function to safely format unknown errors
+const formatUnknownError = (err: unknown): Record<string, any> => {
+  if (err instanceof Error) {
+    return { 
+      message: err.message,
+      name: err.name,
+      stack: err.stack 
+    };
+  } else if (typeof err === 'string') {
+    return { message: err };
+  } else if (typeof err === 'object' && err !== null) {
+    return { ...err };
+  }
+  return { unknownError: String(err) };
+};
 
 // Log immediately when the function body executes
-console.log('[WebRTCStreamManager] Function body executing');
+logInfo('Module loading - Function body executing');
 
 // Configure TURN/STUN server URLs
 // Use environment values with proper fallbacks
@@ -48,15 +151,28 @@ interface WebRTCStreamManagerProps {
   isStreamer: boolean;
 }
 
-// Helper function to get proper WebSocket URL
-const getWebSocketUrl = (streamId: string, userId: string, username: string, token: string): string => {
-  const socketUrl = env.SOCKET_URL;
+// Helper function to get proper Socket.IO URL
+const getSocketIOUrl = (streamId: string, userId: string, username: string): string => {
+  logTrace('getSocketIOUrl called with', { streamId, userId, username } as LogData);
+  
+  const socketUrl = env.WEBRTC_SERVER || 'http://localhost:3000';
+  const wsPath = env.WS_URL || '/api/rtc/socket';
+  
+  // Log environment variables
+  logDebug('Environment variables for Socket.IO connection', {
+    SOCKET_URL: env.SOCKET_URL,
+    WS_URL: env.WS_URL,
+    WEBRTC_SERVER: env.WEBRTC_SERVER,
+    TURN_SERVER_URL: env.TURN_SERVER_URL,
+    STUN_SERVER_URL: env.STUN_SERVER_URL
+  } as LogData);
   
   // Remove trailing slash if present
   const baseUrl = socketUrl.endsWith('/') ? socketUrl.slice(0, -1) : socketUrl;
   
-  // Format: 'ws://localhost:3000/rtc/v1?streamId=abc&userId=123&username=user&token=xyz'
-  return `${baseUrl}/rtc/v1?streamId=${encodeURIComponent(streamId)}&userId=${encodeURIComponent(userId)}&username=${encodeURIComponent(username)}&token=${encodeURIComponent(token)}`;
+  logInfo('Constructed Socket.IO base URL', { baseUrl, wsPath } as LogData);
+  
+  return baseUrl;
 };
 
 export default function WebRTCStreamManager({
@@ -69,8 +185,19 @@ export default function WebRTCStreamManager({
   const { user } = useAuth();
   const { token } = getAuth();
 
+  // Generate anonymous user values if not authenticated
+  const anonymousId = useRef<string>(uuidv4()).current;
+  const effectiveUserId = userId || `anon-${anonymousId}`;
+  const effectiveUsername = username || `viewer-${anonymousId.slice(0, 8)}`;
+
   // Log received props immediately
-  console.log('[WebRTCStreamManager] Receiving props:', { streamId, userId, username, isStreamer });
+  console.log('[WebRTCStreamManager] Receiving props:', { 
+    streamId, 
+    userId: effectiveUserId, 
+    username: effectiveUsername, 
+    isStreamer,
+    isAnonymous: !userId
+  });
 
   const [connectionAttempts, setConnectionAttempts] = useState<number>(0);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
@@ -85,14 +212,14 @@ export default function WebRTCStreamManager({
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string | undefined>(undefined);
 
   // Refs to track connection state
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<Socket | null>(null);
   const isConnectingRef = useRef<boolean>(false);
   const deviceRef = useRef<mediasoupClient.Device | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const connectionAttemptsRef = useRef<number>(0);
-  const userIdRef = useRef<string>(userId);
-  const usernameRef = useRef<string>(username);
+  const userIdRef = useRef<string>(effectiveUserId);
+  const usernameRef = useRef<string>(effectiveUsername);
   const streamIdRef = useRef<string>(streamId);
   const isStreamerRef = useRef<boolean>(isStreamer);
   const tokenRef = useRef<string | null>(token);
@@ -126,11 +253,11 @@ export default function WebRTCStreamManager({
   // Update refs when props change
   useEffect(() => {
     streamIdRef.current = streamId;
-    userIdRef.current = userId;
-    usernameRef.current = username;
+    userIdRef.current = effectiveUserId;
+    usernameRef.current = effectiveUsername;
     isStreamerRef.current = isStreamer;
     connectionAttemptsRef.current = connectionAttempts;
-  }, [streamId, userId, username, isStreamer, connectionAttempts]);
+  }, [streamId, effectiveUserId, effectiveUsername, isStreamer, connectionAttempts]);
 
   // Update token ref when it changes
   useEffect(() => {
@@ -139,7 +266,7 @@ export default function WebRTCStreamManager({
 
   // Log props on initial mount
   useEffect(() => {
-    console.log('[WebRTCStreamManager] Mounted with props:', { streamId, userId, username, isStreamer });
+    console.log('[WebRTCStreamManager] Mounted with props:', { streamId, effectiveUserId, effectiveUsername, isStreamer });
     // Set initialMountRef to true immediately on first mount
     initialMountRef.current = true;
   }, []); // Empty dependency array ensures this runs only once on mount
@@ -402,261 +529,289 @@ export default function WebRTCStreamManager({
     }
   }, [streamId, producerTransport, consumerTransport]);
 
+  // Define the missing reconnectWithBackoff function
+  const reconnectWithBackoff = (attemptNumber: number) => {
+    logDebug(`Attempting reconnection (attempt ${attemptNumber}/${MAX_CONNECTION_ATTEMPTS})`);
+    
+    // Only try to reconnect if we're still mounted
+    if (initialMountRef.current) {
+      connectToSignalingServer();
+    } else {
+      logWarn('Reconnection cancelled - component unmounted');
+    }
+  };
+
   // Define connectToSignalingServer first, before it's used in any other function
-  const connectToSignalingServer = useCallback(() => {
-    // Don't connect if we're currently unmounting or if StrictMode is still initializing
-    // Allow connection if initialMountRef is true (meaning component is mounted)
-    if (!initialMountRef.current) {
-      console.log('[WebRTCStreamManager] Skipping connection attempt, component not fully mounted');
+  const connectToSignalingServer = useCallback(async () => {
+    // Skip if already connecting or the component is unmounting
+    if (isConnectingRef.current || !initialMountRef.current) {
+      logWarn('Connect attempt skipped: Already connecting or component unmounting', {
+        isConnecting: isConnectingRef.current,
+        isMounted: initialMountRef.current
+      } as LogData);
       return;
     }
-    
-    // Prevent multiple connection attempts running simultaneously
-    if (isConnectingRef.current || (wsRef.current && (wsRef.current.readyState === WebSocket.CONNECTING || wsRef.current.readyState === WebSocket.OPEN))) {
-      console.log('[WebRTCStreamManager] Connection already in progress or established, skipping');
+
+    if (!tokenRef.current) {
+      logError('Cannot connect: No authentication token available');
+      setError('Authentication token not available. Please login again.');
       return;
     }
-    
-    // Mark that we're starting a connection
+
+    // Reset connection state
     isConnectingRef.current = true;
     setConnectionStatus('connecting');
     
-    // Use socket URL environment variable
-    const socketUrl = env.SOCKET_URL;
-    console.log(`[WebRTCStreamManager] Using socket URL base: ${socketUrl}`);
+    // Close any existing connection
+    if (wsRef.current) {
+      logDebug('Closing existing Socket.IO connection', {
+        connected: wsRef.current.connected,
+        id: wsRef.current.id
+      } as LogData);
+      
+      try {
+        wsRef.current.disconnect();
+      } catch (err) {
+        logError('Error closing existing Socket.IO connection', formatUnknownError(err));
+      }
+      wsRef.current = null;
+    }
 
-    // Ensure socket URL uses correct protocol and remove any trailing slashes
-    const wsUrl = socketUrl.startsWith('ws')
-      ? socketUrl.replace(/\/$/, '')
-      : socketUrl.replace(/^http/, 'ws').replace(/\/$/, '');
-    console.log(`[WebRTCStreamManager] Normalized WebSocket URL: ${wsUrl}`);
-
-    // Add auth token to URL if available
-    const authParam = tokenRef.current ? `&token=${tokenRef.current}` : '';
-    console.log(`[WebRTCStreamManager] Auth token available: ${!!tokenRef.current}`);
-
-    // Use ref values to prevent callback recreation
-    const fullWsUrl = `${wsUrl}?streamId=${streamIdRef.current}&userId=${userIdRef.current}&username=${usernameRef.current}${authParam}`;
-    console.log(`[WebRTCStreamManager] Full WebSocket URL: ${fullWsUrl}`);
-
-    // Parse URL to determine secure vs insecure WebSocket
-    const socketUrlObj = new URL(socketUrl);
-    const useSecureWebSocket = socketUrlObj.protocol === 'https:' || socketUrlObj.protocol === 'wss:';
-    const wsProtocol = useSecureWebSocket ? 'wss:' : 'ws:';
+    // Construct WebSocket URL
+    const wsUrl = getSocketIOUrl(
+      streamIdRef.current,
+      userIdRef.current,
+      usernameRef.current
+    );
     
-    // Ensure URL is in the correct format
-    const finalWsUrl = fullWsUrl.startsWith('ws') 
-      ? fullWsUrl 
-      : `${wsProtocol}//${fullWsUrl.replace(/^https?:\/\//, '')}`;
+    // Get the WebSocket path from environment
+    const wsPath = env.WS_URL || '/api/rtc/socket';
     
-    console.log(`[WebRTCStreamManager] Final WebSocket URL (with protocol): ${finalWsUrl}`);
-
+    logInfo('Attempting to connect to Socket.IO server', { 
+      url: wsUrl,
+      path: wsPath,
+      query: {
+        streamId: streamIdRef.current,
+        userId: userIdRef.current,
+        username: usernameRef.current,
+        isStreamer: isStreamerRef.current
+      }
+    } as LogData);
+    
     try {
-      // Create WebSocket with the full URL
-      const ws = new WebSocket(finalWsUrl);
+      performance.mark('websocket-connect-start');
+      const ws = io(wsUrl, {
+        path: wsPath,
+        query: {
+          streamId: streamIdRef.current,
+          userId: userIdRef.current,
+          username: usernameRef.current,
+          token: tokenRef.current || '',
+          isStreamer: isStreamerRef.current ? '1' : '0'
+        },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: MAX_CONNECTION_ATTEMPTS,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        autoConnect: true
+      });
       wsRef.current = ws;
       
-      // Helper function to log WebSocket readyState
-      const logReadyState = () => {
-        let state = 'UNKNOWN';
-        switch (ws.readyState) {
-          case WebSocket.CONNECTING: state = 'CONNECTING'; break;
-          case WebSocket.OPEN: state = 'OPEN'; break;
-          case WebSocket.CLOSING: state = 'CLOSING'; break;
-          case WebSocket.CLOSED: state = 'CLOSED'; break;
+      // Log the constructor step
+      logTrace('Socket.IO connection initiated');
+      
+      // Connection timeout
+      const connectionTimeoutId = setTimeout(() => {
+        if (ws.connected !== true) {
+          logError('Socket.IO connection timed out after 10 seconds');
+          if (!ws.connected) {
+            ws.disconnect();
+          }
         }
-        return state;
-      };
+      }, 10000);
       
-      console.log(`[WebRTCStreamManager] WebSocket created with readyState: ${logReadyState()}`);
+      timeoutsRef.current.push(connectionTimeoutId);
       
-      // Define reconnection with backoff logic
-      const reconnectWithBackoff = (attempt: number) => {
-        // Increment connection attempts counter
-        setConnectionAttempts(prevAttempts => {
-          const newAttempts = prevAttempts + 1;
-          connectionAttemptsRef.current = newAttempts;
-          return newAttempts;
-        });
+      // Set up event tracking
+      ws.on('connect', () => {
+        performance.mark('websocket-connect-success');
+        performance.measure('websocket-connection-time', 
+                           'websocket-connect-start', 
+                           'websocket-connect-success');
+                           
+        logInfo('Socket.IO connection established successfully', {
+          connectionTime: performance.getEntriesByName('websocket-connection-time')[0]?.duration || 'unknown',
+          connected: ws.connected,
+          id: ws.id
+        } as LogData);
         
-        // Check if we've reached the max attempts
-        if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
-          console.log(`[WebRTCStreamManager] Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached, using HLS fallback`);
-          setError(`Could not connect after ${MAX_CONNECTION_ATTEMPTS} attempts. Using fallback streaming method.`);
-          
-          // Initialize HLS fallback after max reconnection attempts
-          initializeHlsFallback();
-          return;
-        }
-        
-        // Calculate delay for exponential backoff
-        const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
-        console.log(`[WebRTCStreamManager] Reconnecting in ${delay}ms (attempt ${attempt + 1})`);
-        
-        // Set a timeout to reconnect
-        const reconnectTimeout = setTimeout(() => {
-          console.log(`[WebRTCStreamManager] Executing reconnect after backoff`);
-          
-          // Reset connection flag
-          isConnectingRef.current = false;
-          
-          // Attempt to reconnect
-          connectToSignalingServer();
-        }, delay);
-        
-        // Store timeout for cleanup
-        timeoutsRef.current.push(reconnectTimeout);
-      };
-      
-      // Event handlers for the WebSocket
-      ws.onopen = () => {
-        console.log(`[WebRTCStreamManager] WebSocket connection opened successfully`);
-        setConnectionStatus('connected');
+        clearTimeout(connectionTimeoutId);
         isConnectingRef.current = false;
+        setConnectionStatus('connected');
         setConnectionAttempts(0);
         connectionAttemptsRef.current = 0;
         setError(null);
         
-        // Request router-capabilities on connection for MediaSoup
-        console.log(`[WebRTCStreamManager] Requesting router capabilities`);
-        try {
-          ws.send(JSON.stringify({
-            type: 'getRouterRtpCapabilities'
-          }));
-        } catch (err) {
-          console.error(`[WebRTCStreamManager] Error sending getRouterRtpCapabilities:`, err);
-        }
-      };
-      
-      ws.onmessage = async (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log(`[WebRTCStreamManager] Received message:`, message.type);
-          
-          // Handle message based on its type
-          await handleSignalingMessage(message);
-        } catch (err) {
-          console.error(`[WebRTCStreamManager] Error handling WebSocket message:`, err);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error(`[WebRTCStreamManager] WebSocket error:`, error);
-        setError('Connection error. Retrying...');
-      };
-      
-      ws.onclose = (event) => {
-        console.log(`[WebRTCStreamManager] WebSocket closed: code=${event.code}, reason=${event.reason || 'none'}`);
+        // Check for connection issues with a ping/pong mechanism
+        const pingInterval = setInterval(() => {
+          if (ws.connected) {
+            const pingTimestamp = Date.now();
+            performance.mark(`ping-sent-${pingTimestamp}`);
+            
+            logTrace('Sending ping to keep connection alive', { timestamp: pingTimestamp } as LogData);
+            try {
+              ws.emit('ping', { 
+                timestamp: pingTimestamp, 
+                streamId: streamIdRef.current
+              });
+            } catch (err) {
+              logError('Error sending ping', formatUnknownError(err));
+            }
+          } else {
+            logWarn('Cannot send ping, Socket.IO not connected', {
+              connected: ws.connected,
+              id: ws.id
+            } as LogData);
+            clearInterval(pingInterval);
+          }
+        }, 30000); // Send ping every 30 seconds
         
-        // Update connection status
-        setConnectionStatus('disconnected');
+        // Store the interval ID to clear it on cleanup
+        timeoutsRef.current.push(pingInterval);
+        
+        // Request router capabilities
+        if (ws.connected) {
+          logInfo('Requesting router capabilities');
+          try {
+            ws.emit('getRouterRtpCapabilities', {
+              streamId: streamIdRef.current
+            });
+          } catch (err) {
+            logError('Error requesting router capabilities', formatUnknownError(err));
+          }
+        }
+      });
+      
+      ws.on('disconnect', (reason) => {
+        performance.mark('websocket-connection-closed');
+        
+        logWarn('Socket.IO connection closed', { 
+          reason: reason || 'No reason provided',
+          timestamp: new Date().toISOString()
+        } as LogData);
+        
+        clearTimeout(connectionTimeoutId);
         isConnectingRef.current = false;
+        wsRef.current = null;
+        setConnectionStatus('disconnected');
         
-        // Clean up any transport
-        if (producerTransport) {
-          try {
-            producerTransport.close();
-            setProducerTransport(null);
-          } catch (err) {
-            console.error(`[WebRTCStreamManager] Error closing producer transport:`, err);
+        // Attempt to reconnect unless we're at max attempts or unmounting
+        if (initialMountRef.current && connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
+          const nextAttempt = connectionAttemptsRef.current + 1;
+          logInfo('Scheduling reconnection attempt', { 
+            attempt: nextAttempt, 
+            maxAttempts: MAX_CONNECTION_ATTEMPTS,
+            delay: RETRY_DELAYS[Math.min(nextAttempt - 1, RETRY_DELAYS.length - 1)]
+          } as LogData);
+          
+          connectionAttemptsRef.current = nextAttempt;
+          
+          const timeout = setTimeout(() => {
+            setConnectionAttempts(nextAttempt);
+            connectToSignalingServer(); // Recursively call this function for retry
+          }, RETRY_DELAYS[Math.min(nextAttempt - 1, RETRY_DELAYS.length - 1)]);
+          
+          timeoutsRef.current.push(timeout);
+        } else if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
+          logError('Maximum reconnection attempts reached', { attempts: connectionAttemptsRef.current } as LogData);
+          setError('Failed to connect after multiple attempts. Please refresh the page or try again later.');
+          
+          // Attempt to use HLS fallback
+          if (typeof initializeHlsFallback === 'function') {
+            logInfo('Attempting to switch to HLS fallback after max reconnect attempts');
+            initializeHlsFallback();
           }
         }
+      });
+      
+      ws.on('error', (error) => {
+        performance.mark('websocket-connection-error');
+        logError('Socket.IO connection error', { 
+          error,
+          connected: ws.connected,
+          timestamp: new Date().toISOString()
+        } as LogData);
         
-        if (consumerTransport) {
-          try {
-            consumerTransport.close();
-            setConsumerTransport(null);
-          } catch (err) {
-            console.error(`[WebRTCStreamManager] Error closing consumer transport:`, err);
-          }
+        setError('Connection error occurred. Please check your network connection.');
+      });
+      
+      // Set up event handlers for Socket.IO messages
+      ws.on('routerCapabilities', (data) => {
+        console.log('[WebRTCStreamManager] Router capabilities received:', data);
+        setRouterCapabilities(data);
+      });
+
+      ws.on('transportCreated', (data) => {
+        console.log('[WebRTCStreamManager] Transport created message received:', data?.id);
+        if (isStreamerRef.current) {
+          setupProducerTransport(data);
+        } else {
+          // Make sure to set up consumer transport for viewers
+          console.log('[WebRTCStreamManager] Setting up consumer transport for viewer');
+          setupConsumerTransport(data);
         }
+      });
+
+      ws.on('consumed', (message) => {
+        console.log('[WebRTCStreamManager] Received consumed event:', message);
         
-        // Don't attempt to reconnect if the component is unmounting
-        if (!initialMountRef.current || ws !== wsRef.current) {
-          console.log(`[WebRTCStreamManager] Not reconnecting because component is unmounting or WebSocket has changed`);
+        if (!message.consumerId || !message.producerId || !message.kind || !message.rtpParameters) {
+          console.error('[WebRTCStreamManager] Received consumed message with missing required parameters');
           return;
         }
         
-        // Reconnect with backoff if not closing intentionally
-        if (event.code !== 1000) {
-          const currentAttempt = connectionAttemptsRef.current;
-          reconnectWithBackoff(currentAttempt);
+        // Try to handle the consume message
+        handleConsume(message).catch(error => {
+          console.error('[WebRTCStreamManager] Error in handleConsume:', error);
+          
+          // Schedule a retry if appropriate
+          const { consumerId } = message;
+          const retryCount = retryConsumeAttempts.current[consumerId] || 0;
+          if (retryCount < 5) {
+            retryConsumeAttempts.current[consumerId] = retryCount + 1;
+            console.log(`[WebRTCStreamManager] Scheduling retry for consume (attempt ${retryCount + 1}/5)`);
+            setTimeout(() => {
+              handleConsume(message);
+            }, 1000 * (retryCount + 1));
+          } else {
+            console.error(`[WebRTCStreamManager] Max retry attempts reached for consumer ${consumerId}`);
+            setError('Failed to establish media stream after multiple attempts');
+          }
+        });
+      });
+      
+      ws.on('connectionStats', (stats) => {
+        console.log('[WebRTCStreamManager] Connection stats received:', stats);
+        if (stats && typeof stats.participants === 'number') {
+          setParticipants(stats.participants);
         }
-      };
-      
-      console.log(`[WebRTCStreamManager] WebSocket connection attempt initiated`);
-      
-      // Set a connection timeout
-      const connectionTimeout = setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          console.log(`[WebRTCStreamManager] Connection timed out`);
-          ws.close();
-        }
-      }, 10000); // 10 second timeout
-      
-      timeoutsRef.current.push(connectionTimeout);
+      });
       
       return ws;
-    } catch (err) {
-      console.error(`[WebRTCStreamManager] Error creating WebSocket:`, err);
-      setError(`Failed to create WebSocket connection: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } catch (error: unknown) {
+      performance.mark('websocket-connection-failed');
+      logError('Error creating Socket.IO connection', formatUnknownError(error));
+      
       isConnectingRef.current = false;
+      wsRef.current = null;
+      setConnectionStatus('disconnected');
       
-      // Try to reconnect on error
-      const currentAttempt = connectionAttemptsRef.current;
-      const reconnectTimeout = setTimeout(() => {
-        const reconnectWithBackoff = (attempt: number) => {
-          // Implementation re-defined to prevent reference error
-          // Increment connection attempts counter
-          setConnectionAttempts(prevAttempts => {
-            const newAttempts = prevAttempts + 1;
-            connectionAttemptsRef.current = newAttempts;
-            return newAttempts;
-          });
-          
-          // Check if we've reached the max attempts
-          if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
-            console.log(`[WebRTCStreamManager] Max connection attempts (${MAX_CONNECTION_ATTEMPTS}) reached, using HLS fallback`);
-            setError(`Could not connect after ${MAX_CONNECTION_ATTEMPTS} attempts. Using fallback streaming method.`);
-            
-            // Initialize HLS fallback after max reconnection attempts
-            initializeHlsFallback();
-            return;
-          }
-          
-          // Calculate delay for exponential backoff
-          const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
-          console.log(`[WebRTCStreamManager] Reconnecting in ${delay}ms (attempt ${attempt + 1})`);
-          
-          // Set a timeout to reconnect
-          const reconnectTimeout = setTimeout(() => {
-            console.log(`[WebRTCStreamManager] Executing reconnect after backoff`);
-            
-            // Reset connection flag
-            isConnectingRef.current = false;
-            
-            // Attempt to reconnect
-            connectToSignalingServer();
-          }, delay);
-          
-          // Store timeout for cleanup
-          timeoutsRef.current.push(reconnectTimeout);
-        };
-        
-        reconnectWithBackoff(currentAttempt);
-      }, 1000);
-      
-      timeoutsRef.current.push(reconnectTimeout);
-      
-      return null;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown connection error';
+      setError(`Failed to establish connection: ${errorMessage}`);
     }
-  }, [
-    producerTransport,
-    consumerTransport,
-    MAX_CONNECTION_ATTEMPTS,
-    handleSignalingMessage,
-    initializeHlsFallback
-  ]);
+  }, [handleSignalingMessage, initializeHlsFallback, MAX_CONNECTION_ATTEMPTS, RETRY_DELAYS]);
 
   // Define startProducingWithSelectedDevices before it's used in setupProducerTransport
   const startProducingWithSelectedDevices = useCallback(async () => {
@@ -749,12 +904,11 @@ export default function WebRTCStreamManager({
 
       transport.on('connect', ({ dtlsParameters }, callback, errback) => {
         try {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              type: 'connectProducerTransport',
+          if (wsRef.current && wsRef.current.connected === true) {
+            wsRef.current.emit('connectProducerTransport', {
               transportId: transport.id,
               dtlsParameters
-            }));
+            });
           }
           callback();
         } catch (error) {
@@ -764,9 +918,8 @@ export default function WebRTCStreamManager({
 
       transport.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => {
         try {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              type: 'produce',
+          if (wsRef.current && wsRef.current.connected === true) {
+            wsRef.current.emit('produce', {
               transportId: transport.id,
               kind,
               rtpParameters,
@@ -775,7 +928,7 @@ export default function WebRTCStreamManager({
                 streamId: streamIdRef.current,
                 userId: userIdRef.current
               }
-            }));
+            });
 
             // Normally would wait for response with producerId, for demo just use a random ID
             const producerId = `producer-${Date.now()}`;
@@ -819,12 +972,11 @@ export default function WebRTCStreamManager({
 
       transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
         try {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              type: 'connectConsumerTransport',
+          if (wsRef.current && wsRef.current.connected === true) {
+            wsRef.current.emit('connectConsumerTransport', {
               transportId: transport.id,
               dtlsParameters
-            }));
+            });
           }
           callback();
         } catch (error) {
@@ -837,17 +989,16 @@ export default function WebRTCStreamManager({
         
         if (state === 'connected' && 
             wsRef.current && 
-            wsRef.current.readyState === WebSocket.OPEN && 
+            wsRef.current.connected === true && 
             deviceRef.current) {
           
           // Send consume request now that transport is connected
           try {
-            wsRef.current.send(JSON.stringify({
-              type: 'consume',
+            wsRef.current.emit('consume', {
               streamId: streamIdRef.current,
               transportId: transport.id,
               rtpCapabilities: deviceRef.current.rtpCapabilities
-            }));
+            });
           } catch (sendError) {
             console.error(`[WebRTCStreamManager] Error sending consume request:`, sendError);
           }
@@ -913,7 +1064,113 @@ export default function WebRTCStreamManager({
     }
   }, [hideVideo]);
 
+  // Add enhanced logging to cleanup
+  useEffect(() => {
+    return () => {
+      logInfo('Component unmounting - cleaning up resources');
+      
+      // Clean up existing timeouts
+      timeoutsRef.current.forEach(timeout => {
+        clearTimeout(timeout);
+      });
+      
+      // Close WebSocket connection
+      if (wsRef.current) {
+        logDebug('Closing Socket.IO connection on unmount', { 
+          connected: wsRef.current.connected,
+          id: wsRef.current.id
+        } as LogData);
+        
+        try {
+          wsRef.current.disconnect();
+        } catch (err) {
+          logError('Error closing WebSocket on unmount', formatUnknownError(err));
+        }
+        wsRef.current = null;
+      }
+      
+      // Clean up media streams
+      if (localStreamRef.current) {
+        logDebug('Stopping local media tracks');
+        localStreamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        localStreamRef.current = null;
+      }
+      
+      // Close producers and consumers
+      if (videoProducer) {
+        try {
+          videoProducer.close();
+        } catch (e) {
+          logError('Error closing video producer', formatUnknownError(e));
+        }
+      }
+      
+      if (audioProducer) {
+        try {
+          audioProducer.close();
+        } catch (e) {
+          logError('Error closing audio producer', formatUnknownError(e));
+        }
+      }
+      
+      // Close transports
+      if (producerTransport) {
+        try {
+          producerTransport.close();
+        } catch (e) {
+          logError('Error closing producer transport', formatUnknownError(e));
+        }
+      }
+      
+      if (consumerTransport) {
+        try {
+          consumerTransport.close();
+        } catch (e) {
+          logError('Error closing consumer transport', formatUnknownError(e));
+        }
+      }
+      
+      initialMountRef.current = false;
+    };
+  }, [audioProducer, videoProducer, producerTransport, consumerTransport]);
+
   // ... rest of the component
+
+  useEffect(() => {
+    // Check if environment variables are correctly set
+    const envWarnings = [];
+    if (!env.SOCKET_URL) envWarnings.push('SOCKET_URL is not set');
+    if (!env.WS_URL) envWarnings.push('WS_URL is not set');
+    if (!env.WEBRTC_SERVER) envWarnings.push('WEBRTC_SERVER is not set');
+    if (!env.TURN_SERVER_URL) envWarnings.push('TURN_SERVER_URL is not set');
+    
+    // Force use of the correct Socket.IO path from .env.local
+    const correctWsPath = '/api/rtc/socket';
+    const currentWsPath = env.WS_URL;
+    
+    if (currentWsPath !== correctWsPath) {
+      console.warn(`[WebRTCStreamManager] WS_URL mismatch. Current: ${currentWsPath}, Expected: ${correctWsPath}`);
+      console.warn('This will be overridden to use the correct path, but please update your .env file');
+      // Override env variable in-memory for this component
+      env.WS_URL = correctWsPath;
+    }
+    
+    if (envWarnings.length > 0) {
+      console.warn('[WebRTCStreamManager] Environment configuration issues:', envWarnings.join(', '));
+    } else {
+      console.log('[WebRTCStreamManager] Environment configuration valid');
+    }
+    
+    console.log('[WebRTCStreamManager] Using environment:', {
+      SOCKET_URL: env.SOCKET_URL,
+      WS_URL: env.WS_URL,
+      WEBRTC_SERVER: env.WEBRTC_SERVER,
+      TURN_SERVER_URL: env.TURN_SERVER_URL,
+      STUN_SERVER_URL: env.STUN_SERVER_URL
+    });
+  }, []);
 
   return (
     <div className="relative w-full aspect-video bg-gray-900 rounded-lg overflow-hidden">

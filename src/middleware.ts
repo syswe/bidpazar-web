@@ -22,7 +22,10 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/products') ||  // Allow product pages for everyone
     path.startsWith('/api/products') ||  // Allow product API routes for everyone
     path.startsWith('/streams') ||  // Allow stream viewing for everyone
-    path.startsWith('/api/auth/'); // Allow all auth API routes
+    path.startsWith('/api/auth/') || // Allow all auth API routes
+    path.startsWith('/live-streams') || // Allow live stream viewing for everyone
+    path.startsWith('/api/live-streams') || // Allow live stream API routes for everyone
+    path.startsWith('/api/rtc/'); // Allow all RTC API routes for everyone
 
   console.log(`[Middleware] Is public path: ${isPublicPath}`);
 

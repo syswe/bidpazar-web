@@ -11,13 +11,18 @@ const signalingData = new Map<string, {
 export async function POST(request: Request) {
   try {
     const token = request.headers.get('Authorization')?.split(' ')[1];
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    let userId = 'anonymous';
+    
+    // Verify token if present, but don't require it
+    if (token) {
+      try {
+        const user = await verifyToken(token);
+        if (user) {
+          userId = user.userId;
+        }
+      } catch (error) {
+        console.warn('Token verification failed, continuing as anonymous user');
+      }
     }
 
     const body = await request.json();

@@ -51,6 +51,7 @@
     "sonner": "^2.0.1",
     "tailwind-merge": "^3.0.2",
     "uuid": "^11.1.0",
+    "ws": "^8.18.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -72,6 +73,7 @@
     "@types/react-dom": "^19",
     "@types/supertest": "^6.0.3",
     "@types/testing-library__react": "^10.0.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
     "autoprefixer": "^10.4.18",
