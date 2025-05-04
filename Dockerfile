@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22 AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -7,16 +7,22 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN apk add --no-cache python3 py3-pip build-base cmake linux-headers \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && npm ci
+# Install OS dependencies needed for building native modules
+# Use apt-get for Debian-based image
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js dependencies
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
 
 # Build the Next.js application - skip ESLint checks
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -46,8 +52,9 @@ RUN echo '// Placeholder - will be replaced at runtime' > ./public/env.js
 COPY docker-entrypoint.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-# Install dependencies
-RUN apk add --no-cache gettext
+# Install dependencies - gettext is needed for envsubst in start.sh
+RUN apt-get update && apt-get install -y --no-install-recommends gettext \
+    && rm -rf /var/lib/apt/lists/*
 
 # Expose the port the app runs on
 EXPOSE 3000

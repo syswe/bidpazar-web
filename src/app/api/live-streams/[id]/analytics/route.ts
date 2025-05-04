@@ -61,18 +61,24 @@ export async function GET(
     const totalViewers = stream.viewers.length;
     const totalMessages = stream.chatMessages.length;
     const totalListings = stream.listings.length;
+    
+    type Listing = {
+      bids: { id: string; amount: number }[];
+      winningBidId: string | null;
+    };
+    
     const totalBids = stream.listings.reduce(
-      (acc, listing) => acc + listing.bids.length,
+      (acc: number, listing: Listing) => acc + listing.bids.length,
       0
     );
-    const totalRevenue = stream.listings.reduce((acc, listing) => {
+    const totalRevenue = stream.listings.reduce((acc: number, listing: Listing) => {
       const winningBid = listing.bids.find((bid) => bid.id === listing.winningBidId);
       return acc + (winningBid?.amount || 0);
     }, 0);
 
     // Calculate average watch time
     const totalWatchTime = stream.viewTimes.reduce(
-      (acc, viewTime) => acc + viewTime.durationInSeconds,
+      (acc: number, viewTime: { durationInSeconds: number }) => acc + viewTime.durationInSeconds,
       0
     );
     const averageWatchTime = totalViewers > 0 ? totalWatchTime / totalViewers : 0;
@@ -87,7 +93,7 @@ export async function GET(
 
     // Get peak viewers
     const peakViewers = Math.max(
-      ...stream.analytics.map((point) => point.viewerCount),
+      ...stream.analytics.map((point: { viewerCount: number }) => point.viewerCount),
       totalViewers
     );
 
