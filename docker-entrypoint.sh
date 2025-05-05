@@ -90,15 +90,27 @@ NEXT_PUBLIC_STUN_SERVER_URL=$NEXT_PUBLIC_STUN_SERVER_URL
 NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 EOF
 
-# Start Next.js with environment variables explicitly passed
-exec env \
-  NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
-  NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
-  NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
-  NEXT_PUBLIC_WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER" \
-  NEXT_PUBLIC_TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL" \
-  NEXT_PUBLIC_TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME" \
-  NEXT_PUBLIC_TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD" \
-  NEXT_PUBLIC_STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL" \
-  NEXT_PUBLIC_WS_URL="$NEXT_PUBLIC_WS_URL" \
-  node server.js 
+# Check if server.js exists
+if [ -f "./server.js" ]; then
+  # Start Next.js with environment variables explicitly passed
+  exec env \
+    NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+    NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
+    NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+    NEXT_PUBLIC_WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER" \
+    NEXT_PUBLIC_TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL" \
+    NEXT_PUBLIC_TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME" \
+    NEXT_PUBLIC_TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD" \
+    NEXT_PUBLIC_STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL" \
+    NEXT_PUBLIC_WS_URL="$NEXT_PUBLIC_WS_URL" \
+    node server.js
+else
+  echo "ERROR: server.js not found. Check the Next.js build configuration."
+  echo "Files in current directory:"
+  ls -la
+  echo "Files in .next directory (if it exists):"
+  if [ -d ".next" ]; then
+    ls -la .next
+  fi
+  exit 1
+fi 
