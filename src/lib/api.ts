@@ -14,63 +14,37 @@ declare global {
   }
 }
 
-// Log API URL for clarity
-console.log("--- Environment Variables ---");
-console.log(`env.API_URL: ${env.API_URL}`);
-console.log(`env.SOCKET_URL: ${env.SOCKET_URL}`);
-console.log("-----------------------------");
+// Log API URL for clarity - Keep minimal logging
+// console.log("--- Environment Variables ---");
+// console.log(`env.API_URL: ${env.API_URL}`);
+// console.log(`env.SOCKET_URL: ${env.SOCKET_URL}`);
+// console.log("-----------------------------");
 
-// URL constants - clearly named for their intended use
-export const apiBaseUrl = env.API_URL;         // For Next.js API routes
+// Simplify to always use relative URLs for API endpoints
+export const apiBaseUrl = '/api'; // Use relative path for Next.js API routes
 
 // Log API URL configuration for debugging purposes
-console.log("API configuration:");
-console.log(`NEXT_PUBLIC_API_URL env: ${process.env.NEXT_PUBLIC_API_URL}`);
-console.log(`window.__ENV__?.NEXT_PUBLIC_API_URL: ${typeof window !== 'undefined' ? window.__ENV__?.NEXT_PUBLIC_API_URL : 'N/A (server)'}`);
-console.log(`Using API_URL: ${apiBaseUrl}`);
-console.log(`Environment mode: ${process.env.NODE_ENV}`);
+// console.log("API configuration:");
+// console.log(`NEXT_PUBLIC_API_URL env: ${process.env.NEXT_PUBLIC_API_URL}`);
+// console.log(`window.__ENV__?.NEXT_PUBLIC_API_URL: ${typeof window !== 'undefined' ? window.__ENV__?.NEXT_PUBLIC_API_URL : 'N/A (server)'}`);
+// console.log(`Using API_URL: ${apiBaseUrl}`);
+// console.log(`Environment mode: ${process.env.NODE_ENV}`);
 
-// Helper function to ensure proper URL construction for Next.js API routes
+// Simplify URL construction - no need for complex logic with full-stack app
 const constructApiUrl = (endpoint: string): string => {
-  // Remove any leading slashes from the endpoint
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
-
-  // Get the base URL without the trailing slash
-  const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
-  
-  // If endpoint already starts with 'api/', we need to prevent duplication
-  let finalUrl = '';
-  if (cleanEndpoint.startsWith('api/')) {
-    // Extract the part after 'api/'
-    const endpointWithoutApi = cleanEndpoint.substring(4);
-    
-    // Check if baseUrl already ends with '/api'
-    if (baseUrl.endsWith('/api')) {
-      finalUrl = `${baseUrl}/${endpointWithoutApi}`; 
-    } else {
-      finalUrl = `${baseUrl}/api/${endpointWithoutApi}`;
-    }
-  } else {
-    // Normal case - endpoint doesn't include 'api/'
-    // Check if baseUrl already includes '/api'
-    if (baseUrl.endsWith('/api')) {
-      finalUrl = `${baseUrl}/${cleanEndpoint}`;
-    } else {
-      finalUrl = `${baseUrl}/api/${cleanEndpoint}`;
-    }
+  // If endpoint already starts with apiBaseUrl or is a full URL, return as is
+  if (endpoint.startsWith(apiBaseUrl) || endpoint.startsWith('http')) {
+    return endpoint;
   }
   
-  // Log for debugging
-  console.debug(`[API] Constructed URL: ${finalUrl} from endpoint: ${endpoint}`);
-  
-  return finalUrl;
+  // Remove any leading slashes from the endpoint
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
+  // Simply join the base path and the cleaned endpoint
+  return `${apiBaseUrl}/${cleanEndpoint}`;
 };
 
-// Test URL construction
-const testUrl = constructApiUrl('products');
-console.log(`Test URL construction for 'products': ${testUrl}`);
-const testUrl2 = constructApiUrl('api/products');
-console.log(`Test URL construction for 'api/products': ${testUrl2}`);
+// Log for debugging
+// console.debug(`[API] Test Constructed URL: ${constructApiUrl('products')}`);
 
 // Tip tanımlamaları
 export interface Category {
@@ -226,7 +200,6 @@ export const fetcher = async <T>(
     defaultValue?: T;
     autoRefreshToken?: boolean;
   } = {},
-  overrideUrl: boolean | string = false
 ): Promise<T> => {
   const {
     method = "GET",
@@ -239,26 +212,8 @@ export const fetcher = async <T>(
   } = options;
 
   try {
-    // Determine the full URL
-    let fullUrl: string;
-    if (overrideUrl && typeof overrideUrl === "string") {
-      fullUrl = overrideUrl;
-    } else if (url.startsWith("http")) {
-      fullUrl = url; // Absolute URL
-    } else {
-      // Assume relative URL is for Next.js API
-      fullUrl = constructApiUrl(url);
-    }
-
-    // Get token if authentication is required
-    let token = null;
-    if (requireAuth) {
-      token = getToken();
-      if (!token) {
-        console.error("Authentication required but no token available");
-        throw new Error("Authentication required. Please log in.");
-      }
-    }
+    // Determine the full URL - simplified
+    const fullUrl = url.startsWith("http") ? url : constructApiUrl(url);
 
     // Prepare headers
     const headers: Record<string, string> = {
@@ -266,8 +221,13 @@ export const fetcher = async <T>(
       ...additionalHeaders,
     };
 
-    // Add auth token if available
-    if (token) {
+    // Add auth token if needed
+    if (requireAuth) {
+      const token = getToken(); // Assuming getToken() is still available from frontend-auth
+      if (!token) {
+        console.error("Authentication required but no token available for URL:", fullUrl);
+        throw new Error("Authentication required. Please log in.");
+      }
       headers["Authorization"] = `Bearer ${token}`;
     }
 
@@ -302,7 +262,9 @@ export const fetcher = async <T>(
 
     // Parse response
     let data: any;
-    if (isJson) {
+    if (response.status === 204) { // Handle No Content
+        data = null;
+    } else if (isJson) {
       data = await response.json();
     } else {
       data = await response.text();
@@ -335,7 +297,7 @@ export const fetcher = async <T>(
           return fetcher<T>(url, {
             ...options,
             autoRefreshToken: false, // Prevent infinite refresh loops
-          }, overrideUrl);
+          });
         } else {
           console.error("Token refresh failed");
           throw new Error("Authentication failed. Please log in again.");
@@ -412,7 +374,7 @@ export const getProducts = async (): Promise<Product[]> => {
   return fetcher<Product[]>('products', {
     returnEmptyOnError: true,
     defaultValue: []
-  }, `${apiBaseUrl}/products`); // Pass explicit URL to avoid path construction issues
+  });
 };
 
 export const getProductById = async (id: string): Promise<Product> => {
@@ -735,20 +697,10 @@ export const startLiveStream = async (
   id: string,
   token: string
 ): Promise<LiveStream> => {
-  const response = await fetch(`${apiBaseUrl}/live-streams/${id}/start`, {
+  return fetcher<LiveStream>(`live-streams/${id}/start`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    requireAuth: true,
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Failed to start live stream");
-  }
-
-  return response.json();
 };
 
 export const endLiveStream = async (
@@ -761,12 +713,9 @@ export const endLiveStream = async (
     }
 
     // Always try to update stream status in the API server
-    return fetcher<LiveStream>(`${apiBaseUrl}/live-streams/${id}/end`, {
+    return fetcher<LiveStream>(`live-streams/${id}/end`, {
       method: "POST",
-      headers: { // fetcher adds Authorization header automatically
-        "Content-Type": "application/json",
-      },
-      requireAuth: true // Ensure token is included by fetcher
+      requireAuth: true,
     });
   } catch (error) {
     console.error("Error ending stream:", error);
@@ -778,8 +727,8 @@ export const deleteLiveStream = async (id: string): Promise<void> => {
   try {
     console.log(`Attempting to delete stream with ID: ${id}`);
 
-    // Use the fetcher helper with the apiBaseUrl
-    await fetcher<void>(`${apiBaseUrl}/live-streams/${id}`, {
+    // Use the fetcher helper with relative path
+    await fetcher<void>(`live-streams/${id}`, {
       method: "DELETE",
       requireAuth: true // fetcher handles the token
     });
@@ -802,13 +751,9 @@ export const addListingToLiveStream = async (
   token: string
 ): Promise<AuctionListing> => {
   return fetcher<AuctionListing>(
-    `${apiBaseUrl}/live-streams/${liveStreamId}/listings`,
+    `live-streams/${liveStreamId}/listings`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Authorization is handled by fetcher
-      },
       body: data,
       requireAuth: true // Ensure token is added by fetcher
     }
@@ -822,7 +767,7 @@ export const getStreamVideo = async (streamId: string): Promise<{
   wsEndpoint: string;
 }> => {
   return fetcher<{ message: string; streamId: string; status: string; wsEndpoint: string; }>(
-    `${apiBaseUrl}/stream/${streamId}/video`,
+    `stream/${streamId}/video`, // Use relative path
     {
       method: 'GET',
       requireAuth: true
@@ -978,7 +923,10 @@ export const markNotificationsAsRead = async (): Promise<{ success: boolean }> =
 
 // Health API functions
 export const healthCheck = async (): Promise<{ status: string }> => {
-  return fetcher<{ status: string }>('health', {}, true);
+  return fetcher<{ status: string }>('health', {
+    returnEmptyOnError: true,
+    defaultValue: { status: 'error' }
+  });
 };
 
 export const detailedHealthCheck = async (): Promise<{
@@ -1006,7 +954,7 @@ export const socketHealthCheck = async (): Promise<{
 
 // Diagnostics API functions
 export const diagnosticsHealth = async (): Promise<{ status: string; timestamp: string }> => {
-  return fetcher<{ status: string; timestamp: string }>('/diagnostics/health');
+  return fetcher<{ status: string; timestamp: string }>('diagnostics/health'); // Use relative path
 };
 
 export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
@@ -1015,9 +963,9 @@ export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  
-  const url = constructApiUrl(`/diagnostics/test-bandwidth?size=${sizeKB}`);
-  
+
+  const url = constructApiUrl(`diagnostics/test-bandwidth?size=${sizeKB}`);
+
   const response = await fetch(url, {
     headers,
   });
@@ -1046,7 +994,7 @@ export const getConnectionStats = async (): Promise<{
       uptime: number;
     };
     timestamp: string;
-  }>('/diagnostics/connection-stats');
+  }>('diagnostics/connection-stats'); // Use relative path
 };
 
 export const getRateLimitStatus = async (): Promise<{
@@ -1064,7 +1012,7 @@ export const getRateLimitStatus = async (): Promise<{
     maxConnections: number;
     ipAddress: string;
     timestamp: string;
-  }>('/diagnostics/rate-limit-status');
+  }>('diagnostics/rate-limit-status'); // Use relative path
 };
 
 // Additional Auth API functions
@@ -1072,7 +1020,7 @@ export const requestVerificationCode = async (
   email: string
 ): Promise<{ message: string; userId: string; phoneNumber?: string }> => {
   return fetcher<{ message: string; userId: string; phoneNumber?: string }>(
-    '/auth/request-verification',
+    'auth/request-verification', // Use relative path
     {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -1082,7 +1030,8 @@ export const requestVerificationCode = async (
 
 // Additional Product API functions
 export const deleteProductMedia = async (mediaId: string): Promise<void> => {
-  return fetcher<void>(`/api/products/media/${mediaId}`, {
+  // Ensure relative path is correct
+  return fetcher<void>(`products/media/${mediaId}`, {
     method: 'DELETE',
   });
 };

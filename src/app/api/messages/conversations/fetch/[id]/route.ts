@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
-import { env } from "@/lib/env"; // Import env config
+import { verifyToken } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: NextRequest,
@@ -18,68 +19,108 @@ export async function GET(
       return NextResponse.json({ error: 'Conversation ID is required' }, { status: 400 });
     }
 
-    // Get token from request headers using backend-auth helper
-    const token = getTokenFromRequest(request);
+    // Extract token from authorization header
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      console.error(`[API][${urlPath}] Unauthorized (401): No authorization header`);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const parts = authorization.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid authorization format`);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const token = parts[1];
     console.log(`[API][${urlPath}] Token found: ${!!token}`);
-    if (!token) {
-      console.error(`[API][${urlPath}] Unauthorized (401): No token found.`);
+    
+    // Verify token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid token`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Construct URLs for backend requests
-    const baseUrl = env.BACKEND_API_URL;
-    console.log(`[API][${urlPath}] Backend base URL: ${baseUrl}`);
-    const messagesBackendPath = `/api/messages/conversations/${conversationId}/messages`;
-    const detailsBackendPath = `/api/messages/conversations/details/${conversationId}`;
-    const messagesUrl = `${baseUrl}${messagesBackendPath}`;
-    const detailsUrl = `${baseUrl}${detailsBackendPath}`;
+    // Verify user is participant in the conversation
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        participants: {
+          some: {
+            id: payload.userId
+          }
+        }
+      }
+    });
+
+    if (!conversation) {
+      console.error(`[API][${urlPath}] Forbidden (403): User not participant in conversation`);
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
     
     // Fetch Messages
-    console.log(`[API][${urlPath}] Fetching messages from backend: ${messagesUrl}`);
-    const messagesResponse = await fetch(messagesUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    console.log(`[API][${urlPath}] Fetching messages for conversation: ${conversationId}`);
+    const messages = await prisma.message.findMany({
+      where: {
+        conversationId
       },
-      cache: 'no-store', // Ensure fresh messages
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            name: true
+          }
+        }
+      }
     });
-    console.log(`[API][${urlPath}] Backend messages response status: ${messagesResponse.status}`);
-
-    if (!messagesResponse.ok) {
-      const errorText = await messagesResponse.text();
-      console.error(`[API][${urlPath}] Backend messages fetch failed (${messagesResponse.status}):`, errorText);
-      // Return error based on message fetch failure
-      return NextResponse.json({ error: `Backend API error fetching messages: ${messagesResponse.status}` }, { status: messagesResponse.status });
-    }
-
-    const messages = await messagesResponse.json();
-    console.log(`[API][${urlPath}] Successfully fetched ${messages?.length ?? 0} messages.`);
+    console.log(`[API][${urlPath}] Fetched ${messages.length} messages`);
 
     // Fetch Conversation Details (Participants)
-    console.log(`[API][${urlPath}] Fetching conversation details from backend: ${detailsUrl}`);
-    const detailsResponse = await fetch(detailsUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    console.log(`[API][${urlPath}] Fetching conversation details`);
+    const details = await prisma.conversation.findUnique({
+      where: {
+        id: conversationId
       },
-      cache: 'no-store', // Ensure fresh details
+      include: {
+        participants: {
+          select: {
+            id: true,
+            username: true,
+            name: true
+          }
+        }
+      }
     });
-    console.log(`[API][${urlPath}] Backend details response status: ${detailsResponse.status}`);
 
     let participants = [];
-    if (detailsResponse.ok) {
-      const details = await detailsResponse.json();
-      participants = details.participants || [];
+    if (details && details.participants) {
+      participants = details.participants;
       console.log(`[API][${urlPath}] Successfully fetched ${participants.length} participants.`);
     } else {
-      const errorText = await detailsResponse.text();
-      console.error(`[API][${urlPath}] Backend details fetch failed (${detailsResponse.status}): ${errorText}. Proceeding without participants.`);
-      // Decide if failure to get participants is critical. Here we proceed without them.
+      console.error(`[API][${urlPath}] Could not fetch participants. Proceeding without them.`);
     }
+
+    // Mark messages as read if they're not from the current user
+    await prisma.message.updateMany({
+      where: {
+        conversationId,
+        receiverId: payload.userId,
+        isRead: false
+      },
+      data: {
+        isRead: true
+      }
+    });
+    console.log(`[API][${urlPath}] Marked user's unread messages as read`);
 
     // Combine the data and return
     const responsePayload = { id: conversationId, messages, participants };
-    console.log(`[API][${urlPath}] Returning combined data (messages: ${messages?.length ?? 0}, participants: ${participants.length})`);
+    console.log(`[API][${urlPath}] Returning combined data (messages: ${messages.length}, participants: ${participants.length})`);
     return NextResponse.json(responsePayload);
 
   } catch (error: any) {

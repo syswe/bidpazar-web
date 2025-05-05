@@ -1,321 +1,147 @@
-# BidPazar Live Streaming Architecture
+# BidPazar Live Streaming Auction System
 
-This document provides an overview of the live streaming system implemented in BidPazar, a real-time e-commerce platform with integrated video streaming capabilities.
+This document details the live streaming auction system for Bidpazar.com, enabling real-time, interactive product auctions via live video broadcasts. The system is designed for a seamless, mobile-first, TikTok-style experience, supporting both sellers and buyers in a dynamic auction environment.
 
 ## Table of Contents
 
-1. [Technology Stack](#technology-stack)
-2. [Architecture Overview](#architecture-overview)
-3. [Server-Side Implementation](#server-side-implementation)
-   - [Socket.IO Server](#socketio-server)
-   - [MediaSoup Configuration](#mediasoup-configuration)
-   - [Live Stream API](#live-stream-api)
-4. [Client-Side Implementation](#client-side-implementation)
-   - [WebRTC Stream Manager](#webrtc-stream-manager)
-   - [HLS Fallback](#hls-fallback)
-   - [Device Selection](#device-selection)
-5. [Stream Workflow](#stream-workflow)
-6. [Security Considerations](#security-considerations)
-7. [Troubleshooting](#troubleshooting)
-8. [Implementation Checklist](#implementation-checklist)
+1. [Feature Overview](#feature-overview)
+2. [User Roles & Permissions](#user-roles--permissions)
+3. [Live Auction Workflow](#live-auction-workflow)
+4. [Product & Auction Management](#product--auction-management)
+5. [User Experience & UI](#user-experience--ui)
+6. [Notifications & Messaging](#notifications--messaging)
+7. [API Endpoints & Components](#api-endpoints--components)
+8. [Security Considerations](#security-considerations)
+9. [Implementation Checklist](#implementation-checklist)
 
-## Technology Stack
+## Feature Overview
 
-BidPazar's live streaming functionality is built with the following technologies:
+- **Any member** can start a live broadcast to promote and auction their products.
+- **Live product addition**: During the broadcast, the seller can add products, set a starting price, and create a countdown timer (1-59 seconds).
+- **Bidding**: Buyers can place bids before and during the countdown. When the seller starts the counter, the top 3 bidders are matched (1 winner, 2 backups).
+- **End-of-broadcast report**: Seller receives a summary of all products sold, buyers matched, and final prices.
+- **Product cancellation**: Seller can cancel a product before starting the counter if bids are not close to their desired price.
+- **Multiple products per stream**: Sellers can auction 7-8 products in a single broadcast, across different categories.
+- **Separation of live and static auctions**: Auctions sold live and those added directly as products are managed and evaluated separately.
+- **Anonymous viewers**: Can watch the broadcast, see products and messages, but cannot bid or chat.
+- **Mobile-first, vertical UI**: 100% mobile compatible, TikTok-style vertical video, with chat and offer screens designed for this format. Web view is also vertical and centered.
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Frontend Framework | Next.js 15.2.2 | React-based web application framework |
-| WebRTC Library | mediasoup-client (3.9.5) | Client-side WebRTC implementation |
-| Server-Side WebRTC | mediasoup (3.15.7) | SFU (Selective Forwarding Unit) server |
-| Real-time Communication | Socket.IO (4.8.1 client, 4.7.4 server) | Bidirectional event-based communication |
-| Fallback Streaming | HLS.js (1.6.2) | HTTP Live Streaming client |
-| WebRTC Connection | TURN/STUN servers | NAT traversal for peer connections |
-| Video/Audio Processing | Browser Media APIs | Camera and microphone access |
+## User Roles & Permissions
 
-## Architecture Overview
+- **Seller (Member):**
+  - Can start a live broadcast, add products, set prices, start/cancel countdowns, and receive end-of-broadcast reports.
+  - Can see all bids and manage the auction process in real time.
+- **Buyer (Member):**
+  - Can join live broadcasts, view products, place bids, and chat during the stream.
+  - Can be matched as winner or backup for products.
+- **Anonymous Viewer:**
+  - Can watch live broadcasts, see products and messages, but cannot bid or participate in chat.
+- **Admin:**
+  - Can moderate live streams, remove problematic products, and oversee auction integrity.
 
-The BidPazar live streaming system implements a hybrid architecture that combines:
+## Live Auction Workflow
 
-1. **WebRTC with MediaSoup SFU**: Primary streaming method offering low-latency, high-quality video
-2. **HLS Fallback**: Secondary method with higher latency but better compatibility
-3. **Socket.IO Signaling**: Manages WebRTC connection establishment and real-time events
+1. **Start Broadcast**
+   - Any member can start a live stream from the platform.
+   - The seller interface includes controls for adding products, managing the broadcast, and viewing chat/bids.
 
-The architecture follows a client-server model where:
-- Streamers produce media streams that are routed through the MediaSoup SFU
-- Viewers consume these streams via WebRTC or HLS, depending on capability
-- A signaling server handles coordination between streamers, viewers, and the SFU
+2. **Add Product During Live**
+   - Seller adds a product with images, video, description, and starting price.
+   - Product appears in the live stream product list for all viewers.
 
-## Server-Side Implementation
+3. **Bidding Phase**
+   - Buyers can place bids as soon as a product is added, even before the countdown starts.
+   - All bids are visible in real time to the seller and logged-in viewers.
 
-### Socket.IO Server
+4. **Countdown & Winner Selection**
+   - Seller starts a countdown timer (1-59 seconds) when bids approach their desired price.
+   - At the end of the countdown, the top 3 bidders are matched:
+     - 1st: Winner
+     - 2nd & 3rd: Backup buyers (in case the winner declines)
+   - Seller can cancel the product before starting the countdown if bids are insufficient.
 
-Location: `src/app/api/rtc/socket/route.ts`
+5. **End of Broadcast**
+   - Seller ends the broadcast.
+   - Seller receives a report summarizing all products sold, buyers matched, and final prices.
+   - Notifications and messages are sent to the seller and all relevant buyers.
 
-The Socket.IO server is implemented as a Next.js API route that:
-- Creates a persistent WebSocket connection at `/api/rtc/socket`
-- Authenticates users via JWT tokens
-- Manages room-based communication for stream channels
-- Forwards signaling messages between peers
-- Handles connection lifecycle events
+6. **Post-Broadcast**
+   - Matched buyers and sellers can message each other via the platform's messaging system.
+   - All transactions are logged for admin review.
 
-Key features:
-- Authentication middleware verifies user tokens
-- Room-based event broadcasting
-- Real-time chat message distribution
-- WebRTC signaling message forwarding
+## Product & Auction Management
 
-### MediaSoup Configuration
+- **Multiple Products**: Sellers can add and auction multiple products (typically 7-8) in a single live session.
+- **Product Status**: Each product's auction status (active, sold, cancelled) is tracked and displayed.
+- **Auction Separation**: Live-streamed auctions and static product auctions are managed and displayed separately in the platform.
+- **Admin Moderation**: Admins can remove problematic products or streams in real time.
 
-Location: `src/app/api/rtc/mediasoup/config.ts`
+## User Experience & UI
 
-MediaSoup is configured with optimized settings for low-latency streaming:
+- **Mobile-First, Vertical Layout**: The live stream interface is designed for vertical, TikTok-style viewing, fully responsive and mobile-optimized.
+- **Interactive Live Stream Screen**:
+  - Broadcast status and info
+  - Product addition and management
+  - Real-time chat and bidding (for logged-in users)
+  - Product gallery and bid list
+- **Anonymous Viewers**: See only the broadcast, products, and messages (read-only, no interaction).
+- **Logged-In Viewers**: Can bid, chat, and interact with the seller and other buyers.
+- **Web View**: Vertical, centered layout for desktop users, mirroring the mobile experience.
 
-- **Audio Codecs**: Opus with stereo and in-band FEC enabled
-- **Video Codecs**: VP8, VP9, and H.264 with optimized bitrate settings
-- **WebRTC Transport**: Configured for both UDP and TCP with preference for UDP
-- **Workers**: Scalable multi-worker setup based on environment configuration
+## Notifications & Messaging
 
-The configuration includes extensive diagnostics and validation to ensure proper setup across different environments.
+- **End-of-broadcast notifications**: Sent to the seller and all matched buyers for each product sold.
+- **Messaging integration**: Matched buyers and sellers can communicate directly after the auction.
+- **Admin alerts**: For moderation actions or problematic streams/products.
 
-### Live Stream API
+## API Endpoints & Components
 
-The platform includes a RESTful API to manage live streams:
-
-- **GET /api/live-streams**: List all streams (filterable by status)
-- **GET /api/live-streams/[id]**: Fetch details for a specific stream
-- **POST /api/live-streams**: Create a new scheduled stream
-- **POST /api/live-streams/[id]/start**: Start a scheduled stream
-- **DELETE /api/live-streams/[id]**: Delete a stream
-
-Each stream has a lifecycle managed through status transitions:
-1. `SCHEDULED` - Initial state when created
-2. `LIVE` - Active streaming state
-3. `ENDED` - Completed stream
-4. `CANCELLED` - Cancelled without streaming
-
-## Client-Side Implementation
-
-### WebRTC Stream Manager
-
-Location: `src/app/(streams)/live-streams/[id]/components/WebRTCStreamManager.tsx`
-
-The `WebRTCStreamManager` component is the central piece of the client-side streaming implementation. It handles:
-
-- WebRTC connection establishment and management
-- Media device access and stream production (for streamers)
-- Stream consumption (for viewers)
-- Connection reliability with automatic reconnection
-- Fallback mechanism to HLS when WebRTC fails
-
-The component uses Socket.IO for signaling and mediasoup-client for WebRTC:
-
-```javascript
-// Socket.IO connection establishment
-const ws = io(wsUrl, {
-  path: wsPath,
-  query: {
-    streamId: streamIdRef.current,
-    userId: userIdRef.current,
-    username: usernameRef.current,
-    token: tokenRef.current || '',
-    isStreamer: isStreamerRef.current ? '1' : '0'
-  },
-  transports: ['websocket', 'polling']
-});
-```
-
-For streamers, the component:
-1. Accesses media devices (camera/microphone)
-2. Creates a producer transport with MediaSoup
-3. Produces audio and video streams
-4. Sends media to the SFU server
-
-For viewers, it:
-1. Creates a consumer transport with MediaSoup
-2. Consumes streams from the SFU server
-3. Renders media in a video element
-4. Falls back to HLS if WebRTC fails
-
-### HLS Fallback
-
-The WebRTCStreamManager implements an HLS fallback mechanism using the HLS.js library:
-
-```javascript
-// HLS fallback initialization
-const initializeHlsFallback = useCallback(() => {
-  if (!videoRef.current) return;
-  
-  // Check if HLS.js is supported
-  if (!Hls.isSupported()) {
-    console.error('[WebRTCStreamManager] HLS.js is not supported in this browser');
-    setError('Your browser does not support modern streaming technologies');
-    return;
-  }
-  
-  // Construct HLS stream URL
-  const hlsUrl = `${serverUrl}/hls/${streamId}/index.m3u8`;
-  
-  // Create new HLS instance with optimized settings for lower latency
-  const hls = new Hls({
-    maxBufferLength: 10,
-    maxMaxBufferLength: 20,
-    enableWorker: true,
-    lowLatencyMode: true
-  });
-  
-  hls.attachMedia(videoRef.current);
-  hls.loadSource(hlsUrl);
-});
-```
-
-This fallback activates automatically after WebRTC connection attempts fail, ensuring viewers can still watch streams even in challenging network conditions.
-
-### Device Selection
-
-Location: `src/app/(streams)/live-streams/[id]/components/DeviceSelector.tsx`
-
-For streamers, the platform provides a device selection interface that:
-- Lists available cameras and microphones
-- Allows switching between devices during a stream
-- Stores device preferences
-- Provides visual confirmation of selected devices
-
-## Stream Workflow
-
-The typical workflow for a BidPazar live stream is:
-
-1. **Stream Creation**:
-   - Streamer creates a scheduled stream with title, description, and start time
-   - System assigns a unique stream ID
-
-2. **Stream Start**:
-   - Streamer navigates to the stream page
-   - Clicks "Start Stream" which calls the start API endpoint
-   - System updates stream status to LIVE
-
-3. **Media Connection**:
-   - WebRTCStreamManager initializes Socket.IO connection
-   - Requests camera and microphone access
-   - Establishes WebRTC producer connection via MediaSoup
-
-4. **Viewer Connection**:
-   - Viewers navigate to the stream page
-   - WebRTCStreamManager connects to Socket.IO
-   - System establishes WebRTC consumer connection via MediaSoup
-   - If WebRTC fails, falls back to HLS
-
-5. **Stream Interaction**:
-   - Real-time chat via Socket.IO
-   - Product display and bidding interfaces
-   - Viewer count updates
-
-6. **Stream End**:
-   - Streamer clicks "End Stream"
-   - System updates stream status to ENDED
-   - Disconnects all viewers
+- **Live Stream API**:
+  - `POST /api/live-streams` — Start a new live broadcast
+  - `POST /api/live-streams/[id]/products` — Add product during live
+  - `POST /api/live-streams/[id]/products/[productId]/bids` — Place a bid
+  - `POST /api/live-streams/[id]/products/[productId]/start-counter` — Start countdown
+  - `POST /api/live-streams/[id]/products/[productId]/cancel` — Cancel product
+  - `POST /api/live-streams/[id]/end` — End broadcast and generate report
+  - `GET /api/live-streams/[id]/report` — Get end-of-broadcast report
+- **Messaging/Notification API**:
+  - `/api/messages`, `/api/notifications` — For post-auction communication
+- **Frontend Components**:
+  - `LiveStreamManager.tsx` — Main live stream logic
+  - `ProductAdder.tsx` — Add product during live
+  - `BidButton.tsx`, `BidList.tsx` — Bidding UI
+  - `CountdownTimer.tsx` — Auction countdown
+  - `EndOfBroadcastReport.tsx` — Seller report
+  - `Chat.tsx` — Real-time chat
+  - `VerticalLiveStreamLayout.tsx` — Mobile/web vertical UI
 
 ## Security Considerations
 
-The platform implements several security measures:
-
-1. **Authentication**: JWT-based authentication for API and Socket.IO connections
-2. **Authorization**: Stream ownership verification before critical operations
-3. **Secure WebRTC**: DTLS encryption for media streams
-4. **Input Validation**: Zod schema validation for all API inputs
-5. **TURN Server**: Secure relay for NAT traversal
-
-## Troubleshooting
-
-Common issues and solutions:
-
-1. **"Connecting to stream..."** stuck state:
-   - Check WebSocket endpoint configuration in .env file
-   - Verify TURN/STUN server accessibility
-   - Inspect browser console for connection errors
-
-2. **No camera/microphone access**:
-   - Ensure browser permissions are granted
-   - Check if camera is in use by another application
-   - Verify SSL configuration if running in production
-
-3. **High latency**:
-   - Check network conditions
-   - Adjust MediaSoup bitrate settings
-   - Consider disabling video for audio-only streams in poor network conditions
-
-4. **Connection failures**:
-   - Verify TURN server configuration
-   - Check firewall settings that might block WebRTC
-   - Ensure Socket.IO server is properly running
+- JWT authentication for all live stream actions
+- Role-based access for sellers, buyers, and admins
+- Input validation for all product and bid submissions
+- Real-time moderation tools for admins
+- Secure WebRTC and WebSocket connections
+- Rate limiting and abuse prevention
 
 ## Implementation Checklist
 
-This checklist tracks the implementation status of various components and features of the BidPazar live streaming system:
+- [x] Member live broadcast creation
+- [x] Product addition during live
+- [x] Real-time bidding before and during countdown
+- [x] Countdown timer and top 3 bidder matching
+- [x] Product cancellation before countdown
+- [x] End-of-broadcast report for seller
+- [x] Notifications/messages to seller and buyers
+- [x] Multiple products per broadcast
+- [x] Anonymous viewer restrictions
+- [x] Mobile-first, vertical UI (TikTok-style)
+- [x] Web vertical/centered view
+- [x] Admin moderation tools
+- [ ] Accessibility and localization (planned)
+- [ ] Automated abuse/spam detection (planned)
+- [ ] Analytics and reporting (planned)
 
-### Server-Side Implementation
+---
 
-- [x] Socket.IO server setup in Next.js API route
-- [x] Socket.IO authentication middleware with JWT
-- [x] Socket.IO room-based event handling
-- [x] MediaSoup worker initialization
-- [x] MediaSoup router configuration
-- [x] MediaSoup WebRTC transport creation
-- [x] MediaSoup producer/consumer management
-- [x] Live Stream API endpoints for CRUD operations
-- [x] Stream status management (SCHEDULED, LIVE, ENDED)
-- [ ] HLS server implementation (in progress)
-- [ ] Load balancing for multiple MediaSoup workers (in progress)
-- [ ] Recording functionality for streams (planned)
-- [ ] Analytics collection for stream metrics (planned)
-
-### Client-Side Implementation
-
-- [x] WebRTCStreamManager component
-- [x] Socket.IO client connection
-- [x] MediaSoup client integration
-- [x] WebRTC producer setup for streamers
-- [x] WebRTC consumer setup for viewers
-- [x] Camera/microphone access management
-- [x] Device selection interface
-- [x] HLS fallback implementation
-- [x] Stream controls (mute, camera toggle)
-- [x] Error handling and automatic reconnection
-- [ ] Bandwidth adaptation for varying network conditions (in progress)
-- [ ] Screen sharing functionality (in progress)
-- [ ] Mobile-specific optimizations (planned)
-
-### Configuration & Environment
-
-- [x] TURN/STUN server setup
-- [x] Environment variables for media server settings
-- [x] WebRTC/HLS quality parameters
-- [x] Proper error logging
-- [ ] Content Delivery Network integration for HLS (in progress)
-- [ ] Production-ready TURN server with proper scaling (planned)
-
-### Security
-
-- [x] JWT authentication for API and WebSocket
-- [x] Stream ownership verification
-- [x] Input validation with Zod schemas
-- [x] DTLS encryption for WebRTC streams
-- [ ] Rate limiting for API endpoints (in progress)
-- [ ] Content moderation capabilities (planned)
-
-### Testing & Quality Assurance
-
-- [x] Basic functional testing of streaming
-- [x] Multi-browser compatibility testing
-- [ ] Automated tests for WebRTC components (in progress)
-- [ ] Load testing for concurrent viewers (in progress)
-- [ ] Network condition simulation testing (planned)
-- [ ] End-to-end testing suite (planned)
-
-### Documentation & Maintenance
-
-- [x] Architecture documentation (this document)
-- [x] Troubleshooting guide
-- [ ] API documentation with examples (in progress)
-- [ ] Regular security audits (planned)
-- [ ] Performance monitoring setup (planned)
+*For more details on the platform structure, see `docs/STRUCTURE.md`.*

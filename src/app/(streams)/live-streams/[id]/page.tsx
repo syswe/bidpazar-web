@@ -34,6 +34,10 @@ import WebRTCStreamManager from './components/WebRTCStreamManager';
 import { getCookie } from "cookies-next";
 import { Toaster } from "react-hot-toast";
 import { cookies } from "next/headers";
+import StreamChat from './components/StreamChat';
+import BiddingInterface from './components/BiddingInterface';
+import ProductDisplay from './components/ProductDisplay';
+import Image from "next/image";
 
 interface LiveStreamDetails {
   id: string;
@@ -47,6 +51,7 @@ interface LiveStreamDetails {
   user?: {
     id: string;
     username: string;
+    profileImage?: string;
   };
 }
 
@@ -79,6 +84,7 @@ export default function LiveStreamPage() {
     isReconnecting: boolean;
     lastError: string | null;
   }>({ isConnected: true, isReconnecting: false, lastError: null });
+  const [showBiddingInterface, setShowBiddingInterface] = useState<boolean>(false);
 
   const logMessage = useCallback((message: string, level: 'info' | 'warn' | 'error' | 'debug' = 'info', data?: unknown) => {
     const timestamp = new Date().toISOString();
@@ -630,8 +636,8 @@ export default function LiveStreamPage() {
               <div className="mb-6 border border-[var(--border)] rounded-md overflow-hidden bg-black aspect-video max-w-lg mx-auto relative">
                  <WebRTCStreamManager
                     streamId={streamId}
-                    userId={userId!}
-                    username={username!}
+                    userId={userId || 'anonymous'}
+                    username={username || 'Anonymous User'}
                     isStreamer={isStreamer}
                  />
               </div>
@@ -694,173 +700,158 @@ export default function LiveStreamPage() {
 
   // TikTok-style vertical video layout for LIVE streams
   return (
-    <div className="fixed inset-0 bg-black w-screen h-screen">
+    <div className="fixed inset-0 bg-black w-screen h-screen overflow-hidden">
       {/* Minimal header with back button */}
-      <div className="absolute top-0 left-0 w-full z-30 p-4 flex items-center">
+      <div className="absolute top-0 left-0 w-full z-30 p-2 sm:p-4 flex items-center justify-between">
         <button 
           onClick={handleBackToHome}
-          className="text-white/80 hover:text-white transition-colors z-10"
+          className="text-white/80 hover:text-white transition-colors z-10 p-2"
         >
-          <ArrowLeft className="w-6 h-6" />
+          <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
         
-        <div className="absolute top-4 right-4">
+        <div className="flex items-center space-x-2">
+          {currentStreamStatus === 'LIVE' && (
+            <div className="flex items-center bg-red-500/20 px-2 py-1 rounded-full">
+              <Radio className="w-3 h-3 text-red-500 mr-1 animate-pulse" />
+              <span className="text-xs font-bold text-white">LIVE</span>
+            </div>
+          )}
           <button
             onClick={() => setShowDiagnostics(prev => !prev)}
             className={`p-2 rounded-md transition-colors ${showDiagnostics ? 'bg-blue-500/20 text-blue-400' : 'text-white/70 hover:text-white'}`}
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
 
-      {/* Centered vertical video container */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-full h-full max-w-[500px] bg-black relative flex items-center justify-center">
-          {!canRenderWebRTC && (
-            <div className="text-center text-white/50 p-8">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-              Bağlantı kuruluyor veya bekleniyor...
-            </div>
-          )}
-
-          {canRenderWebRTC && (
-            <div className="relative w-full h-full">
-              <Suspense fallback={<div className="flex items-center justify-center h-96 bg-gray-900">
-                <Loader2 className="w-10 h-10 animate-spin text-white" />
-              </div>}>
-                <WebRTCStreamManager
-                  streamId={streamId}
-                  userId={userId || ''}
-                  username={username || ''}
-                  isStreamer={isStreamer}
-                />
-              </Suspense>
-            </div>
-          )}
-
-          {/* Video overlay with stream info */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent z-20">
-            <div className="mb-2">
-              <h2 className="text-white font-semibold text-lg truncate">
-                {streamDetails.title || 'Başlıksız Yayın'}
-              </h2>
-              <p className="text-white/80 text-sm">
-                {streamDetails.user?.username || 'Yayıncı'}
-                {currentStreamStatus === 'LIVE' && (
-                  <span className="ml-2 inline-flex items-center text-red-500 font-medium">
-                    <Radio className="w-3 h-3 mr-1 animate-pulse" /> CANLI
-                  </span>
+      {/* Main Content Area - Video, Chat, and Product Info */}
+      <div className="flex flex-col h-[calc(100%-60px)] sm:h-[calc(100%-80px)] relative">
+        {/* Video Container - Full width/height with absolute positioning for overlays */}
+        <div className="relative flex-1 bg-black overflow-hidden">
+          {/* Main video stream */}
+          <WebRTCStreamManager
+            streamId={streamId}
+            userId={userId || 'anonymous'}
+            username={username || 'Anonymous User'}
+            isStreamer={isStreamer}
+            className="w-full h-full object-cover"
+          />
+          
+          {/* Creator info overlay */}
+          <div className="absolute bottom-[80px] sm:bottom-[120px] left-2 sm:left-4 flex flex-col">
+            <div className="flex items-center gap-2 text-white">
+              <div className="relative">
+                {streamDetails?.user?.profileImage ? (
+                  <Image 
+                    src={streamDetails.user.profileImage} 
+                    alt={streamDetails.user.username || 'Creator'} 
+                    width={32}
+                    height={32}
+                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white"
+                  />
+                ) : (
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold">
+                    {streamDetails?.user?.username?.charAt(0)?.toUpperCase() || 'C'}
+                  </div>
                 )}
-              </p>
-            </div>
-
-            {/* Control buttons */}
-            <div className="flex justify-between items-center mt-4">
-              <button
-                onClick={handleLike}
-                className="flex flex-col items-center"
-              >
-                {isLiked ? 
-                  <Heart className="w-8 h-8 text-red-500 fill-current mb-1" /> : 
-                  <Heart className="w-8 h-8 text-white mb-1" />
-                }
-                <span className="text-white text-xs">{likeCount}</span>
-              </button>
-
-              <button
-                onClick={toggleMute}
-                className="flex flex-col items-center"
-              >
-                {isMuted ? 
-                  <VolumeX className="w-8 h-8 text-white mb-1" /> : 
-                  <Volume2 className="w-8 h-8 text-white mb-1" />
-                }
-                <span className="text-white text-xs">{isMuted ? 'Unmute' : 'Mute'}</span>
-              </button>
-
-              <button
-                onClick={() => {}}
-                className="flex flex-col items-center"
-              >
-                <Share2 className="w-8 h-8 text-white mb-1" />
-                <span className="text-white text-xs">Share</span>
-              </button>
-
-              {isStreamer && (
-                <button
-                  onClick={() => {}}
-                  className="flex flex-col items-center bg-red-500/20 p-2 rounded-full"
-                >
-                  <span className="text-red-500 text-xs font-bold">LIVE</span>
-                </button>
-              )}
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-[6px] sm:text-[8px] font-bold">LIVE</span>
+                </div>
+              </div>
+              <div>
+                <p className="font-bold text-xs sm:text-sm">{streamDetails?.user?.username || 'Creator'}</p>
+                <p className="text-[10px] sm:text-xs text-white/70 max-w-[120px] sm:max-w-[180px] truncate">{streamDetails?.title || 'Live stream'}</p>
+              </div>
             </div>
           </div>
+
+          {/* Media controls - add volume controls and other stream controls */}
+          <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 flex items-center space-x-2">
+            <button
+              onClick={toggleMute}
+              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            >
+              {isMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />}
+            </button>
+            
+            <button
+              onClick={handleLike}
+              className={`p-2 rounded-full ${isLiked ? 'bg-red-500 text-white' : 'bg-black/50 text-white'} hover:bg-black/70 transition-colors`}
+            >
+              <Heart className={`w-4 h-4 sm:w-5 sm:h-5 ${isLiked ? 'fill-white' : ''}`} />
+            </button>
+          </div>
         </div>
+
+        {/* Active auction or product display - made responsive */}
+        {currentStreamStatus === 'LIVE' && (
+          <div className="relative z-10">
+            {showBiddingInterface ? (
+              <BiddingInterface 
+                streamId={streamId}
+                isExpanded={true}
+                onMinimize={() => setShowBiddingInterface(false)}
+                className="z-20 max-h-[40vh] overflow-y-auto"
+              />
+            ) : (
+              <ProductDisplay 
+                streamId={streamId}
+                onBidClick={() => setShowBiddingInterface(true)}
+                className="z-10"
+              />
+            )}
+          </div>
+        )}
+
+        {/* Chat interface - made responsive */}
+        {canRenderWebRTC && currentStreamStatus === 'LIVE' && (
+          <div className="max-h-[35vh] sm:max-h-[30vh] overflow-hidden">
+            <StreamChat 
+              streamId={streamId}
+              currentUserId={userId}
+              dataChannel={undefined} // The WebRTCStreamManager should provide this
+            />
+          </div>
+        )}
       </div>
 
       {connectionState.isReconnecting && (
-        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-10">
-          <Loader2 className="w-12 h-12 animate-spin text-white mb-4" />
-          <p className="text-white text-lg font-semibold">Bağlantı yeniden kuruluyor...</p>
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-40">
+          <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-white mb-4" />
+          <p className="text-white text-base sm:text-lg font-semibold">Bağlantı yeniden kuruluyor...</p>
           {connectionState.lastError && (
-            <p className="text-red-400 text-sm mt-2">Son Hata: {connectionState.lastError}</p>
+            <p className="text-red-400 text-xs sm:text-sm mt-2">Son Hata: {connectionState.lastError}</p>
           )}
+          <button 
+            onClick={handleConnectionReset}
+            className="mt-4 bg-white/10 backdrop-blur-sm text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded flex items-center text-sm"
+          >
+            <RotateCw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" /> Bağlantıyı Sıfırla
+          </button>
         </div>
       )}
 
+      {/* Stream diagnostics overlay */}
       {showDiagnostics && (
-        <div className="absolute bottom-4 left-4 right-4 max-h-60 bg-[var(--background)]/90 backdrop-blur-md border border-[var(--border)] rounded-lg shadow-xl z-40 overflow-hidden flex flex-col">
-          <div className="p-3 border-b border-[var(--border)] flex justify-between items-center flex-shrink-0">
-            <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center">
-              <Terminal className="w-4 h-4 mr-2" /> Tanılama Günlüğü
-            </h3>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleConnectionReset}
-                title="Bağlantıyı Sıfırla (Sayfayı Yenile)"
-                className="text-xs flex items-center bg-red-500/10 text-red-500 px-2 py-1 rounded hover:bg-red-500/20 transition-colors"
-              >
-                <RotateCw className="w-3 h-3 mr-1" /> Sıfırla
-              </button>
-              <button onClick={() => setShowDiagnostics(false)} className="p-1 rounded-md hover:bg-[var(--muted)] text-[var(--foreground)]/60 hover:text-[var(--foreground)]">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <div className="absolute inset-0 bg-black/90 flex flex-col z-50 overflow-auto">
+          <div className="p-4 flex justify-between items-center bg-blue-900/30 border-b border-blue-800/50">
+            <h2 className="text-blue-400 font-mono text-sm sm:text-base font-semibold">Stream Diagnostics</h2>
+            <button 
+              onClick={() => setShowDiagnostics(false)}
+              className="text-white/70 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 text-xs font-mono space-y-1">
-            {logs.length === 0 ? (
-              <p className="text-[var(--foreground)]/50 italic">Henüz günlük kaydı yok.</p>
-            ) : (
-              logs.map((log, index) => (
-                <div key={index} className={`${
-                  log.level === 'error' ? 'text-red-400' :
-                  log.level === 'warn' ? 'text-yellow-400' :
-                  log.level === 'debug' ? 'text-blue-400' :
-                  'text-[var(--foreground)]/70'
-                }`}>
-                  <span className="text-[var(--foreground)]/40 mr-2 select-none">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  <span>{log.message}</span>
-                  {log.data !== undefined && log.data !== null && (
-                    <span className="ml-2 text-[var(--foreground)]/50 opacity-80">
-                      {`( ${typeof log.data === 'string' ? log.data : JSON.stringify(log.data)} )`}
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+          <StreamDiagnostics 
+            logs={logs} 
+            streamInfo={streamDetails}
+            connectionState={connectionState}
+          />
         </div>
       )}
-
-      {/* Swipe indicator */}
-      <div className="absolute bottom-24 left-0 right-0 flex justify-center">
-        <div className="text-white/50 flex flex-col items-center animate-pulse">
-          <ChevronUp className="w-6 h-6" />
-          <span className="text-xs">Swipe up for next stream</span>
-        </div>
-      </div>
     </div>
   );
 }

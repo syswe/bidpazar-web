@@ -5,9 +5,23 @@ import { Loader2 } from 'lucide-react';
 import { getToken } from "@/lib/frontend-auth";
 import { env } from "@/lib/env"; // Import env config
 
+interface LogItem {
+  timestamp: string;
+  message: string;
+  data?: unknown;
+  level: 'info' | 'warn' | 'error' | 'debug';
+}
+
 interface StreamDiagnosticsProps {
-  streamId: string;
+  streamId?: string;
   onReset?: () => void;
+  logs?: LogItem[];
+  streamInfo?: any;
+  connectionState?: {
+    isConnected: boolean;
+    isReconnecting: boolean;
+    lastError: string | null;
+  };
 }
 
 interface DiagnosticResult {
@@ -16,7 +30,7 @@ interface DiagnosticResult {
   details?: string[];
 }
 
-export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps) {
+export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, connectionState }: StreamDiagnosticsProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [summary, setSummary] = useState<string>('');
@@ -24,7 +38,16 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
+  // Use the streamId from props if available
+  const streamIdToUse = streamId || (streamInfo?.id || '');
+
+  // If logs are provided, display them instead of running diagnostics
+  const hasExternalLogs = logs && logs.length > 0;
+
+  // Only run diagnostics if no external logs are provided
   const runDiagnostics = async () => {
+    if (hasExternalLogs) return;
+    
     setIsRunning(true);
     setResults([]);
     setSummary('Running diagnostics...');
@@ -46,7 +69,9 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
       await testSignalingServer();
 
       // Step 6: Check stream status
-      await checkStreamStatus();
+      if (streamIdToUse) {
+        await checkStreamStatus();
+      }
 
       setSummary('Diagnostics complete. Check the results below.');
     } catch (error) {
@@ -251,7 +276,7 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
     try {
       // Check stream status via API
       const token = getToken();
-      const response = await fetch(`${env.API_URL}/live-streams/${streamId}`, {
+      const response = await fetch(`${env.API_URL}/live-streams/${streamIdToUse}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -271,7 +296,7 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
         message: `Stream status check: ${isLive ? 'Stream is LIVE' : 'Stream is not live'}`,
         details: [
           `Current status: ${status}`,
-          `Stream ID: ${streamId}`,
+          `Stream ID: ${streamIdToUse}`,
           `Creator: ${streamData.user?.username || 'Unknown'}`,
           `Created: ${new Date(streamData.createdAt || Date.now()).toLocaleString()}`
         ]
@@ -293,6 +318,52 @@ export function StreamDiagnostics({ streamId, onReset }: StreamDiagnosticsProps)
   useEffect(() => {
     runDiagnostics();
   }, [streamId]);
+
+  // If logs are provided, render them
+  if (hasExternalLogs) {
+    return (
+      <div className="flex-1 overflow-y-auto p-4 font-mono space-y-1 text-xs">
+        {logs.length === 0 ? (
+          <p className="text-gray-400 italic">No logs available.</p>
+        ) : (
+          <>
+            {/* Stream info summary */}
+            {streamInfo && (
+              <div className="mb-4 p-2 border border-blue-800/30 rounded bg-blue-900/20">
+                <h3 className="text-blue-300 font-semibold mb-1">Stream Info</h3>
+                <p className="text-white/70">ID: {streamInfo.id}</p>
+                <p className="text-white/70">Status: {streamInfo.status}</p>
+                {connectionState && (
+                  <p className="text-white/70">
+                    Connection: {connectionState.isConnected ? 'Connected' : 
+                              connectionState.isReconnecting ? 'Reconnecting' : 'Disconnected'}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Log entries */}
+            {logs.map((log, index) => (
+              <div key={index} className={`${
+                log.level === 'error' ? 'text-red-400' :
+                log.level === 'warn' ? 'text-yellow-400' :
+                log.level === 'debug' ? 'text-blue-400' :
+                'text-white/70'
+              }`}>
+                <span className="text-gray-500 mr-2 select-none">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                <span>{log.message}</span>
+                {log.data !== undefined && log.data !== null && (
+                  <span className="ml-2 text-gray-400 opacity-80">
+                    {`( ${typeof log.data === 'string' ? log.data : JSON.stringify(log.data)} )`}
+                  </span>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-2xl mx-auto">

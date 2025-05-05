@@ -1,104 +1,80 @@
-import { Server } from 'socket.io';
-import { Server as NetServer } from 'http';
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth';
+import { NextRequest } from 'next/server';
+import { Server as SocketIO } from 'socket.io';
+import * as mediasoup from 'mediasoup';
+import { types } from 'mediasoup';
+import { logger } from '@/lib/logger';
 
-// Global variable to store the Socket.IO instance
-let io: Server;
+// Global variables to store MediaSoup resources
+let io: SocketIO | null = null;
+let mediasoupWorkers: types.Worker[] = [];
+let nextWorkerIndex = 0;
 
-export async function GET(request: Request) {
-  // This is a workaround for Socket.IO in Next.js App Router
-  // We need to create a NextResponse that doesn't close the connection
-  const response = new NextResponse();
-  
-  // @ts-ignore - accessing internal properties
-  const socket = response.socket;
-  
-  if (socket && socket.server && !socket.server.io) {
-    io = new Server(socket.server as unknown as NetServer, {
-      path: '/api/rtc/socket',
-      addTrailingSlash: false,
-      cors: {
-        origin: process.env.NEXT_PUBLIC_APP_URL,
-        methods: ['GET', 'POST'],
-        credentials: true,
-      },
+// Map to store room data
+// Key: streamId, Value: room data
+const rooms = new Map<string, {
+  router: types.Router;
+  peers: Map<string, {
+    id: string;
+    username: string;
+    isStreamer: boolean;
+    transports: Map<string, types.WebRtcTransport>;
+    producers: Map<string, types.Producer>;
+    consumers: Map<string, types.Consumer>;
+  }>;
+}>();
+
+// Initialize MediaSoup workers
+async function createMediasoupWorkers() {
+  const numWorkers = Number(process.env.MEDIASOUP_WORKERS) || 1;
+  logger.info(`[MediaSoup] Creating ${numWorkers} workers`);
+
+  for (let i = 0; i < numWorkers; i++) {
+    const worker = await mediasoup.createWorker({
+      logLevel: 'warn',
+      logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
+      rtcMinPort: Number(process.env.MEDIASOUP_MIN_PORT) || 40000,
+      rtcMaxPort: Number(process.env.MEDIASOUP_MAX_PORT) || 40100,
     });
 
-    // Socket.IO middleware for authentication
-    io.use(async (socket, next) => {
-      try {
-        const token = socket.handshake.auth.token;
-        if (!token) {
-          return next(new Error('Authentication error'));
-        }
-
-        const user = await verifyToken(token);
-        if (!user) {
-          return next(new Error('Invalid token'));
-        }
-
-        socket.data.user = user;
-        next();
-      } catch (error) {
-        next(new Error('Authentication error'));
-      }
+    worker.on('died', () => {
+      logger.error(`[MediaSoup] Worker died, exiting in 2 seconds... [pid:${worker.pid}]`);
+      setTimeout(() => process.exit(1), 2000);
     });
 
-    // Socket.IO event handlers
-    io.on('connection', (socket) => {
-      console.log('Client connected:', socket.id);
-
-      // Join room
-      socket.on('join:room', (roomId: string) => {
-        socket.join(roomId);
-        io.to(roomId).emit('user:joined', {
-          userId: socket.data.user.id,
-          username: socket.data.user.username,
-        });
-      });
-
-      // Leave room
-      socket.on('leave:room', (roomId: string) => {
-        socket.leave(roomId);
-        io.to(roomId).emit('user:left', {
-          userId: socket.data.user.id,
-          username: socket.data.user.username,
-        });
-      });
-
-      // Chat messages
-      socket.on('chat:message', (data: { roomId: string; message: string }) => {
-        io.to(data.roomId).emit('chat:message', {
-          userId: socket.data.user.id,
-          username: socket.data.user.username,
-          message: data.message,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
-      // WebRTC signaling
-      socket.on('webrtc:signal', (data: { to: string; signal: any }) => {
-        io.to(data.to).emit('webrtc:signal', {
-          from: socket.id,
-          signal: data.signal,
-        });
-      });
-
-      // Disconnect
-      socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
-      });
-    });
-
-    // @ts-ignore - storing io on the server
-    socket.server.io = io;
+    mediasoupWorkers.push(worker);
+    logger.info(`[MediaSoup] Worker ${i+1} created [pid:${worker.pid}]`);
   }
-
-  return new Response('Socket.IO server initialized', { status: 200 });
 }
 
-// Also export POST for WebSocket upgrade
+// Get the next available worker using round-robin
+function getMediasoupWorker() {
+  const worker = mediasoupWorkers[nextWorkerIndex];
+  nextWorkerIndex = (nextWorkerIndex + 1) % mediasoupWorkers.length;
+  return worker;
+}
+
+// WebSocket endpoint
+export async function GET(req: NextRequest) {
+  logger.info('[MediaSoup:Socket] WebSocket connection request', {
+    url: req.url
+  });
+
+  // Initialize MediaSoup workers if not already done
+  if (mediasoupWorkers.length === 0) {
+    await createMediasoupWorkers();
+  }
+
+  // Return a simple response - WebSockets are handled by the Next.js middleware
+  return new Response("WebSocket server is running", {
+    status: 101,
+    headers: {
+      "Connection": "Upgrade",
+      "Upgrade": "websocket"
+    }
+  });
+}
+
+// Also export POST for fallback
 export async function POST(request: Request) {
   return new Response('Socket.IO server is running', { status: 200 });
 } 

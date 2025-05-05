@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
-import { env } from "@/lib/env"; // Import env config
+import { verifyToken } from "@/lib/auth"; 
+import { env } from "@/lib/env";
+import { prisma } from '@/lib/prisma';
 
 // Remove RouteParams type alias
 // type RouteParams = {
@@ -25,42 +26,102 @@ export async function GET(
       return NextResponse.json({ error: 'Other User ID is required' }, { status: 400 });
     }
 
-    const token = getTokenFromRequest(request); // Use getTokenFromRequest
+    // Extract token from authorization header
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      console.error(`[API][${urlPath}] Unauthorized (401): No authorization header`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const parts = authorization.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid authorization format`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const token = parts[1];
     console.log(`[API][${urlPath}] Token found: ${!!token}`);
-    if (!token) {
-      console.error(`[API][${urlPath}] Unauthorized (401): No token found.`);
+    
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid token`);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Use the specific backend API URL from env
-    const baseUrl = env.BACKEND_API_URL;
-    console.log(`[API][${urlPath}] Backend base URL: ${baseUrl}`);
-    // Construct the correct backend path
-    const backendPath = `/api/messages/conversations/${otherUserId}`;
-    const apiUrl = `${baseUrl}${backendPath}`;
-
-    console.log(`[API][${urlPath}] Getting or creating conversation with user ${otherUserId} via backend: ${apiUrl}`);
-    const response = await fetch(apiUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store', // Avoid caching conversation lookups
+    // Get current user ID from token
+    const currentUserId = payload.userId;
+    
+    // Check if users are the same
+    if (currentUserId === otherUserId) {
+      console.warn(`[API][${urlPath}] Bad Request (400): Cannot create conversation with yourself`);
+      return NextResponse.json({ error: 'Cannot create conversation with yourself' }, { status: 400 });
+    }
+    
+    // Check if other user exists
+    const otherUser = await prisma.user.findUnique({
+      where: { id: otherUserId },
+      select: { id: true, username: true, name: true }
     });
-    console.log(`[API][${urlPath}] Backend response status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[API][${urlPath}] Backend API error (${response.status}):`, errorText);
-      return NextResponse.json(
-        { error: `Backend API error: ${response.status}` },
-        { status: response.status }
-      );
+    
+    if (!otherUser) {
+      console.warn(`[API][${urlPath}] Not Found (404): Other user does not exist`);
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const data = await response.json();
-    console.log(`[API][${urlPath}] Successfully fetched/created conversation. Data:`, data);
-    return NextResponse.json(data);
+    // Find existing conversation between these users
+    const existingConversation = await prisma.conversation.findFirst({
+      where: {
+        AND: [
+          {
+            participants: {
+              some: { id: currentUserId }
+            }
+          },
+          {
+            participants: {
+              some: { id: otherUserId }
+            }
+          }
+        ]
+      },
+      include: {
+        participants: {
+          select: { id: true, username: true, name: true }
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    // If conversation exists, return it
+    if (existingConversation) {
+      console.log(`[API][${urlPath}] Found existing conversation: ${existingConversation.id}`);
+      return NextResponse.json(existingConversation);
+    }
+
+    // Create new conversation
+    console.log(`[API][${urlPath}] Creating new conversation between users: ${currentUserId} and ${otherUserId}`);
+    const newConversation = await prisma.conversation.create({
+      data: {
+        participants: {
+          connect: [
+            { id: currentUserId },
+            { id: otherUserId }
+          ]
+        }
+      },
+      include: {
+        participants: {
+          select: { id: true, username: true, name: true }
+        }
+      }
+    });
+
+    console.log(`[API][${urlPath}] Successfully created new conversation: ${newConversation.id}`);
+    return NextResponse.json(newConversation);
 
   } catch (error: any) {
     console.error(`[API][${urlPath}] Unexpected error in GET handler:`, error);

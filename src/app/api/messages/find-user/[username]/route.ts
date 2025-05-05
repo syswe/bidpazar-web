@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
-import { env } from "@/lib/env"; // Import env config
+import { verifyToken } from "@/lib/auth";
+import { prisma } from '@/lib/prisma';
 
 // Special route to find users through the messages API (bypassing user routes issue)
 export async function GET(
@@ -9,6 +9,7 @@ export async function GET(
 ) {
   const urlPath = request.nextUrl.pathname;
   console.log(`[API][${urlPath}] GET request received`);
+  
   try {
     // Extract username from context params
     const { username } = await params;
@@ -19,53 +20,67 @@ export async function GET(
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
-    // Get auth token from headers using backend-auth helper
-    const token = getTokenFromRequest(request);
+    // Extract token from authorization header
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      console.error(`[API][${urlPath}] Unauthorized (401): No authorization header`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const parts = authorization.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid authorization format`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const token = parts[1];
     console.log(`[API][${urlPath}] Token found: ${!!token}`);
-    if (!token) {
-      console.error(`[API][${urlPath}] Unauthorized (401): No token found.`);
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      console.error(`[API][${urlPath}] Unauthorized (401): Invalid token`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Create API URL using messages API (not user API)
-    const baseUrl = env.BACKEND_API_URL;
-    console.log(`[API][${urlPath}] Backend base URL: ${baseUrl}`);
-    const backendPath = `/api/messages/find-user/${username}`;
-    const apiUrl = `${baseUrl}${backendPath}`;
-    
-    console.log(`[API][${urlPath}] Finding user through messages API: ${apiUrl}`);
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    // Find user by username (case-insensitive)
+    const user = await prisma.user.findFirst({
+      where: {
+        username: {
+          mode: 'insensitive',
+          equals: username
+        }
       },
-      cache: 'no-store', // Avoid caching user lookups
-    });
-    console.log(`[API][${urlPath}] Backend response status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[API][${urlPath}] Backend API error (${response.status}):`, errorText);
-      
-      try {
-        // Try to parse as JSON if possible
-        const errorJson = JSON.parse(errorText);
-        console.log(`[API][${urlPath}] Forwarding backend JSON error response.`);
-        return NextResponse.json(errorJson, { status: response.status });
-      } catch {
-        // Otherwise return as text
-        console.log(`[API][${urlPath}] Forwarding backend text error response.`);
-        return NextResponse.json(
-          { error: errorText || `Error: ${response.status}` }, 
-          { status: response.status }
-        );
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        email: true,
+        isVerified: true,
+        isAdmin: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            products: true
+          }
+        }
       }
+    });
+
+    if (!user) {
+      console.log(`[API][${urlPath}] User not found with username: ${username}`);
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const data = await response.json();
-    console.log(`[API][${urlPath}] Successfully found user data via messages API. Data:`, data);
-    return NextResponse.json(data);
+    // Don't return current user when searching
+    if (user.id === payload.userId) {
+      console.log(`[API][${urlPath}] User searched for themselves: ${username}`);
+      return NextResponse.json({ error: 'Cannot message yourself' }, { status: 400 });
+    }
+
+    console.log(`[API][${urlPath}] Successfully found user data. Username: ${user.username}`);
+    return NextResponse.json(user);
 
   } catch (error: any) {
     console.error(`[API][${urlPath}] Unexpected error in GET handler:`, error);

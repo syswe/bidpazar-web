@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from "@/lib/auth";
-import { env } from "@/lib/env";
+import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 
@@ -34,18 +33,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get user data from token
+    const userData = await getUserFromTokenInNode(token);
+    if (!userData) {
+      logger.error(`[API][${urlPath}] Unauthorized (401): User not found`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const userId = payload.userId;
-    logger.info(`[API][${urlPath}] Fetching message notifications for user: ${userId}`);
+    logger.info(`[API][${urlPath}] Fetching notifications for user: ${userId}`);
 
     // Query notifications from database using Prisma
     const notifications = await prisma.notification.findMany({
-      where: {
-        userId,
-        type: 'MESSAGE' // Filter to only message notifications
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
       take: 20
     });
 
@@ -53,12 +54,11 @@ export async function GET(req: NextRequest) {
     const unreadCount = await prisma.notification.count({
       where: { 
         userId,
-        type: 'MESSAGE',
         isRead: false 
       }
     });
 
-    logger.info(`[API][${urlPath}] Successfully processed ${notifications.length} message notifications.`, 
+    logger.info(`[API][${urlPath}] Successfully processed ${notifications.length} notifications from database.`, 
       { count: notifications.length, unreadCount }
     );
     

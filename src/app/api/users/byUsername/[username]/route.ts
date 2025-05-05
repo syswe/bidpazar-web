@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
-import { env } from "@/lib/env"; // Import env config
+import { verifyToken } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { prisma } from '@/lib/prisma';
 
 // Removed sampleUsers array
 
@@ -20,62 +21,66 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Username is required' }, { status: 400 });
     }
 
-    // Get auth token from headers using backend-auth helper
-    const token = getTokenFromRequest(request);
+    // Extract token from authorization header
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      console.error(`[API][${url}] Unauthorized (401): No authorization header`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const parts = authorization.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+      console.error(`[API][${url}] Unauthorized (401): Invalid authorization format`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const token = parts[1];
     console.log(`[API][${url}] Token found: ${!!token}`);
     
-    if (!token) {
-      console.error(`[API][${url}] Unauthorized (401): No token found.`);
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      console.error(`[API][${url}] Unauthorized (401): Invalid token`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Use the specific backend API URL from env
-    const apiBaseUrl = env.BACKEND_API_URL;
-    console.log(`[API][${url}] Backend base URL from env: ${apiBaseUrl}`);
+    // Check if the requesting user is an admin (for access to sensitive fields)
+    const isAdmin = payload.isAdmin === true;
 
-    // Remove potential trailing slash and /api suffix if present
-    let cleanBaseUrl = apiBaseUrl.replace(/\/$/, "");
-    if (cleanBaseUrl.endsWith("/api")) {
-        cleanBaseUrl = cleanBaseUrl.slice(0, -4);
-    }
-
-    // Construct the final URL for the backend request
-    const finalUrl = `${cleanBaseUrl}/api/users/byUsername/${username}`;
-    console.log(`[API][${url}] Fetching user data from backend: ${finalUrl}`);
-    
-    // Make the API request
-    const response = await fetch(finalUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
+    // Query user directly from the database
+    const user = await prisma.user.findFirst({
+      where: {
+        username: {
+          equals: username,
+          mode: 'insensitive' // Case-insensitive search
+        }
       },
-      cache: 'no-store', // Disable cache for user data
-    });
-    console.log(`[API][${url}] Backend response status: ${response.status}`);
-
-    // Handle the response
-    if (!response.ok) {
-      const errorMessage = await response.text();
-      console.error(`[API][${url}] Backend API error (${response.status}):`, errorMessage);
-      
-      try {
-        // Try to parse error as JSON if possible
-        const errorJson = JSON.parse(errorMessage);
-        console.log(`[API][${url}] Forwarding backend JSON error response.`);
-        return NextResponse.json(errorJson, { status: response.status });
-      } catch {
-        // Otherwise return as text
-        console.log(`[API][${url}] Forwarding backend text error response.`);
-        return NextResponse.json(
-          { error: errorMessage || `Error: ${response.status}` }, 
-          { status: response.status }
-        );
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        email: isAdmin, // Only include email if admin
+        phoneNumber: isAdmin, // Only include phone if admin
+        isVerified: isAdmin, // Only include verification status if admin
+        isAdmin: isAdmin, // Only include admin status if admin
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            products: true,
+            liveStreams: true
+          }
+        }
       }
+    });
+
+    if (!user) {
+      console.error(`[API][${url}] Not Found (404): User with username '${username}' not found.`);
+      return NextResponse.json({ error: `User '${username}' not found` }, { status: 404 });
     }
 
-    // Parse and return successful response
-    const data = await response.json();
-    console.log(`[API][${url}] Successfully fetched user data from backend.`);
-    return NextResponse.json(data);
+    console.log(`[API][${url}] Successfully fetched user data from database.`);
+    return NextResponse.json(user);
     
   } catch (error: any) {
     console.error(`[API][${url}] Unexpected error in GET handler:`, error);

@@ -5,20 +5,78 @@ import Link from 'next/link';
 import { useTheme } from './ThemeProvider';
 import { useAuth } from './AuthProvider';
 import { usePathname } from 'next/navigation';
-import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle, Package } from 'lucide-react';
+import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle, Package, X, Bell, ShieldAlert, Users, Cat, Layers } from 'lucide-react';
 
 const Sidebar = () => {
   const [isExpanded, setIsExpanded] = useState(true);
   const { theme, toggleTheme } = useTheme();
   const { isAuthenticated, user, logout } = useAuth();
   const pathname = usePathname();
+  const [notificationCount, setNotificationCount] = useState(0);
 
   // Close sidebar on mobile by default
+  useEffect(() => {
+    const handleResize = () => {
+      setIsExpanded(window.innerWidth >= 768);
+    };
+    
+    // Set initial state
+    handleResize();
+    
+    // Add event listener
+    window.addEventListener('resize', handleResize);
+    
+    // Clean up
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close sidebar when navigating on mobile
   useEffect(() => {
     if (window.innerWidth < 768) {
       setIsExpanded(false);
     }
-  }, []);
+  }, [pathname]);
+
+  // Fetch notifications if user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      fetchNotifications();
+      
+      // Set up polling for notifications every 30 seconds
+      const intervalId = setInterval(fetchNotifications, 30000);
+      
+      return () => clearInterval(intervalId);
+    }
+  }, [isAuthenticated, user]);
+  
+  const fetchNotifications = async () => {
+    try {
+      // Get token from localStorage with safer parsing
+      let token = '';
+      const authData = localStorage.getItem('auth');
+      if (authData) {
+        try {
+          const parsed = JSON.parse(authData);
+          token = parsed.token || '';
+        } catch (e) {
+          console.error('Failed to parse auth data:', e);
+        }
+      }
+
+      const response = await fetch('/api/notifications', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setNotificationCount(data.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  };
 
   const toggleSidebar = () => {
     setIsExpanded(!isExpanded);
@@ -28,14 +86,18 @@ const Sidebar = () => {
     <>
       {/* Mobile overlay */}
       <div
-        className={`fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden ${isExpanded ? 'block' : 'hidden'}`}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${
+          isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
         onClick={toggleSidebar}
       />
 
       {/* Mobile menu toggle button - only visible when sidebar is collapsed on mobile */}
       <button
         onClick={toggleSidebar}
-        className={`fixed top-4 left-4 z-50 p-2 rounded-full bg-[var(--accent)] text-white shadow-lg md:hidden ${isExpanded ? 'hidden' : 'flex'} items-center justify-center`}
+        className={`fixed top-4 left-4 z-50 p-2 rounded-full bg-[var(--accent)] text-white shadow-lg md:hidden ${
+          isExpanded ? 'hidden' : 'flex'
+        } items-center justify-center`}
         aria-label="Open Menu"
       >
         <Menu className="h-5 w-5" />
@@ -44,9 +106,14 @@ const Sidebar = () => {
       {/* Sidebar */}
       <aside
         className={`
-          fixed md:sticky left-0 top-0 h-screen z-50 bg-[var(--background)] border-r border-[var(--border)]
-          transition-all duration-300 flex flex-col overflow-hidden premium-shadow
-          ${isExpanded ? 'w-64' : 'md:w-16 -translate-x-full md:translate-x-0'}
+          fixed md:sticky left-0 top-0 h-screen z-50 
+          bg-[var(--background)] border-r border-[var(--border)]
+          transition-all duration-300 ease-in-out flex flex-col
+          overflow-hidden premium-shadow
+          ${isExpanded 
+            ? 'w-[85vw] sm:w-72 md:w-64 translate-x-0' 
+            : 'w-16 -translate-x-full md:translate-x-0'
+          }
         `}
       >
         {/* Header */}
@@ -54,7 +121,7 @@ const Sidebar = () => {
           <div className={`flex items-center ${isExpanded ? 'w-full' : 'justify-center'}`}>
             {isExpanded ? (
               <Link href="/" className="text-xl font-bold text-[var(--accent)]">
-                <span className="bg-clip-text">Bidpazar</span>
+                <span className="bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--primary)]">Bidpazar</span>
               </Link>
             ) : (
               <Link href="/" className="text-xl font-bold text-[var(--accent)]">
@@ -63,17 +130,23 @@ const Sidebar = () => {
             )}
           </div>
 
-          {/* Close/Open button positioned at top right */}
+          {/* Close/Open button - different for mobile vs desktop */}
           <button
             onClick={toggleSidebar}
             className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1.5 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] transition-all"
             aria-label={isExpanded ? 'Daralt' : 'Genişlet'}
           >
             {isExpanded ? (
-              <div className="flex items-center">
-                <ChevronLeft className="h-4 w-4" />
-                <ChevronLeft className="h-4 w-4 -ml-2" />
-              </div>
+              <>
+                {/* Show X icon on mobile, double chevron on desktop */}
+                <div className="md:hidden">
+                  <X className="h-5 w-5" />
+                </div>
+                <div className="hidden md:flex items-center">
+                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4 -ml-2" />
+                </div>
+              </>
             ) : (
               <Menu className="h-4 w-4" />
             )}
@@ -81,8 +154,8 @@ const Sidebar = () => {
         </div>
 
         {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto px-3 scrollbar-thin">
-          <ul className="space-y-2 mt-6">
+        <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin">
+          <ul className="space-y-2 mt-4">
             <li>
               <Link href="/"
                 className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
@@ -152,7 +225,7 @@ const Sidebar = () => {
                 <li>
                   <Link href="/dashboard"
                     className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname.startsWith('/dashboard') && !pathname.startsWith('/dashboard/messages')
+                    ${pathname.startsWith('/dashboard') && !pathname.startsWith('/dashboard/messages') && !pathname.startsWith('/dashboard/notifications')
                         ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                         : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
                     {isExpanded ? (
@@ -181,13 +254,142 @@ const Sidebar = () => {
                     )}
                   </Link>
                 </li>
+                <li>
+                  <Link href="/dashboard/notifications"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all relative
+                    ${pathname.startsWith('/dashboard/notifications')
+                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <Bell className="h-5 w-5 mr-3" />
+                        <span>Bildirimler</span>
+                        {notificationCount > 0 && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center h-5 min-w-5 px-1 rounded-full bg-[var(--accent)] text-white text-xs font-medium">
+                            {notificationCount > 99 ? '99+' : notificationCount}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <div className="relative">
+                        <Bell className="h-5 w-5" />
+                        {notificationCount > 0 && (
+                          <span className="absolute -top-1 -right-1 flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-[var(--accent)] text-white text-xs font-medium">
+                            {notificationCount > 9 ? '9+' : notificationCount}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </Link>
+                </li>
+              </>
+            )}
+            
+            {/* Admin Section - Only visible for admin users */}
+            {isAuthenticated && user?.isAdmin && (
+              <>
+                <li className="pt-4 pb-2">
+                  {isExpanded && (
+                    <div className="px-4 text-xs font-semibold uppercase text-[var(--muted-foreground)]">
+                      Admin Paneli
+                    </div>
+                  )}
+                  {!isExpanded && (
+                    <div className="border-t border-[var(--border)] my-2"></div>
+                  )}
+                </li>
+                
+                <li>
+                  <Link href="/admin"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname === '/admin'
+                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <ShieldAlert className="h-5 w-5 mr-3" />
+                        <span>Admin Paneli</span>
+                      </>
+                    ) : (
+                      <ShieldAlert className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+                
+                <li>
+                  <Link href="/admin/users"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname === '/admin/users'
+                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <Users className="h-5 w-5 mr-3" />
+                        <span>Kullanıcılar</span>
+                      </>
+                    ) : (
+                      <Users className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+                
+                <li>
+                  <Link href="/admin/products"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname === '/admin/products'
+                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <Package className="h-5 w-5 mr-3" />
+                        <span>Ürünler</span>
+                      </>
+                    ) : (
+                      <Package className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+                
+                <li>
+                  <Link href="/admin/categories"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname === '/admin/categories'
+                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <Layers className="h-5 w-5 mr-3" />
+                        <span>Kategoriler</span>
+                      </>
+                    ) : (
+                      <Layers className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
+                
+                <li>
+                  <Link href="/admin/streams"
+                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
+                    ${pathname === '/admin/streams'
+                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                    {isExpanded ? (
+                      <>
+                        <Tv className="h-5 w-5 mr-3" />
+                        <span>Canlı Yayınlar</span>
+                      </>
+                    ) : (
+                      <Tv className="h-5 w-5" />
+                    )}
+                  </Link>
+                </li>
               </>
             )}
           </ul>
         </div>
 
         {/* Footer with theme toggle and user info */}
-        <div className="p-4 border-t border-[var(--border)]">
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--secondary-background)] backdrop-blur-sm">
           <button
             onClick={toggleTheme}
             className="w-full flex items-center p-2 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] mb-4 transition-all"
@@ -213,38 +415,57 @@ const Sidebar = () => {
             )}
           </button>
 
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 rounded-full premium-gradient flex items-center justify-center text-[var(--accent-foreground)] font-medium">
-                {isAuthenticated && user ? user.username.charAt(0).toUpperCase() : 'G'}
-              </div>
-            </div>
-            {isExpanded && (
-              <div className="ml-3">
-                {isAuthenticated && user ? (
-                  <>
-                    <p className="text-sm font-medium text-[var(--foreground)]">
+          {isAuthenticated && user ? (
+            <div className={`${isExpanded ? 'p-3' : 'p-2'} rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}>
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white text-sm font-medium shadow-md">
+                    {user.username.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="ml-3">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
                       {user.name || user.username}
                     </p>
-                    <div className="flex mt-1 space-x-2">
-                      <Link href="/dashboard" className="text-xs text-[var(--primary)]">Profil</Link>
-                      <button onClick={logout} className="text-xs text-[var(--accent)]">Çıkış Yap</button>
+                    <div className="flex mt-1 space-x-3">
+                      <Link href="/dashboard" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
+                        Profil
+                      </Link>
+                      <button onClick={logout} className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity">
+                        Çıkış
+                      </button>
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-[var(--foreground)]">
-                      Misafir
-                    </p>
-                    <div className="flex mt-1 space-x-2">
-                      <Link href="/sign-in" className="text-xs text-[var(--primary)]">Giriş Yap</Link>
-                      <Link href="/sign-up" className="text-xs text-[var(--accent)]">Kayıt Ol</Link>
-                    </div>
-                  </>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className={`${isExpanded ? 'p-3' : 'p-2'} rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}>
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white text-sm font-medium shadow-md">
+                    G
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="ml-3">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      Misafir
+                    </p>
+                    <div className="flex mt-1 space-x-3">
+                      <Link href="/sign-in" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
+                        Giriş
+                      </Link>
+                      <Link href="/sign-up" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity">
+                        Kayıt
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
     </>

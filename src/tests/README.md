@@ -124,4 +124,18 @@ If you encounter type errors with the mocks:
 
 - Make sure you're using the correct mock implementations
 - Consider using `as any` type assertions in your tests when necessary
-- Remember that these are mocks and don't need to perfectly match the real implementations 
+- Remember that these are mocks and don't need to perfectly match the real implementations
+
+# BidPazar Test Suite
+
+## E2E Tests (Playwright)
+
+End-to-end browser tests for live stream and auction flows are located in `src/tests/e2e/`.
+
+To run all E2E tests:
+
+```
+npx playwright test
+```
+
+To run a specific test or in headed mode, see Playwright documentation. 

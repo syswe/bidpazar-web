@@ -29,6 +29,9 @@ export async function middleware(request: NextRequest) {
 
   console.log(`[Middleware] Is public path: ${isPublicPath}`);
 
+  // Check if it's an admin path that needs special handling
+  const isAdminPath = path.startsWith('/admin');
+  
   // Get the token from the cookies
   const token = request.cookies.get('token')?.value || '';
   console.log(`[Middleware] Token present: ${!!token}`);
@@ -37,6 +40,31 @@ export async function middleware(request: NextRequest) {
   const payload = token ? await verifyAuthSession(token) : null;
   const isAuthenticated = !!payload;
   console.log(`[Middleware] Is authenticated (based on token verification): ${isAuthenticated}`);
+  
+  // Check admin status for admin routes
+  const isAdmin = payload?.isAdmin === true;
+  
+  // Special handling for admin routes
+  if (isAdminPath) {
+    console.log(`[Middleware] Admin path detected: ${path}, user isAdmin: ${isAdmin}`);
+    
+    if (!isAuthenticated) {
+      console.log(`[Middleware] Admin path - User not authenticated, redirecting to login`);
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirect', path);
+      return NextResponse.redirect(loginUrl);
+    }
+    
+    if (isAuthenticated && !isAdmin) {
+      console.log(`[Middleware] Admin path - User authenticated but not admin, redirecting to dashboard`);
+      const dashboardUrl = new URL('/dashboard', request.url);
+      return NextResponse.redirect(dashboardUrl);
+    }
+    
+    // Allow admin user to access admin path
+    console.log(`[Middleware] Admin path - User is admin, allowing access`);
+    return NextResponse.next();
+  }
 
   // 1. Redirect authenticated users away from login/register pages
   if ((path === '/login' || path === '/register' || path === '/sign-in' || path === '/sign-up') && isAuthenticated) {
@@ -56,6 +84,17 @@ export async function middleware(request: NextRequest) {
       response.cookies.set('token', '', { path: '/', maxAge: 0 });
     }
     return response;
+  }
+
+  // Check if this is a WebSocket upgrade request for our socket endpoint public
+  if (
+    request.method === 'GET' &&
+    request.nextUrl.pathname.startsWith('/api/rtc/socket') &&
+    (request.headers.get('upgrade') === 'websocket' ||
+     request.headers.get('connection')?.includes('Upgrade'))
+  ) {
+    // Let the WebSocket handler in the route.ts handle the upgrade
+    return NextResponse.next();
   }
 
   // If none of the above conditions met, allow the request to proceed

@@ -306,11 +306,12 @@ export const logout = async (): Promise<void> => {
  * Validate token with the backend
  * This is the primary way to check if a token is still valid
  */
-// Add rate limiting to token validation
+// Add a better rate limiting to token validation
 let lastValidationTime = 0;
-const VALIDATION_COOLDOWN = 1000; // 1 second between validation attempts
+const VALIDATION_COOLDOWN = 300; // Reduced cooldown when checking admin routes (300ms instead of 1000ms)
+let adminRouteChecking = false; // Flag to identify when validating for admin routes
 
-export const validateToken = async (): Promise<User | null> => {
+export const validateToken = async (forceCheck = false): Promise<User | null> => {
   const token = getToken();
 
   if (!token) {
@@ -318,12 +319,22 @@ export const validateToken = async (): Promise<User | null> => {
     return null;
   }
 
+  // Check if we're on an admin route and allow higher validation frequency
+  const isAdminRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+  if (isAdminRoute && !adminRouteChecking) {
+    console.log("Admin route detected, allowing fast validation");
+    adminRouteChecking = true;
+  }
+
   console.log("Token found in localStorage, length:", token.length);
 
-  // Prevent too frequent validation requests
+  // Prevent too frequent validation requests, but allow bypassing for admin routes
   const now = Date.now();
-  if (now - lastValidationTime < VALIDATION_COOLDOWN) {
+  const effectiveCooldown = adminRouteChecking || forceCheck ? VALIDATION_COOLDOWN : 1000;
+  if (now - lastValidationTime < effectiveCooldown && !forceCheck) {
     console.log(`Token validation on cooldown. Last validation was ${(now - lastValidationTime)/1000}s ago.`);
+    console.log(`Using ${adminRouteChecking ? 'reduced' : 'standard'} cooldown: ${effectiveCooldown}ms`);
+    
     // Return the last cached user data instead of making a new request
     return getUser();
   }
@@ -331,7 +342,7 @@ export const validateToken = async (): Promise<User | null> => {
   try {
     // Add a timestamp to prevent caching
     const timestamp = new Date().getTime();
-    console.log("Validating token with backend");
+    console.log(`Validating token with backend (admin route: ${adminRouteChecking ? 'yes' : 'no'})`);
     lastValidationTime = now; // Update timestamp before the request
     
     const response = await fetch(`${API_URL}/auth/validate?_=${timestamp}`, {
@@ -355,7 +366,8 @@ export const validateToken = async (): Promise<User | null> => {
         if (refreshed) {
           console.log("Token refreshed, trying validation again");
           // Try validation again with new token
-          return validateToken();
+          adminRouteChecking = false; // Reset flag to prevent double-detection
+          return validateToken(true); // Force check after refresh
         }
         
         console.warn("Token refresh failed, removing auth");
@@ -378,6 +390,14 @@ export const validateToken = async (): Promise<User | null> => {
         newIsAdmin: data.user.isAdmin
       });
       setAuth(currentAuth.token, data.user);
+    }
+    
+    // Reset admin route flag after successful validation
+    if (adminRouteChecking) {
+      setTimeout(() => {
+        console.log("Resetting admin route flag");
+        adminRouteChecking = false;
+      }, 1000);
     }
     
     return data.user;

@@ -4,26 +4,64 @@ import { useState, useEffect, useRef, FormEvent } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuth } from "@/lib/frontend-auth";
+import { ArrowUp, DollarSign, Clock, XCircle, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface BiddingInterfaceProps {
   streamId: string;
+  isExpanded?: boolean;
+  onMinimize?: () => void;
+  className?: string;
 }
 
 interface Product {
   id: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
   currentBid?: number;
   startingBid: number;
+  countdownEnd?: string;
+  creatorId?: string;
 }
 
-export default function BiddingInterface({ streamId }: BiddingInterfaceProps) {
+export default function BiddingInterface({ 
+  streamId, 
+  isExpanded = false,
+  onMinimize,
+  className = "" 
+}: BiddingInterfaceProps) {
   const [bidAmount, setBidAmount] = useState("");
   const [currentBid, setCurrentBid] = useState<number>(0);
+  const [highestBidder, setHighestBidder] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bidSuccess, setBidSuccess] = useState<boolean>(false);
+  const [countdownTime, setCountdownTime] = useState<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const { user } = useAuth();
+  const bidInputRef = useRef<HTMLInputElement>(null);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!product?.countdownEnd) return;
+    
+    const intervalId = setInterval(() => {
+      const endTime = new Date(product.countdownEnd!).getTime();
+      const now = new Date().getTime();
+      const distance = endTime - now;
+      
+      if (distance <= 0) {
+        clearInterval(intervalId);
+        setCountdownTime(0);
+      } else {
+        setCountdownTime(Math.floor(distance / 1000));
+      }
+    }, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [product?.countdownEnd]);
 
   // Fetch current product and bid information
   useEffect(() => {
@@ -58,13 +96,6 @@ export default function BiddingInterface({ streamId }: BiddingInterfaceProps) {
     const token = getAuth().token;
     const isAuthenticated = !!token && !!user;
 
-    console.log("Setting up bidding socket with auth:", {
-      isAuthenticated,
-      hasToken: !!token,
-      hasUser: !!user,
-      userId: user?.id
-    });
-
     socketRef.current = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000", {
       query: {
         streamId,
@@ -78,44 +109,31 @@ export default function BiddingInterface({ streamId }: BiddingInterfaceProps) {
       path: "/socket.io/",
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 60000,
-      forceNew: false,
-      autoConnect: true
+      reconnectionDelay: 1000
     });
 
     socketRef.current.on("connect", () => {
-      console.log("Bidding socket connected with ID:", socketRef.current?.id);
       setIsConnected(true);
     });
 
-    socketRef.current.on("disconnect", (reason) => {
-      console.log("Bidding socket disconnected, reason:", reason);
+    socketRef.current.on("disconnect", () => {
       setIsConnected(false);
-    });
-
-    socketRef.current.on("connect_error", (error) => {
-      console.error("Bidding socket connection error:", error.message);
-      setIsConnected(false);
-    });
-
-    socketRef.current.io.on("reconnect_attempt", (attempt) => {
-      console.log(`Bidding socket reconnection attempt ${attempt}`);
-    });
-
-    socketRef.current.io.on("reconnect", (attempt) => {
-      console.log(`Bidding socket reconnected after ${attempt} attempts`);
-      setIsConnected(true);
-    });
-
-    socketRef.current.io.on("reconnect_error", (error) => {
-      console.error(`Bidding socket reconnection error:`, error.message);
     });
 
     // Handle bid updates
-    socketRef.current.on("bid-update", (data: { bid: { amount: number }; amount: number }) => {
+    socketRef.current.on("bid-update", (data: { 
+      amount: number;
+      userId: string;
+      username: string; 
+    }) => {
       setCurrentBid(data.amount);
+      setHighestBidder(data.username);
+      
+      // If this is our bid, show success message
+      if (data.userId === user?.id) {
+        setBidSuccess(true);
+        setTimeout(() => setBidSuccess(false), 3000);
+      }
     });
 
     // Handle bid errors
@@ -147,16 +165,10 @@ export default function BiddingInterface({ streamId }: BiddingInterfaceProps) {
 
     // Make sure it's a valid number
     if (isNaN(amount) || amount <= currentBid) {
-      setError(`Bid must be higher than the current bid of $${currentBid}`);
+      setError(`Bid must be higher than the current bid of ${currentBid}`);
       setTimeout(() => setError(null), 5000);
       return;
     }
-
-    console.log("Placing bid:", {
-      streamId,
-      listingId: product.id,
-      amount: amount
-    });
 
     socketRef.current.emit("place-bid", {
       streamId,
@@ -164,62 +176,132 @@ export default function BiddingInterface({ streamId }: BiddingInterfaceProps) {
       amount: amount,
     });
 
-    // Optimistically update UI
-    setCurrentBid(amount);
+    // Clear bid input and focus it again for quick bidding
     setBidAmount("");
+    bidInputRef.current?.focus();
   };
 
+  const formatTimeLeft = (seconds: number): string => {
+    if (!seconds || seconds <= 0) return "Ended";
+    
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Show loading state
   if (loading) {
-    return <div className="animate-pulse p-4">Loading bidding interface...</div>;
+    return (
+      <div className={`p-2 sm:p-3 bg-background/90 backdrop-blur-sm border border-border rounded-lg ${className}`}>
+        <div className="flex justify-center items-center py-2 sm:py-3">
+          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 text-accent animate-spin mr-2" />
+          <span className="text-xs sm:text-sm text-muted-foreground">Loading auction...</span>
+        </div>
+      </div>
+    );
   }
 
+  // No active auction
   if (!product) {
-    return <div>No active auction to bid on</div>;
+    return null;
   }
 
   const minimumBid = currentBid + 1;
 
   return (
-    <div className="flex flex-col">
-      <div className="flex justify-between items-center mb-3">
-        <span className="text-sm font-medium">Current Bid:</span>
-        <span className="font-bold text-xl text-green-600 dark:text-green-400">
-          ${currentBid}
+    <div className={`bg-background/90 backdrop-blur-sm border border-border rounded-lg overflow-hidden transition-all duration-300 ${isExpanded ? 'p-3 sm:p-4' : 'p-2 sm:p-3'} ${className}`}>
+      {/* Product header with close button */}
+      <div className="flex items-start justify-between mb-2 sm:mb-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-xs sm:text-sm truncate">{product.title || 'Current Auction'}</h3>
+          {product.description && (
+            <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{product.description}</p>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {countdownTime !== null && (
+            <div className="flex items-center bg-muted px-2 py-1 rounded text-[10px] sm:text-xs">
+              <Clock className="w-3 h-3 mr-1 text-muted-foreground" />
+              <span className={countdownTime < 60 ? 'text-red-500 font-medium' : ''}>
+                {formatTimeLeft(countdownTime)}
+              </span>
+            </div>
+          )}
+          
+          {onMinimize && (
+            <button 
+              onClick={onMinimize} 
+              className="text-muted-foreground hover:text-foreground p-1 rounded-full"
+            >
+              <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Current bid display */}
+      <div className="flex justify-between items-center mb-2 sm:mb-3 bg-muted p-2 rounded">
+        <span className="text-[10px] sm:text-xs font-medium text-muted-foreground">Current Bid:</span>
+        <span className="font-bold text-sm sm:text-base text-accent">
+          <DollarSign className="w-3 h-3 sm:w-4 sm:h-4 inline mr-0.5" />
+          {currentBid}
         </span>
       </div>
-
-      {error && (
-        <div className="text-red-500 text-sm mb-3 p-2 bg-red-100 dark:bg-red-900 rounded">
-          {error}
+      
+      {highestBidder && (
+        <div className="text-[10px] sm:text-xs text-center mb-2 sm:mb-3 text-muted-foreground">
+          Highest bidder: <span className="font-medium">{highestBidder}</span>
         </div>
       )}
 
-      <form onSubmit={handleBid} className="flex gap-2">
-        <div className="relative flex-1">
-          <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+      {/* Success and error messages */}
+      {bidSuccess && (
+        <div className="text-green-600 dark:text-green-400 text-[10px] sm:text-xs mb-2 sm:mb-3 p-1.5 sm:p-2 bg-green-100 dark:bg-green-900/30 rounded flex items-center">
+          <CheckCircle2 className="w-3 h-3 mr-1 flex-shrink-0" /> Your bid was placed successfully!
+        </div>
+      )}
+      
+      {error && (
+        <div className="text-red-600 dark:text-red-400 text-[10px] sm:text-xs mb-2 sm:mb-3 p-1.5 sm:p-2 bg-red-100 dark:bg-red-900/30 rounded flex items-center">
+          <AlertCircle className="w-3 h-3 mr-1 flex-shrink-0" /> {error}
+        </div>
+      )}
+      
+      {/* Bid form */}
+      <form onSubmit={handleBid} className="space-y-2">
+        <div className="flex items-center">
+          <span className="bg-muted border border-r-0 border-border rounded-l-md p-1.5 sm:p-2 text-muted-foreground">
+            <DollarSign className="w-3 h-3 sm:w-4 sm:h-4" />
+          </span>
           <input
             type="number"
+            ref={bidInputRef}
+            step="0.01"
+            min={minimumBid}
             value={bidAmount}
             onChange={(e) => setBidAmount(e.target.value)}
-            placeholder={`${minimumBid}+`}
-            className="w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-            min={minimumBid}
-            step="1"
-            disabled={!isConnected || !user}
+            placeholder={`${minimumBid} or higher`}
+            className="flex-1 p-1.5 sm:p-2 text-xs sm:text-sm border border-border rounded-r-md focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
           />
         </div>
+        
         <button
           type="submit"
-          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg disabled:bg-gray-400"
-          disabled={!isConnected || !bidAmount || !user}
+          disabled={!isConnected || !user || loading}
+          className="w-full py-1.5 sm:py-2 bg-accent text-accent-foreground font-medium text-xs sm:text-sm flex items-center justify-center rounded-md disabled:opacity-50"
         >
-          Bid
+          {!isConnected ? (
+            <>Connecting...</>
+          ) : !user ? (
+            <>Sign in to bid</>
+          ) : (
+            <>
+              <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> Place Bid
+            </>
+          )}
         </button>
       </form>
-
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-        Minimum bid: ${minimumBid}
-      </p>
     </div>
   );
 } 

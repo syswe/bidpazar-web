@@ -12,7 +12,7 @@ services:
       - TURN_USERNAME=bidpazar
       - TURN_PASSWORD=bidpazarpass
       - TURN_REALM=bidpazar.com
-      - EXTERNAL_IP=192.168.1.12
+      - EXTERNAL_IP=192.168.1.5
     command: >
       --log-file=stdout
       --lt-cred-mech

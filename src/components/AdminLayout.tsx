@@ -17,6 +17,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [isVerifying, setIsVerifying] = useState(true);
   const [adminVerified, setAdminVerified] = useState(false);
 
+  // Track if we've attempted verification to prevent loops
+  const [verificationAttempted, setVerificationAttempted] = useState(false);
+
   // Verify admin status when authentication state changes
   useEffect(() => {
     // Skip verification while still loading auth state
@@ -39,14 +42,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       return;
     }
 
+    // If we've already verified admin status (positive result), don't re-verify
+    if (adminVerified) {
+      console.log('Admin verification - Already verified as admin');
+      setIsVerifying(false);
+      return;
+    }
+
+    // If we've already attempted verification but failed, don't keep trying
+    if (verificationAttempted && !adminVerified) {
+      console.log('Admin verification - Previously failed, redirecting');
+      router.push('/dashboard');
+      return;
+    }
+
     // Verify admin status based on user object from context
     if (user) {
-      // If we already verified admin status and it's true, don't re-verify
-      if (adminVerified) {
-        console.log('Admin verification - Already verified');
-        return;
-      }
-
       if (user.isAdmin) {
         // User is admin according to context, double-check with backend
         console.log('Admin verification - Context says user is admin, checking with backend');
@@ -100,18 +111,21 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           })
           .finally(() => {
             setIsVerifying(false);
+            setVerificationAttempted(true);
           });
       } else {
         // User is definitely not admin, redirect
         console.log('Admin verification - Context says user is not admin, redirecting');
         router.push('/dashboard');
+        setVerificationAttempted(true);
       }
     } else {
       // Should not happen if isAuthenticated is true
       console.log('Admin verification - No user object despite being authenticated, redirecting');
       router.push('/sign-in?redirect=/admin');
+      setVerificationAttempted(true);
     }
-  }, [isAuthenticated, isLoading, user, router, adminVerified]);
+  }, [isAuthenticated, isLoading, user, router, adminVerified, verificationAttempted]);
   
   // Add a manual reset function
   useEffect(() => {
@@ -125,11 +139,26 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       }
     };
     
+    // Add a debug function to check admin state
+    (window as any).debugAdminAuth = () => {
+      const authData = localStorage.getItem('auth');
+      const token = authData ? JSON.parse(authData).token : null;
+      console.log('Current auth state:', {
+        token: token ? `${token.substring(0, 10)}...` : null,
+        user,
+        isAuthenticated,
+        isAdmin: user?.isAdmin,
+        adminVerified,
+        verificationAttempted
+      });
+    };
+    
     return () => {
       // Clean up when component unmounts
       (window as any).resetAdminAuth = undefined;
+      (window as any).debugAdminAuth = undefined;
     };
-  }, []);
+  }, [isAuthenticated, user, adminVerified, verificationAttempted]);
 
   // Show loading state if still loading or verifying
   if (isLoading || isVerifying) {

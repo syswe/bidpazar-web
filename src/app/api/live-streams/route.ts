@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     const status = searchParams.get('status') as StreamStatus | null;
     const userId = searchParams.get('userId');
     
-    const where: Prisma.LiveStreamWhereInput = {
+    const where = {
       ...(status && { status: status }),
       ...(userId && { userId }),
     };

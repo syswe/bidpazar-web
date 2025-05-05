@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTokenFromRequest } from "@/lib/backend-auth"; // Use backend-auth
-import { env } from "@/lib/env"; // Import env config
-import { logger } from '@/lib/logger'; // Import logger
+import { verifyToken } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { logger } from '@/lib/logger';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(req: NextRequest) {
   const urlPath = req.nextUrl.pathname;
@@ -17,14 +18,30 @@ export async function POST(req: NextRequest) {
 
   logger.info(`[API][${urlPath}] POST request received`, { headers, body: requestBody });
 
-  const token = getTokenFromRequest(req); // Use backend-auth helper
-  logger.info(`[API][${urlPath}] Token found: ${!!token}`);
-  if (!token) {
-    logger.error(`[API][${urlPath}] Unauthorized (401): No token found.`);
+  // Extract token from authorization header
+  const authorization = req.headers.get('authorization');
+  if (!authorization) {
+    logger.error(`[API][${urlPath}] Unauthorized (401): No authorization header`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
+  
+  const parts = authorization.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    logger.error(`[API][${urlPath}] Unauthorized (401): Invalid authorization format`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  const token = parts[1];
+  logger.info(`[API][${urlPath}] Token found: ${!!token}`);
+  
   try {
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      logger.error(`[API][${urlPath}] Unauthorized (401): Invalid token`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { conversationId, content, receiverId } = requestBody;
 
     // Validate required fields
@@ -39,37 +56,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: errorMessage }, { status: 400 });
     }
 
-    // Use the specific backend API URL from env
-    const baseUrl = env.BACKEND_API_URL;
-    logger.info(`[API][${urlPath}] Backend base URL: ${baseUrl}`);
-    const backendPath = '/api/messages/messages';
-    const apiUrl = `${baseUrl}${backendPath}`;
-    
-    const payload = { conversationId, content, receiverId };
-    logger.info(`[API][${urlPath}] Sending message via backend: ${apiUrl}. Payload:`, payload);
-    
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+    // Verify the conversation exists and user is a participant
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        participants: {
+          some: {
+            id: payload.userId
+          }
+        }
       },
-      body: JSON.stringify(payload),
+      include: {
+        participants: true
+      }
     });
-    logger.info(`[API][${urlPath}] Backend response status: ${response.status}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error(`[API][${urlPath}] Backend API error (${response.status}):`, { status: response.status, errorText });
-      return NextResponse.json(
-        { error: `Backend API error: ${response.status}` }, 
-        { status: response.status }
-      );
+    if (!conversation) {
+      logger.error(`[API][${urlPath}] Forbidden (403): User not in conversation or conversation doesn't exist`);
+      return NextResponse.json({ 
+        error: 'You do not have access to this conversation' 
+      }, { status: 403 });
     }
 
-    const data = await response.json();
-    logger.info(`[API][${urlPath}] Successfully sent message. Response:`, data);
-    return NextResponse.json(data);
+    // Check if receiver is part of the conversation
+    const isReceiverInConversation = conversation.participants.some((p: { id: string }) => p.id === receiverId);
+    if (!isReceiverInConversation) {
+      logger.error(`[API][${urlPath}] Bad Request (400): Receiver is not part of this conversation`);
+      return NextResponse.json({ 
+        error: 'Receiver is not part of this conversation' 
+      }, { status: 400 });
+    }
+
+    // Create the message
+    const message = await prisma.message.create({
+      data: {
+        content,
+        senderId: payload.userId,
+        receiverId,
+        conversationId
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    // Update conversation's updatedAt time
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() }
+    });
+
+    // Create a notification for the receiver
+    await prisma.notification.create({
+      data: {
+        userId: receiverId,
+        content: `New message from ${payload.username}`,
+        type: 'MESSAGE',
+        relatedId: message.id
+      }
+    });
+
+    logger.info(`[API][${urlPath}] Successfully sent message. Response:`, message);
+    return NextResponse.json(message);
 
   } catch (error: any) {
     logger.error(`[API][${urlPath}] Unexpected error in POST handler:`, error);

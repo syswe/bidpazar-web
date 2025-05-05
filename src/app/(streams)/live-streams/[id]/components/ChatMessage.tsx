@@ -7,6 +7,7 @@ interface ChatMessageType {
   userId: string;
   liveStreamId: string;
   createdAt: string;
+  username?: string;
   user?: {
     username: string;
   };
@@ -20,22 +21,24 @@ interface ChatMessageProps {
 const ChatMessage = ({ message, isFromCurrentUser }: ChatMessageProps) => {
   // Use content if available, otherwise use message (to handle different API formats)
   const messageContent = message.content || message.message;
+  const username = message.username || message.user?.username || 'Unknown';
 
   return (
-    <div className={`flex ${isFromCurrentUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isFromCurrentUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-150`}>
       <div
-        className={`max-w-[75%] p-2 rounded-lg text-sm ${isFromCurrentUser
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-muted text-foreground'
-          }`}
+        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
+          isFromCurrentUser
+            ? 'bg-accent text-accent-foreground rounded-br-none'
+            : 'bg-muted text-foreground rounded-bl-none'
+        }`}
       >
         {!isFromCurrentUser && (
-          <div className="font-medium text-xs mb-1">
-            {message.user?.username || 'Unknown'}
+          <div className="font-semibold text-xs mb-0.5">
+            {username}
           </div>
         )}
-        <div className="break-words">{messageContent}</div>
-        <div className="text-xs mt-1 opacity-70">
+        <div className="break-words text-sm">{messageContent}</div>
+        <div className="text-[10px] mt-1 opacity-70 text-right">
           {new Date(message.createdAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'

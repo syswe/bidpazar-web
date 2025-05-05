@@ -1,52 +1,104 @@
-import { NextRequest } from 'next/server';
-import { withAuth, forwardAuthenticatedRequest } from "@/lib/backend-auth";
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { logger } from '@/lib/logger'; // Import logger
+import { logger } from '@/lib/logger';
+import { prisma } from '@/lib/prisma';
 
 /**
  * GET handler for user conversations
- * Uses the withAuth utility to ensure authentication
+ * Uses direct database query with Prisma
  */
-export const GET = withAuth(async (req: NextRequest, token: string, userData: any) => {
+export async function GET(req: NextRequest) {
   const url = req.nextUrl.pathname;
-  logger.info(`[API][${url}] GET request received for conversations. Authenticated user:`, userData?.username || 'Unknown');
+  logger.info(`[API][${url}] GET request received for conversations`);
   
-  // Get backend base URL from environment
-  const backendBaseUrl = env.BACKEND_API_URL;
-  const backendPath = '/api/messages/conversations';
+  // Extract token from authorization header
+  const authorization = req.headers.get('authorization');
+  if (!authorization) {
+    logger.error(`[API][${url}] Unauthorized (401): No authorization header`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   
-  logger.info(`[API][${url}] Forwarding authenticated request to backend: ${backendBaseUrl}${backendPath}`);
+  const parts = authorization.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    logger.error(`[API][${url}] Unauthorized (401): Invalid authorization format`);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  const token = parts[1];
   
   try {
-    // Use our utility to forward the request to the backend
-    const response = await forwardAuthenticatedRequest(
-      req,
-      backendPath,
-      backendBaseUrl
-    );
-    
-    // Log the response status
-    logger.info(`[API][${url}] Backend response status: ${response.status}`);
-    
-    // Check if the response is valid
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error(`[API][${url}] Backend returned error (${response.status}):`, errorText);
-      return response;
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      logger.error(`[API][${url}] Unauthorized (401): Invalid token`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     
-    // Clone response to read body
-    const clonedResponse = response.clone();
-    try {
-      const data = await clonedResponse.json();
-      logger.info(`[API][${url}] Backend returned valid data: ${Array.isArray(data) ? `Array with ${data.length} items` : 'Non-array data'}`);
-    } catch (error) {
-      logger.error(`[API][${url}] Could not parse response as JSON:`, error);
+    // Get user data from token
+    const userData = await getUserFromTokenInNode(token);
+    if (!userData) {
+      logger.error(`[API][${url}] Unauthorized (401): User not found`);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     
-    return response;
+    logger.info(`[API][${url}] Authenticated user: ${userData.username}`);
+    
+    // Fetch conversations for the user
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        participants: {
+          some: {
+            id: userData.id
+          }
+        }
+      },
+      include: {
+        participants: {
+          select: {
+            id: true,
+            username: true,
+            name: true
+          }
+        },
+        messages: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 1
+        },
+        _count: {
+          select: {
+            messages: true
+          }
+        }
+      },
+      orderBy: {
+        updatedAt: 'desc'
+      }
+    });
+
+    // Process the data to simplify the response
+    const processedConversations = conversations.map((conv: any) => {
+      // Filter out the current user from participants
+      const otherParticipants = conv.participants.filter((p: { id: string }) => p.id !== userData.id);
+      
+      return {
+        id: conv.id,
+        participants: conv.participants,
+        otherParticipants: otherParticipants,
+        latestMessage: conv.messages[0] || null,
+        messageCount: conv._count.messages,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt
+      };
+    });
+    
+    logger.info(`[API][${url}] Successfully fetched ${conversations.length} conversations`);
+    return NextResponse.json(processedConversations);
+    
   } catch (error) {
     logger.error(`[API][${url}] Error in conversations API:`, error);
-    throw error;
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}); 
+} 

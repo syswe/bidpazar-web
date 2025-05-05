@@ -1,14 +1,14 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-   import { getUser, isAuthenticated, initializeAuth, removeAuth, User, validateToken, setAuth } from '../lib/frontend-auth';
+import { getUser, isAuthenticated, initializeAuth, removeAuth, User, validateToken, setAuth, logout as logoutAuth } from '../lib/frontend-auth';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isLoggedIn: boolean;
   isAuthenticated: boolean;
-  logout: () => void;
+  logout: () => Promise<void>;
   setUser: (user: User | null) => void;
   refreshAuthState: () => Promise<void>;
 }
@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isLoggedIn: false,
   isAuthenticated: false,
-  logout: () => {},
+  logout: async () => {},
   setUser: () => {},
   refreshAuthState: async () => {},
 });
@@ -49,10 +49,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  const logout = () => {
-    // Remove auth data from localStorage
-    removeAuth();
-    // Update state
+  const logout = async () => {
+    // Use the comprehensive logout function from frontend-auth
+    await logoutAuth();
+    // Update state after logout completed
     setUser(null);
   };
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from "@/lib/auth";
-import { env } from "@/lib/env";
+import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 
@@ -36,7 +35,7 @@ export async function POST(req: NextRequest) {
     let notificationIds: string[] = [];
     try {
       const body = await req.json();
-      notificationIds = body.notificationIds || [];
+      notificationIds = body.notificationIds;
       logger.info(`[API][${urlPath}] Request body parsed`, { notificationIds });
     } catch (parseError) {
       logger.error(`[API][${urlPath}] Bad Request (400): Failed to parse request body.`, parseError);
@@ -49,35 +48,33 @@ export async function POST(req: NextRequest) {
     }
     
     const userId = payload.userId;
-    logger.info(`[API][${urlPath}] Marking message notifications as read for user: ${userId}`, { notificationIds });
+    logger.info(`[API][${urlPath}] Marking notifications as read for user: ${userId}`, { notificationIds });
 
-    // Mark notifications as read - either specific ones or all
+    // Mark specific notifications as read if IDs provided
     if (notificationIds.length > 0) {
-      // Mark specific notifications as read
       await prisma.notification.updateMany({
         where: {
           id: { in: notificationIds },
-          userId, // Ensure user owns these notifications
-          type: 'MESSAGE'
+          userId: userId
         },
         data: {
           isRead: true
         }
       });
-      logger.info(`[API][${urlPath}] Marked ${notificationIds.length} specific message notifications as read`);
-    } else {
-      // Mark all notifications as read
+      logger.info(`[API][${urlPath}] Marked ${notificationIds.length} notifications as read`);
+    } 
+    // Or mark all as read if no specific IDs
+    else {
       await prisma.notification.updateMany({
         where: {
-          userId,
-          type: 'MESSAGE',
+          userId: userId,
           isRead: false
         },
         data: {
           isRead: true
         }
       });
-      logger.info(`[API][${urlPath}] Marked all unread message notifications as read for user`);
+      logger.info(`[API][${urlPath}] Marked all notifications as read for user: ${userId}`);
     }
 
     return NextResponse.json({ 
