@@ -70,9 +70,8 @@ export async function GET(req: NextRequest) {
       },
       take: limit
     });
-    
     // Mark all as "online" for this example
-    const onlineUsers = recentUsers.map((user: User) => ({
+    const onlineUsers = recentUsers.map((user) => ({
       ...user,
       isOnline: true
     }));

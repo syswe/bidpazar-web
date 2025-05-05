@@ -3,6 +3,7 @@ import { verifyToken } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 // Sample users with proper fields
 const sampleUsers = [
@@ -95,9 +96,9 @@ export async function GET(req: NextRequest) {
     const searchCondition = searchQuery 
       ? {
           OR: [
-            { username: { contains: searchQuery, mode: 'insensitive' } },
-            { name: { contains: searchQuery, mode: 'insensitive' } },
-            { email: { contains: searchQuery, mode: 'insensitive' } }
+            { username: { contains: searchQuery, mode: Prisma.QueryMode.insensitive } },
+            { name: { contains: searchQuery, mode: Prisma.QueryMode.insensitive } },
+            { email: { contains: searchQuery, mode: Prisma.QueryMode.insensitive } }
           ]
         } 
       : {};

@@ -97,7 +97,7 @@ export async function GET(
       }
     });
 
-    let participants = [];
+    let participants: any[] = [];
     if (details && details.participants) {
       participants = details.participants;
       console.log(`[API][${urlPath}] Successfully fetched ${participants.length} participants.`);
