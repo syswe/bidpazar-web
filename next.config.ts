@@ -23,11 +23,25 @@ const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
   images: {
-    domains: ["localhost", "bidpazar.com", "www.bidpazar.com"],
+    domains: [
+      'localhost', 
+      'bidpazar.com', 
+      'www.bidpazar.com',
+      'images.unsplash.com',
+      'source.unsplash.com',
+      'img.youtube.com',
+      'picsum.photos',
+      'storage.googleapis.com',
+      '192.168.1.5',
+      '192.168.1.100'
+    ],
     unoptimized: true,
   },
   experimental: {
     forceSwcTransforms: true,
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
   // Explicitly set environment variables for server-side rendering
   env: env,
@@ -45,9 +59,17 @@ const nextConfig: NextConfig = {
     },
     responseLimit: false,
   },
-  // Configure server actions body size limit
-  serverActions: {
-    bodySizeLimit: '10mb',
+  // Enable WebSocket support for Socket.IO
+  webSocketServer: {
+    url: '/api/rtc/socket',
+  },
+  webpack: (config) => {
+    config.externals.push({
+      'utf-8-validate': 'commonjs utf-8-validate',
+      'bufferutil': 'commonjs bufferutil',
+      'mediasoup': 'commonjs mediasoup',
+    });
+    return config;
   },
 };
 
