@@ -47,6 +47,9 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
 
+# Install dotenv for runtime environment loading
+RUN npm install --omit=dev dotenv
+
 # Make public directory and files writable
 RUN chmod -R 755 /app/public
 

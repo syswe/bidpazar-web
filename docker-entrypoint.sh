@@ -38,7 +38,7 @@ if [ "$NODE_ENV" = "production" ]; then
   export WEBRTC_SERVER="${WEBRTC_SERVER:-https://bidpazar.com}"
   export BACKEND_API_URL="${BACKEND_API_URL:-https://bidpazar.com/api}"
   
-  # Make NEXT_PUBLIC versions of each variable (for client-side)
+  # Force-set the NEXT_PUBLIC variables to ensure they override any embedded defaults
   export NEXT_PUBLIC_APP_URL="${APP_URL}"
   export NEXT_PUBLIC_API_URL="${API_URL}"
   export NEXT_PUBLIC_SOCKET_URL="${SOCKET_URL}"
@@ -110,8 +110,8 @@ EOF
 echo "Generated env.js:"
 cat ./public/env.js
 
-# Create a temporary .env file to ensure server-side environment variables
-cat > ./.env << EOF
+# Create runtime environment file for Next.js to read proper values
+cat > ./.env.production << EOF
 # Server environment variables with priority over NEXT_PUBLIC ones
 APP_URL=$APP_URL
 API_URL=$API_URL
@@ -136,11 +136,44 @@ NEXT_PUBLIC_STUN_SERVER_URL=$NEXT_PUBLIC_STUN_SERVER_URL
 NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 EOF
 
+# Create a runtime override script for Next.js to properly load environment variables
+cat > ./env-config.js << EOF
+// Runtime environment configuration
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables from .env.production
+const envFile = path.join(process.cwd(), '.env.production');
+if (fs.existsSync(envFile)) {
+  console.log('Loading environment from', envFile);
+  const envConfig = dotenv.parse(fs.readFileSync(envFile));
+  
+  // Apply to process.env
+  for (const key in envConfig) {
+    process.env[key] = envConfig[key];
+  }
+  
+  console.log('Environment variables loaded successfully');
+}
+EOF
+
 # Check if server.js exists
 if [ -f "./server.js" ]; then
   echo "Starting server with finalized environment variables"
+  
+  # Modify the server.js to include our environment configuration
+  if ! grep -q "require('./env-config.js')" server.js; then
+    # Create a backup of the original server.js
+    cp server.js server.js.bak
+    
+    # Insert our env-config at the top of the file (after initial require statements)
+    awk 'NR==1{print "try { require(\"./env-config.js\"); } catch (e) { console.error(\"Could not load env-config.js:\", e); }"}1' server.js.bak > server.js
+  fi
+  
   # Start Next.js with environment variables explicitly passed
   exec env \
+    NODE_ENV="production" \
     APP_URL="$APP_URL" \
     API_URL="$API_URL" \
     BACKEND_API_URL="$BACKEND_API_URL" \
