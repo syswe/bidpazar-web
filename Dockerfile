@@ -47,25 +47,16 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
 
-# Install dotenv for runtime environment loading
-RUN npm install --omit=dev dotenv
-
-# Make public directory and files writable
+# Make public directory and files writable (adjust if needed, e.g., for uploads)
+# Consider if this is truly necessary or if volumes handle uploads
 RUN chmod -R 755 /app/public
 
-# Add a placeholder env.js that will be overwritten at runtime
-RUN echo '// Placeholder - will be replaced at runtime' > ./public/env.js
-
-# Create a simpler startup script that uses envsubst
-COPY docker-entrypoint.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
-# Install dependencies - gettext is needed for envsubst in start.sh
-RUN apt-get update && apt-get install -y --no-install-recommends gettext \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the simplified entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Expose the port the app runs on
 EXPOSE 3000
 
-# Start with our script
-CMD ["/app/start.sh"] 
+# Start with our simplified entrypoint script
+CMD ["/app/docker-entrypoint.sh"] 

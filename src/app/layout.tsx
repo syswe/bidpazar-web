@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar";
 import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { Toaster } from "sonner";
+import { RuntimeConfigProvider } from "../context/RuntimeConfigContext";
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -41,26 +42,28 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className={`${inter.className} antialiased`}>
-        <ThemeProvider>
-          <AuthProvider>
-            <div className="flex h-full min-h-screen bg-[var(--background)]">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto w-full">
-                {children}
-              </main>
-            </div>
-            <Toaster 
-              position="top-right" 
-              toastOptions={{
-                style: {
-                  background: 'var(--background)',
-                  color: 'var(--foreground)',
-                  border: '1px solid var(--border)',
-                }
-              }}
-            />
-          </AuthProvider>
-        </ThemeProvider>
+        <RuntimeConfigProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <div className="flex h-full min-h-screen bg-[var(--background)]">
+                <Sidebar />
+                <main className="flex-1 overflow-y-auto w-full">
+                  {children}
+                </main>
+              </div>
+              <Toaster 
+                position="top-right" 
+                toastOptions={{
+                  style: {
+                    background: 'var(--background)',
+                    color: 'var(--foreground)',
+                    border: '1px solid var(--border)',
+                  }
+                }}
+              />
+            </AuthProvider>
+          </ThemeProvider>
+        </RuntimeConfigProvider>
       </body>
     </html>
   );

@@ -17,135 +17,78 @@ export interface EnvironmentConfig {
   STUN_SERVER_URL?: string;
 }
 
-// Default values for local development
-const defaults: EnvironmentConfig = {
-  APP_URL: 'http://localhost:3000',
-  API_URL: 'http://localhost:3000/api',
-  BACKEND_API_URL: 'http://localhost:3000/api',
-  SOCKET_URL: 'ws://localhost:3000',
-  WEBRTC_SERVER: 'http://localhost:3000',
-  WS_URL: '/api/rtc/socket',
-  NODE_ENV: 'development',
-  TURN_SERVER_URL: 'turn:localhost:3478',
-  TURN_USERNAME: 'bidpazar',
-  TURN_PASSWORD: 'bidpazarpass',
-  STUN_SERVER_URL: 'stun:localhost:3478'
-};
+// Helper function to safely get environment variables
+// Prefers non-prefixed, then NEXT_PUBLIC_ prefixed, then empty string
+function getEnvVar(name: keyof EnvironmentConfig): string {
+  return process.env[name] ?? process.env[`NEXT_PUBLIC_${name}`] ?? '';
+}
 
-// Production values as fallbacks
-const productionDefaults: EnvironmentConfig = {
-  APP_URL: 'https://bidpazar.com',
-  API_URL: 'https://bidpazar.com/api',
-  BACKEND_API_URL: 'https://bidpazar.com/api',
-  SOCKET_URL: 'wss://bidpazar.com',
-  WEBRTC_SERVER: 'https://bidpazar.com',
-  WS_URL: '/api/rtc/socket',
-  NODE_ENV: 'production',
-  TURN_SERVER_URL: 'turn:45.147.46.183:3478',
-  TURN_USERNAME: 'bidpazar',
-  TURN_PASSWORD: 'bidpazarpass',
-  STUN_SERVER_URL: 'stun:45.147.46.183:3478'
-};
-
-/**
- * Helper to get environment variable with priority
- * First looks for regular variable, then NEXT_PUBLIC_ prefixed, then falls back to default
- */
-function getEnvVar(name: string, defaultValue: string, isProduction: boolean = false): string {
-  return (
-    process.env[name] || 
-    process.env[`NEXT_PUBLIC_${name}`] || 
-    (isProduction ? productionDefaults[name as keyof EnvironmentConfig] || defaultValue : defaultValue)
-  );
+// Helper for specifically getting NEXT_PUBLIC_ variables (for client build-time)
+function getNextPublicEnvVar(name: keyof EnvironmentConfig): string {
+  // Construct the potential NEXT_PUBLIC_ key name dynamically
+  const nextPublicKey = `NEXT_PUBLIC_${name}` as keyof NodeJS.ProcessEnv;
+  return process.env[nextPublicKey] ?? '';
 }
 
 /**
- * Get environment values with proper priority
+ * Get environment values based on the execution context (server/client)
  */
 const getEnvironmentValues = (): EnvironmentConfig => {
-  // Check if we're in the browser
   const isBrowser = typeof window !== 'undefined';
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  // Server-side environment handling
+  const nodeEnv = process.env.NODE_ENV || 'development';
+
+  // Server-side or build-time
   if (!isBrowser) {
     return {
-      APP_URL: getEnvVar('APP_URL', defaults.APP_URL, isProduction),
-      API_URL: getEnvVar('API_URL', defaults.API_URL, isProduction),
-      BACKEND_API_URL: getEnvVar('BACKEND_API_URL', defaults.BACKEND_API_URL, isProduction),
-      SOCKET_URL: getEnvVar('SOCKET_URL', defaults.SOCKET_URL, isProduction),
-      WEBRTC_SERVER: getEnvVar('WEBRTC_SERVER', defaults.WEBRTC_SERVER, isProduction),
-      WS_URL: getEnvVar('WS_URL', defaults.WS_URL, isProduction),
-      NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
-      TURN_SERVER_URL: getEnvVar('TURN_SERVER_URL', defaults.TURN_SERVER_URL || '', isProduction),
-      TURN_USERNAME: getEnvVar('TURN_USERNAME', defaults.TURN_USERNAME || '', isProduction),
-      TURN_PASSWORD: getEnvVar('TURN_PASSWORD', defaults.TURN_PASSWORD || '', isProduction),
-      STUN_SERVER_URL: getEnvVar('STUN_SERVER_URL', defaults.STUN_SERVER_URL || '', isProduction)
+      APP_URL: getEnvVar('APP_URL'),
+      API_URL: getEnvVar('API_URL'),
+      BACKEND_API_URL: getEnvVar('BACKEND_API_URL'), // Read server-side specific var
+      SOCKET_URL: getEnvVar('SOCKET_URL'),
+      WEBRTC_SERVER: getEnvVar('WEBRTC_SERVER'),
+      WS_URL: getEnvVar('WS_URL'),
+      NODE_ENV: nodeEnv,
+      TURN_SERVER_URL: getEnvVar('TURN_SERVER_URL'),
+      TURN_USERNAME: getEnvVar('TURN_USERNAME'),
+      TURN_PASSWORD: getEnvVar('TURN_PASSWORD'),
+      STUN_SERVER_URL: getEnvVar('STUN_SERVER_URL'),
     };
   }
-  
-  // Client-side production check
-  const isProductionHostname = typeof window !== 'undefined' && 
-    (window.location.hostname === 'bidpazar.com' || window.location.hostname === 'www.bidpazar.com');
-  const clientIsProduction = isProductionHostname || isProduction;
-  
-  // Look for browser-injected environment variables first
-  const browserEnv = typeof window !== 'undefined' && (window as any).__ENV__;
-  
-  if (browserEnv) {
-    return {
-      APP_URL: browserEnv.NEXT_PUBLIC_APP_URL || (clientIsProduction ? productionDefaults.APP_URL : defaults.APP_URL),
-      API_URL: browserEnv.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.API_URL : defaults.API_URL),
-      BACKEND_API_URL: browserEnv.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.BACKEND_API_URL : defaults.BACKEND_API_URL),
-      SOCKET_URL: browserEnv.NEXT_PUBLIC_SOCKET_URL || (clientIsProduction ? productionDefaults.SOCKET_URL : defaults.SOCKET_URL),
-      WEBRTC_SERVER: browserEnv.NEXT_PUBLIC_WEBRTC_SERVER || (clientIsProduction ? productionDefaults.WEBRTC_SERVER : defaults.WEBRTC_SERVER),
-      WS_URL: browserEnv.NEXT_PUBLIC_WS_URL || (clientIsProduction ? productionDefaults.WS_URL : defaults.WS_URL),
-      NODE_ENV: clientIsProduction ? 'production' : 'development',
-      TURN_SERVER_URL: browserEnv.NEXT_PUBLIC_TURN_SERVER_URL || (clientIsProduction ? productionDefaults.TURN_SERVER_URL : defaults.TURN_SERVER_URL),
-      TURN_USERNAME: browserEnv.NEXT_PUBLIC_TURN_USERNAME || (clientIsProduction ? productionDefaults.TURN_USERNAME : defaults.TURN_USERNAME),
-      TURN_PASSWORD: browserEnv.NEXT_PUBLIC_TURN_PASSWORD || (clientIsProduction ? productionDefaults.TURN_PASSWORD : defaults.TURN_PASSWORD),
-      STUN_SERVER_URL: browserEnv.NEXT_PUBLIC_STUN_SERVER_URL || (clientIsProduction ? productionDefaults.STUN_SERVER_URL : defaults.STUN_SERVER_URL)
-    };
-  }
-  
-  // Client-side fallback to process.env
+
+  // --- Client-side --- 
+  // Initially, we only have access to build-time NEXT_PUBLIC_ variables.
+  // Runtime values will be fetched via API and potentially stored in context.
+  // For now, this returns the build-time values.
   return {
-    APP_URL: process.env.NEXT_PUBLIC_APP_URL || (clientIsProduction ? productionDefaults.APP_URL : defaults.APP_URL),
-    API_URL: process.env.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.API_URL : defaults.API_URL),
-    BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.BACKEND_API_URL : defaults.BACKEND_API_URL),
-    SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || (clientIsProduction ? productionDefaults.SOCKET_URL : defaults.SOCKET_URL),
-    WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || (clientIsProduction ? productionDefaults.WEBRTC_SERVER : defaults.WEBRTC_SERVER),
-    WS_URL: process.env.NEXT_PUBLIC_WS_URL || (clientIsProduction ? productionDefaults.WS_URL : defaults.WS_URL),
-    NODE_ENV: clientIsProduction ? 'production' : 'development',
-    TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || (clientIsProduction ? productionDefaults.TURN_SERVER_URL : defaults.TURN_SERVER_URL),
-    TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || (clientIsProduction ? productionDefaults.TURN_USERNAME : defaults.TURN_USERNAME),
-    TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || (clientIsProduction ? productionDefaults.TURN_PASSWORD : defaults.TURN_PASSWORD),
-    STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || (clientIsProduction ? productionDefaults.STUN_SERVER_URL : defaults.STUN_SERVER_URL)
+    APP_URL: getNextPublicEnvVar('APP_URL'),
+    API_URL: getNextPublicEnvVar('API_URL'),
+    BACKEND_API_URL: getNextPublicEnvVar('API_URL'), // Client usually uses the same API URL
+    SOCKET_URL: getNextPublicEnvVar('SOCKET_URL'),
+    WEBRTC_SERVER: getNextPublicEnvVar('WEBRTC_SERVER'),
+    WS_URL: getNextPublicEnvVar('WS_URL'),
+    NODE_ENV: nodeEnv, // Note: process.env.NODE_ENV is available client-side
+    TURN_SERVER_URL: getNextPublicEnvVar('TURN_SERVER_URL'),
+    TURN_USERNAME: getNextPublicEnvVar('TURN_USERNAME'),
+    TURN_PASSWORD: getNextPublicEnvVar('TURN_PASSWORD'),
+    STUN_SERVER_URL: getNextPublicEnvVar('STUN_SERVER_URL'),
   };
 };
 
 // Create the environment store
 const ENV_STORE = getEnvironmentValues();
 
-// Log environment in both development and production
+// Log environment details (consider reducing logging in production)
 const logEnvironment = () => {
   if (typeof window === 'undefined') {
-    console.log('[env] Server-side environment being used:', ENV_STORE);
-    console.log('[env] Process.env NEXT_PUBLIC values:', {
-      APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-      API_URL: process.env.NEXT_PUBLIC_API_URL,
-      SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
-      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER,
-      WS_URL: process.env.NEXT_PUBLIC_WS_URL
-    });
+    console.log('[env] Server/Build Environment Initialized:', ENV_STORE);
   } else {
-    console.log('[env] Client-side environment config:', ENV_STORE);
+    console.log('[env] Client Environment Initialized (Build-time values):', ENV_STORE);
+    // Later, we can log the runtime values once fetched
   }
 };
 
-// Always log environment
 logEnvironment();
 
 // Export environment for direct use
+// IMPORTANT: Client-side users might need runtime values fetched via API/context
 export const env = ENV_STORE;
 export default env; 
