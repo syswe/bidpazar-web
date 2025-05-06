@@ -43,6 +43,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy Prisma schema files for database operations
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/package.json ./
+
 # Make public directory and files writable
 RUN chmod -R 755 /app/public
 
