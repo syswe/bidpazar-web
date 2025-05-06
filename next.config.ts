@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 // Log environment variables during build
-console.log('Next.js build environment variables:', env);
+console.log('Next.js build environment variables:', process.env);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
 const nextConfig: NextConfig = {
@@ -28,8 +28,6 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
-  // Explicitly set environment variables for server-side rendering
-  env: env,
   // Disable static optimization to ensure runtime environment variables are used
   reactStrictMode: true,
   eslint: {
