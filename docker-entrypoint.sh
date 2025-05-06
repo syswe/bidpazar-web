@@ -22,6 +22,27 @@ if [ -z "$NEXT_PUBLIC_WS_URL" ]; then
   export NEXT_PUBLIC_WS_URL="/rtc/v1"
 fi
 
+# Set defaults for production environment
+if [ "$NODE_ENV" = "production" ]; then
+  # Override any localhost values with production values
+  export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-https://bidpazar.com}"
+  export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://bidpazar.com/api}"
+  export NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-wss://bidpazar.com}"
+  export NEXT_PUBLIC_WEBRTC_SERVER="${NEXT_PUBLIC_WEBRTC_SERVER:-https://bidpazar.com}"
+  
+  # Also set non-NEXT_PUBLIC versions for server-side code
+  export APP_URL="$NEXT_PUBLIC_APP_URL"
+  export API_URL="$NEXT_PUBLIC_API_URL"
+  export BACKEND_API_URL="$NEXT_PUBLIC_API_URL"
+  export SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL"
+  export WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER"
+  export WS_URL="$NEXT_PUBLIC_WS_URL"
+  export TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL"
+  export TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME"
+  export TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD"
+  export STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL"
+fi
+
 # Log environment
 echo "Starting with container environment variables"
 
@@ -79,6 +100,19 @@ cat ./public/env.js
 
 # Create a temporary .env file to ensure server-side environment variables
 cat > ./.env << EOF
+# Environment variables for server side
+APP_URL=$APP_URL
+API_URL=$API_URL
+BACKEND_API_URL=$BACKEND_API_URL
+SOCKET_URL=$SOCKET_URL
+WEBRTC_SERVER=$WEBRTC_SERVER
+WS_URL=$WS_URL
+TURN_SERVER_URL=$TURN_SERVER_URL
+TURN_USERNAME=$TURN_USERNAME
+TURN_PASSWORD=$TURN_PASSWORD
+STUN_SERVER_URL=$STUN_SERVER_URL
+
+# Next.js public variables
 NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
@@ -94,6 +128,16 @@ EOF
 if [ -f "./server.js" ]; then
   # Start Next.js with environment variables explicitly passed
   exec env \
+    APP_URL="$APP_URL" \
+    API_URL="$API_URL" \
+    BACKEND_API_URL="$BACKEND_API_URL" \
+    SOCKET_URL="$SOCKET_URL" \
+    WEBRTC_SERVER="$WEBRTC_SERVER" \
+    WS_URL="$WS_URL" \
+    TURN_SERVER_URL="$TURN_SERVER_URL" \
+    TURN_USERNAME="$TURN_USERNAME" \
+    TURN_PASSWORD="$TURN_PASSWORD" \
+    STUN_SERVER_URL="$STUN_SERVER_URL" \
     NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
     NEXT_PUBLIC_SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL" \
     NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \

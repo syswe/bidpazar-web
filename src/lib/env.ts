@@ -32,81 +32,95 @@ const defaults: EnvironmentConfig = {
   STUN_SERVER_URL: 'stun:localhost:3478'
 };
 
+// Production values as fallbacks
+const productionDefaults: EnvironmentConfig = {
+  APP_URL: 'https://bidpazar.com',
+  API_URL: 'https://bidpazar.com/api',
+  BACKEND_API_URL: 'https://bidpazar.com/api',
+  SOCKET_URL: 'wss://bidpazar.com',
+  WEBRTC_SERVER: 'https://bidpazar.com',
+  WS_URL: '/api/rtc/socket',
+  NODE_ENV: 'production',
+  TURN_SERVER_URL: 'turn:45.147.46.183:3478',
+  TURN_USERNAME: 'bidpazar',
+  TURN_PASSWORD: 'bidpazarpass',
+  STUN_SERVER_URL: 'stun:45.147.46.183:3478'
+};
+
+/**
+ * Helper to get environment variable with priority
+ * First looks for regular variable, then NEXT_PUBLIC_ prefixed, then falls back to default
+ */
+function getEnvVar(name: string, defaultValue: string, isProduction: boolean = false): string {
+  return (
+    process.env[name] || 
+    process.env[`NEXT_PUBLIC_${name}`] || 
+    (isProduction ? productionDefaults[name as keyof EnvironmentConfig] || defaultValue : defaultValue)
+  );
+}
+
 /**
  * Get environment values with proper priority
  */
 const getEnvironmentValues = (): EnvironmentConfig => {
   // Check if we're in the browser
   const isBrowser = typeof window !== 'undefined';
+  const isProduction = process.env.NODE_ENV === 'production';
   
-  // Server-side in production
-  if (!isBrowser && process.env.NODE_ENV === 'production') {
-    return {
-      APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'https://bidpazar.com',
-      API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
-      BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
-      SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'wss://bidpazar.com',
-      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'https://bidpazar.com',
-      WS_URL: process.env.NEXT_PUBLIC_WS_URL || '/api/rtc/socket',
-      NODE_ENV: 'production',
-      TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:45.147.46.183:3478',
-      TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
-      TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || 'bidpazarpass',
-      STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || 'stun:45.147.46.183:3478'
-    };
-  }
-  
-  // Server-side in development
+  // Server-side environment handling
   if (!isBrowser) {
     return {
-      APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
-      API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
-      BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.BACKEND_API_URL,
-      SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
-      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
-      WS_URL: process.env.NEXT_PUBLIC_WS_URL || defaults.WS_URL,
+      APP_URL: getEnvVar('APP_URL', defaults.APP_URL, isProduction),
+      API_URL: getEnvVar('API_URL', defaults.API_URL, isProduction),
+      BACKEND_API_URL: getEnvVar('BACKEND_API_URL', defaults.BACKEND_API_URL, isProduction),
+      SOCKET_URL: getEnvVar('SOCKET_URL', defaults.SOCKET_URL, isProduction),
+      WEBRTC_SERVER: getEnvVar('WEBRTC_SERVER', defaults.WEBRTC_SERVER, isProduction),
+      WS_URL: getEnvVar('WS_URL', defaults.WS_URL, isProduction),
       NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
-      TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
-      TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
-      TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || defaults.TURN_PASSWORD,
-      STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || defaults.STUN_SERVER_URL
+      TURN_SERVER_URL: getEnvVar('TURN_SERVER_URL', defaults.TURN_SERVER_URL || '', isProduction),
+      TURN_USERNAME: getEnvVar('TURN_USERNAME', defaults.TURN_USERNAME || '', isProduction),
+      TURN_PASSWORD: getEnvVar('TURN_PASSWORD', defaults.TURN_PASSWORD || '', isProduction),
+      STUN_SERVER_URL: getEnvVar('STUN_SERVER_URL', defaults.STUN_SERVER_URL || '', isProduction)
     };
   }
   
   // Client-side production check
-  const isProductionHostname = window.location.hostname === 'bidpazar.com' || 
-    window.location.hostname === 'www.bidpazar.com';
+  const isProductionHostname = typeof window !== 'undefined' && 
+    (window.location.hostname === 'bidpazar.com' || window.location.hostname === 'www.bidpazar.com');
+  const clientIsProduction = isProductionHostname || isProduction;
   
-  // Client-side in production
-  if (isProductionHostname || process.env.NODE_ENV === 'production') {
+  // Look for browser-injected environment variables first
+  const browserEnv = typeof window !== 'undefined' && (window as any).__ENV__;
+  
+  if (browserEnv) {
     return {
-      APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'https://bidpazar.com',
-      API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
-      BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://bidpazar.com/api',
-      SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'wss://bidpazar.com',
-      WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || 'https://bidpazar.com',
-      WS_URL: process.env.NEXT_PUBLIC_WS_URL || '/api/rtc/socket',
-      NODE_ENV: 'production',
-      TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || 'turn:45.147.46.183:3478',
-      TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || 'bidpazar',
-      TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || 'bidpazarpass',
-      STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || 'stun:45.147.46.183:3478'
+      APP_URL: browserEnv.NEXT_PUBLIC_APP_URL || (clientIsProduction ? productionDefaults.APP_URL : defaults.APP_URL),
+      API_URL: browserEnv.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.API_URL : defaults.API_URL),
+      BACKEND_API_URL: browserEnv.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.BACKEND_API_URL : defaults.BACKEND_API_URL),
+      SOCKET_URL: browserEnv.NEXT_PUBLIC_SOCKET_URL || (clientIsProduction ? productionDefaults.SOCKET_URL : defaults.SOCKET_URL),
+      WEBRTC_SERVER: browserEnv.NEXT_PUBLIC_WEBRTC_SERVER || (clientIsProduction ? productionDefaults.WEBRTC_SERVER : defaults.WEBRTC_SERVER),
+      WS_URL: browserEnv.NEXT_PUBLIC_WS_URL || (clientIsProduction ? productionDefaults.WS_URL : defaults.WS_URL),
+      NODE_ENV: clientIsProduction ? 'production' : 'development',
+      TURN_SERVER_URL: browserEnv.NEXT_PUBLIC_TURN_SERVER_URL || (clientIsProduction ? productionDefaults.TURN_SERVER_URL : defaults.TURN_SERVER_URL),
+      TURN_USERNAME: browserEnv.NEXT_PUBLIC_TURN_USERNAME || (clientIsProduction ? productionDefaults.TURN_USERNAME : defaults.TURN_USERNAME),
+      TURN_PASSWORD: browserEnv.NEXT_PUBLIC_TURN_PASSWORD || (clientIsProduction ? productionDefaults.TURN_PASSWORD : defaults.TURN_PASSWORD),
+      STUN_SERVER_URL: browserEnv.NEXT_PUBLIC_STUN_SERVER_URL || (clientIsProduction ? productionDefaults.STUN_SERVER_URL : defaults.STUN_SERVER_URL)
     };
   }
   
-  // Client-side in development
+  // Client-side fallback to process.env
   return {
-    APP_URL: process.env.NEXT_PUBLIC_APP_URL || defaults.APP_URL,
-    API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.API_URL,
-    BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || defaults.BACKEND_API_URL,
-    SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || defaults.SOCKET_URL,
-    WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || defaults.WEBRTC_SERVER,
-    WS_URL: process.env.NEXT_PUBLIC_WS_URL || defaults.WS_URL,
-    NODE_ENV: process.env.NODE_ENV || defaults.NODE_ENV,
-    TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || defaults.TURN_SERVER_URL,
-    TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || defaults.TURN_USERNAME,
-    TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || defaults.TURN_PASSWORD,
-    STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || defaults.STUN_SERVER_URL
+    APP_URL: process.env.NEXT_PUBLIC_APP_URL || (clientIsProduction ? productionDefaults.APP_URL : defaults.APP_URL),
+    API_URL: process.env.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.API_URL : defaults.API_URL),
+    BACKEND_API_URL: process.env.NEXT_PUBLIC_API_URL || (clientIsProduction ? productionDefaults.BACKEND_API_URL : defaults.BACKEND_API_URL),
+    SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || (clientIsProduction ? productionDefaults.SOCKET_URL : defaults.SOCKET_URL),
+    WEBRTC_SERVER: process.env.NEXT_PUBLIC_WEBRTC_SERVER || (clientIsProduction ? productionDefaults.WEBRTC_SERVER : defaults.WEBRTC_SERVER),
+    WS_URL: process.env.NEXT_PUBLIC_WS_URL || (clientIsProduction ? productionDefaults.WS_URL : defaults.WS_URL),
+    NODE_ENV: clientIsProduction ? 'production' : 'development',
+    TURN_SERVER_URL: process.env.NEXT_PUBLIC_TURN_SERVER_URL || (clientIsProduction ? productionDefaults.TURN_SERVER_URL : defaults.TURN_SERVER_URL),
+    TURN_USERNAME: process.env.NEXT_PUBLIC_TURN_USERNAME || (clientIsProduction ? productionDefaults.TURN_USERNAME : defaults.TURN_USERNAME),
+    TURN_PASSWORD: process.env.NEXT_PUBLIC_TURN_PASSWORD || (clientIsProduction ? productionDefaults.TURN_PASSWORD : defaults.TURN_PASSWORD),
+    STUN_SERVER_URL: process.env.NEXT_PUBLIC_STUN_SERVER_URL || (clientIsProduction ? productionDefaults.STUN_SERVER_URL : defaults.STUN_SERVER_URL)
   };
 };
 
