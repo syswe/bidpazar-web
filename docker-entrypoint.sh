@@ -2,45 +2,57 @@
 set -e
 
 # Set default values for variables if they're not set
-if [ -z "$NEXT_PUBLIC_TURN_SERVER_URL" ]; then
-  export NEXT_PUBLIC_TURN_SERVER_URL="turn:45.147.46.183:3478"
+if [ -z "$TURN_SERVER_URL" ]; then
+  export TURN_SERVER_URL="turn:45.147.46.183:3478"
 fi
 
-if [ -z "$NEXT_PUBLIC_TURN_USERNAME" ]; then
-  export NEXT_PUBLIC_TURN_USERNAME="bidpazar"
+if [ -z "$TURN_USERNAME" ]; then
+  export TURN_USERNAME="bidpazar"
 fi
 
-if [ -z "$NEXT_PUBLIC_TURN_PASSWORD" ]; then
-  export NEXT_PUBLIC_TURN_PASSWORD="bidpazarpass"
+if [ -z "$TURN_PASSWORD" ]; then
+  export TURN_PASSWORD="bidpazarpass"
 fi
 
-if [ -z "$NEXT_PUBLIC_STUN_SERVER_URL" ]; then
-  export NEXT_PUBLIC_STUN_SERVER_URL="stun:45.147.46.183:3478"
+if [ -z "$STUN_SERVER_URL" ]; then
+  export STUN_SERVER_URL="stun:45.147.46.183:3478"
 fi
 
-if [ -z "$NEXT_PUBLIC_WS_URL" ]; then
-  export NEXT_PUBLIC_WS_URL="/rtc/v1"
+if [ -z "$WS_URL" ]; then
+  export WS_URL="/api/rtc/socket"
 fi
+
+# Make NEXT_PUBLIC versions of each variable (for client-side)
+export NEXT_PUBLIC_TURN_SERVER_URL="${TURN_SERVER_URL}"
+export NEXT_PUBLIC_TURN_USERNAME="${TURN_USERNAME}"
+export NEXT_PUBLIC_TURN_PASSWORD="${TURN_PASSWORD}"
+export NEXT_PUBLIC_STUN_SERVER_URL="${STUN_SERVER_URL}"
+export NEXT_PUBLIC_WS_URL="${WS_URL}"
 
 # Set defaults for production environment
 if [ "$NODE_ENV" = "production" ]; then
   # Override any localhost values with production values
-  export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-https://bidpazar.com}"
-  export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://bidpazar.com/api}"
-  export NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-wss://bidpazar.com}"
-  export NEXT_PUBLIC_WEBRTC_SERVER="${NEXT_PUBLIC_WEBRTC_SERVER:-https://bidpazar.com}"
+  export APP_URL="${APP_URL:-https://bidpazar.com}"
+  export API_URL="${API_URL:-https://bidpazar.com/api}"
+  export SOCKET_URL="${SOCKET_URL:-wss://bidpazar.com}"
+  export WEBRTC_SERVER="${WEBRTC_SERVER:-https://bidpazar.com}"
+  export BACKEND_API_URL="${BACKEND_API_URL:-https://bidpazar.com/api}"
   
-  # Also set non-NEXT_PUBLIC versions for server-side code
-  export APP_URL="$NEXT_PUBLIC_APP_URL"
-  export API_URL="$NEXT_PUBLIC_API_URL"
-  export BACKEND_API_URL="$NEXT_PUBLIC_API_URL"
-  export SOCKET_URL="$NEXT_PUBLIC_SOCKET_URL"
-  export WEBRTC_SERVER="$NEXT_PUBLIC_WEBRTC_SERVER"
-  export WS_URL="$NEXT_PUBLIC_WS_URL"
-  export TURN_SERVER_URL="$NEXT_PUBLIC_TURN_SERVER_URL"
-  export TURN_USERNAME="$NEXT_PUBLIC_TURN_USERNAME"
-  export TURN_PASSWORD="$NEXT_PUBLIC_TURN_PASSWORD"
-  export STUN_SERVER_URL="$NEXT_PUBLIC_STUN_SERVER_URL"
+  # Make NEXT_PUBLIC versions of each variable (for client-side)
+  export NEXT_PUBLIC_APP_URL="${APP_URL}"
+  export NEXT_PUBLIC_API_URL="${API_URL}"
+  export NEXT_PUBLIC_SOCKET_URL="${SOCKET_URL}"
+  export NEXT_PUBLIC_WEBRTC_SERVER="${WEBRTC_SERVER}"
+  
+  # Print all production environment variables
+  echo "Production environment variables:"
+  echo "APP_URL=$APP_URL"
+  echo "API_URL=$API_URL" 
+  echo "SOCKET_URL=$SOCKET_URL"
+  echo "WEBRTC_SERVER=$WEBRTC_SERVER"
+  echo "WS_URL=$WS_URL"
+  echo "TURN_SERVER_URL=$TURN_SERVER_URL"
+  echo "STUN_SERVER_URL=$STUN_SERVER_URL"
 fi
 
 # Log environment
@@ -73,14 +85,14 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
   
   window.__ENV__ = {
     NEXT_PUBLIC_API_URL: isProduction ? 'https://bidpazar.com/api' : 'http://localhost:5001/api',
-    NEXT_PUBLIC_SOCKET_URL: isProduction ? '/rtc/v1' : '/rtc/v1',
+    NEXT_PUBLIC_SOCKET_URL: isProduction ? 'wss://bidpazar.com' : 'ws://localhost:3000',
     NEXT_PUBLIC_APP_URL: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
-    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? '/rtc/v1' : '/rtc/v1',
+    NEXT_PUBLIC_WEBRTC_SERVER: isProduction ? 'https://bidpazar.com' : 'http://localhost:3000',
     NEXT_PUBLIC_TURN_SERVER_URL: isProduction ? 'turn:45.147.46.183:3478' : 'turn:localhost:3478',
     NEXT_PUBLIC_TURN_USERNAME: 'bidpazar',
     NEXT_PUBLIC_TURN_PASSWORD: 'bidpazarpass',
     NEXT_PUBLIC_STUN_SERVER_URL: isProduction ? 'stun:45.147.46.183:3478' : 'stun:localhost:3478',
-    NEXT_PUBLIC_WS_URL: isProduction ? '/rtc/v1' : '/rtc/v1'
+    NEXT_PUBLIC_WS_URL: isProduction ? '/api/rtc/socket' : '/api/rtc/socket'
   };
   
   console.log('[env.js] Using fallback values:', window.__ENV__);
@@ -89,7 +101,7 @@ if (!window.__ENV__.NEXT_PUBLIC_API_URL) {
 // Add fallback for WS_URL if necessary (adjust fallback value as needed)
 if (typeof window !== 'undefined' && window.__ENV__ && !window.__ENV__.NEXT_PUBLIC_WS_URL) {
   const isProduction = window.location.hostname === 'bidpazar.com' || window.location.hostname === 'api.bidpazar.com';
-  window.__ENV__.NEXT_PUBLIC_WS_URL = isProduction ? '/rtc/v1' : '/rtc/v1';
+  window.__ENV__.NEXT_PUBLIC_WS_URL = isProduction ? '/api/rtc/socket' : '/api/rtc/socket';
   console.log('[env.js] Added fallback NEXT_PUBLIC_WS_URL:', window.__ENV__.NEXT_PUBLIC_WS_URL);
 }
 EOF
@@ -100,7 +112,7 @@ cat ./public/env.js
 
 # Create a temporary .env file to ensure server-side environment variables
 cat > ./.env << EOF
-# Environment variables for server side
+# Server environment variables with priority over NEXT_PUBLIC ones
 APP_URL=$APP_URL
 API_URL=$API_URL
 BACKEND_API_URL=$BACKEND_API_URL
@@ -126,6 +138,7 @@ EOF
 
 # Check if server.js exists
 if [ -f "./server.js" ]; then
+  echo "Starting server with finalized environment variables"
   # Start Next.js with environment variables explicitly passed
   exec env \
     APP_URL="$APP_URL" \
