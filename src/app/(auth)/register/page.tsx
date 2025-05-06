@@ -193,7 +193,8 @@ export default function Register() {
       console.log('Registration response:', {
         requireVerification: response.requireVerification,
         userId: response.user?.id,
-        hasToken: !!response.token
+        hasToken: !!response.token,
+        smsSent: response.smsSent
       });
 
       // If verification is required
@@ -201,7 +202,13 @@ export default function Register() {
         setUserId(response.user.id);
         setTempToken(response.token);
         setShowVerification(true);
-        console.log('Verification required, showing verification form');
+        
+        // Display SMS delivery error if needed
+        if (phoneNumber && response.smsSent === false) {
+          setError('Doğrulama kodu gönderilemedi. "Doğrulama kodunu tekrar gönder" seçeneğini kullanabilirsiniz.');
+        } else {
+          console.log('Verification required, showing verification form');
+        }
       } else {
         // Auto login if no verification needed
         console.log('No verification required, logging in automatically');
@@ -255,7 +262,7 @@ export default function Register() {
       router.push('/dashboard');
     } catch (err) {
       console.error('Verification error:', err);
-      setError(err instanceof Error ? err.message : 'Doğrulama başarısız');
+      setError(err instanceof Error ? err.message : 'Doğrulama başarısız. Lütfen kodu kontrol edin.');
     } finally {
       setIsLoading(false);
     }
@@ -266,9 +273,16 @@ export default function Register() {
     setIsResending(true);
 
     try {
-      await resendVerificationCode(userId);
-      setError('Doğrulama kodu tekrar gönderildi');
+      const response = await resendVerificationCode(userId);
+      console.log('Resend verification response:', response);
+      
+      if (response.smsSent === false) {
+        setError('Doğrulama kodu gönderilirken teknik bir sorun oluştu. Lütfen daha sonra tekrar deneyin veya destek ile iletişime geçin.');
+      } else {
+        setError('Doğrulama kodu tekrar gönderildi. Lütfen telefonunuzu kontrol edin.');
+      }
     } catch (err) {
+      console.error('Resend verification error:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama kodu gönderilemedi');
     } finally {
       setIsResending(false);

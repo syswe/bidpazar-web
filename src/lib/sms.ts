@@ -8,30 +8,79 @@ export function generateVerificationCode(): string {
 // Send verification code via SMS
 export async function sendVerificationCode(phoneNumber: string, code: string): Promise<boolean> {
   try {
-    // In development, we'll mock the SMS sending
-    if (process.env.NODE_ENV === 'development' || process.env.SEND_MESSAGE === 'mock') {
+    // Get environment variables with defaults for safety
+    const smsApiUrl = process.env.SMS_API_URL || 'https://smsgw.mutlucell.com/smsgw-ws/sndblkex';
+    const smsUsername = process.env.SMS_USERNAME || 'bidpazar';
+    const smsPassword = process.env.SMS_PASSWORD || 'lAJ5HgcV23HgeSYg';
+    const smsOrigin = process.env.SMS_ORIGIN || '908505518624';
+    const sendMode = process.env.SEND_MESSAGE || 'real';
+    const nodeEnv = process.env.NODE_ENV || 'development';
+
+    // Comprehensive logging for debugging
+    console.log(`[SMS] Environment configuration:`);
+    console.log(`[SMS] NODE_ENV: ${nodeEnv}`);
+    console.log(`[SMS] SEND_MESSAGE: ${sendMode}`);
+    console.log(`[SMS] SMS_API_URL: ${smsApiUrl}`);
+    console.log(`[SMS] SMS_USERNAME: ${smsUsername}`);
+    console.log(`[SMS] SMS_PASSWORD: ${smsPassword ? '[SET]' : '[MISSING]'}`);
+    console.log(`[SMS] SMS_ORIGIN: ${smsOrigin}`);
+
+    // PRIORITIZE SEND_MESSAGE over NODE_ENV
+    // Only use mock if SEND_MESSAGE is explicitly set to 'mock'
+    if (sendMode === 'mock') {
       console.log(`[MOCK SMS] Verification code ${code} would be sent to ${phoneNumber}`);
       return true;
     }
 
-    // Production SMS sending using the configured provider
-    const response = await fetch(process.env.SMS_API_URL!, {
+    console.log(`[SMS] Attempting to send real SMS verification code to ${phoneNumber}`);
+
+    // Format phone number - remove leading 0 if exists, ensure it's in E.164 format
+    let formattedNumber = phoneNumber.trim();
+    if (formattedNumber.startsWith('0')) {
+      formattedNumber = formattedNumber.substring(1);
+    }
+    // If number doesn't have country code, assume Turkey (+90)
+    if (!formattedNumber.startsWith('+')) {
+      formattedNumber = `90${formattedNumber}`;
+    } else {
+      // If it has +, remove it and ensure proper format
+      formattedNumber = formattedNumber.replace('+', '');
+    }
+
+    // Format message
+    const message = `BidPazar dogrulama kodunuz: ${code}`;
+    
+    // Create XML payload for Mutlucell API (based on their documentation)
+    const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?>
+<smspack ka="${smsUsername}" pwd="${smsPassword}" org="${smsOrigin}">
+  <mesaj>
+    <metin>${message}</metin>
+    <nums>${formattedNumber}</nums>
+  </mesaj>
+</smspack>`;
+
+    console.log(`[SMS] Sending XML payload to ${smsApiUrl}`);
+
+    // Production SMS sending using the configured provider with XML format
+    const response = await fetch(smsApiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/xml; charset=utf-8',
       },
-      body: JSON.stringify({
-        username: process.env.SMS_USERNAME,
-        password: process.env.SMS_PASSWORD,
-        origin: process.env.SMS_ORIGIN,
-        message: `Your BidPazar verification code is: ${code}`,
-        numbers: [phoneNumber],
-      }),
+      body: xmlPayload,
     });
 
-    return response.ok;
+    const text = await response.text();
+    console.log(`[SMS] API Response status: ${response.status}`);
+    console.log(`[SMS] API Response body: ${text}`);
+
+    // Parse response to check for success (Mutlucell returns XML with error codes)
+    const isSuccess = !text.includes('ERR') && response.ok;
+    console.log(`[SMS] SMS sending successful: ${isSuccess}`);
+
+    return isSuccess;
   } catch (error) {
-    console.error('SMS sending error:', error);
+    console.error('[SMS] Sending error:', error);
     return false;
   }
 } 

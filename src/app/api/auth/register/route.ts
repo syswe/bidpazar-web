@@ -61,19 +61,51 @@ export async function POST(request: Request) {
 
     // Generate verification code if phone number is provided
     let verificationCode = null;
+    let verificationRequired = false;
+    let smsSent = false;
+    
     if (validatedData.phoneNumber) {
       verificationCode = generateVerificationCode();
-      const smsSent = await sendVerificationCode(validatedData.phoneNumber, verificationCode);
+      verificationRequired = true;
       
-      if (!smsSent) {
-        return NextResponse.json(
-          { error: 'Failed to send verification SMS' },
-          { status: 500 }
-        );
+      // Log phone number before sending
+      logger.info(`Attempting to send verification SMS to ${validatedData.phoneNumber}`, {
+        phoneNumber: validatedData.phoneNumber,
+        code: verificationCode,
+        environment: process.env.NODE_ENV,
+        sendMessageMode: process.env.SEND_MESSAGE || 'undefined'
+      });
+      
+      try {
+        smsSent = await sendVerificationCode(validatedData.phoneNumber, verificationCode);
+        logger.info(`SMS sending result: ${smsSent ? 'success' : 'failed'}`);
+      } catch (smsError) {
+        logger.error('Error sending SMS during registration', { 
+          error: smsError, 
+          phoneNumber: validatedData.phoneNumber 
+        });
+        
+        // Don't block registration if SMS fails in production - we'll create the user
+        // but will need to handle verification differently
+        smsSent = false;
+      }
+      
+      // If SMS failed and we're in production, log a specific error
+      if (!smsSent && process.env.NODE_ENV === 'production') {
+        logger.error('SMS verification failed in production', {
+          phoneNumber: validatedData.phoneNumber,
+          smsApiUrl: process.env.SMS_API_URL,
+          smsOrigin: process.env.SMS_ORIGIN,
+          // Don't log password or actual credentials
+          smsUsernameSet: !!process.env.SMS_USERNAME,
+          smsPasswordSet: !!process.env.SMS_PASSWORD
+        });
       }
     }
 
-    // Create user
+    // Create user (with or without verification code)
+    // If SMS sending failed but we have a phone number, we still require verification
+    // but will need to handle it differently (resend option is important)
     const user = await prisma.user.create({
       data: {
         email: validatedData.email,
@@ -82,7 +114,7 @@ export async function POST(request: Request) {
         name: validatedData.name,
         phoneNumber: validatedData.phoneNumber,
         verificationCode,
-        isVerified: !validatedData.phoneNumber, // If no phone number, mark as verified
+        isVerified: !verificationRequired, // If no phone number, mark as verified
       },
     });
 
@@ -90,7 +122,7 @@ export async function POST(request: Request) {
     const { password, verificationCode: _, ...userWithoutSensitiveInfo } = user;
 
     let token = null;
-    if (!validatedData.phoneNumber) {
+    if (!verificationRequired) {
       // Auto-verified, issue JWT
       token = require('jsonwebtoken').sign(
         {
@@ -104,13 +136,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // Include SMS sending status in the response to provide feedback
     return NextResponse.json(
       { 
-        message: validatedData.phoneNumber 
+        message: verificationRequired 
           ? 'User created successfully. Please verify your phone number.' 
           : 'User created successfully.',
         user: userWithoutSensitiveInfo,
-        requireVerification: !!validatedData.phoneNumber,
+        requireVerification: verificationRequired,
+        smsSent: smsSent, // Add SMS status to help client
         ...(token ? { token } : {}),
       },
       { status: 201 }

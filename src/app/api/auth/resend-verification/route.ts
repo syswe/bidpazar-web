@@ -48,13 +48,39 @@ export async function POST(request: Request) {
 
     // Generate new verification code
     const verificationCode = generateVerificationCode();
-    const smsSent = await sendVerificationCode(user.phoneNumber, verificationCode);
-
-    if (!smsSent) {
-      return NextResponse.json(
-        { error: 'Failed to send verification SMS' },
-        { status: 500 }
-      );
+    
+    // Log attempt to send SMS
+    logger.info(`Attempting to resend verification SMS to ${user.phoneNumber}`, {
+      userId,
+      phoneNumber: user.phoneNumber,
+      environment: process.env.NODE_ENV,
+      sendMessageMode: process.env.SEND_MESSAGE || 'undefined'
+    });
+    
+    let smsSent = false;
+    try {
+      smsSent = await sendVerificationCode(user.phoneNumber, verificationCode);
+      logger.info(`SMS resend result: ${smsSent ? 'success' : 'failed'}`);
+    } catch (smsError) {
+      logger.error('Error sending SMS during resend verification', { 
+        error: smsError, 
+        userId,
+        phoneNumber: user.phoneNumber 
+      });
+      // We'll continue even if SMS fails
+    }
+    
+    // If SMS failed and we're in production, log detailed error
+    if (!smsSent && process.env.NODE_ENV === 'production') {
+      logger.error('SMS verification resend failed in production', {
+        userId,
+        phoneNumber: user.phoneNumber,
+        smsApiUrl: process.env.SMS_API_URL,
+        smsOrigin: process.env.SMS_ORIGIN,
+        // Don't log password or actual credentials
+        smsUsernameSet: !!process.env.SMS_USERNAME,
+        smsPasswordSet: !!process.env.SMS_PASSWORD
+      });
     }
 
     // Update user with new verification code
@@ -65,6 +91,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       message: 'Verification code sent successfully',
+      smsSent: smsSent
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

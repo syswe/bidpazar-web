@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getUser, isAuthenticated, initializeAuth, removeAuth, User, validateToken, setAuth, logout as logoutAuth } from '../lib/frontend-auth';
+import { getUser, isAuthenticated, initializeAuth, removeAuth, User, validateToken, setAuth, logout as logoutAuth, getToken } from '../lib/frontend-auth';
 
 interface AuthContextType {
   user: User | null;
@@ -36,11 +36,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const refreshAuthState = async () => {
     setIsLoading(true);
     try {
+      console.log('[AuthProvider] Refreshing auth state...');
+      // Get current token to help with debugging
+      const currentToken = getToken();
+      console.log(`[AuthProvider] Current token: ${currentToken ? 'Found' : 'Missing'} (${currentToken ? `length: ${currentToken.length}` : 'null'})`);
+      
       // Call validateToken directly to verify with the backend
-      const userData = await validateToken();
-      setUser(userData);
+      const userData = await validateToken(true); // Force check
+      
+      if (userData) {
+        console.log('[AuthProvider] Auth validation succeeded, user:', userData);
+        setUser(userData);
+      } else {
+        console.warn('[AuthProvider] Auth validation returned null user');
+        setUser(null);
+        // If validation fails, remove auth data
+        removeAuth();
+      }
     } catch (error) {
-      console.error('Auth validation error:', error);
+      console.error('[AuthProvider] Auth validation error:', error);
       setUser(null);
       // If validation fails, remove auth data
       removeAuth();
@@ -50,6 +64,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = async () => {
+    console.log('[AuthProvider] Logging out...');
     // Use the comprehensive logout function from frontend-auth
     await logoutAuth();
     // Update state after logout completed
@@ -63,13 +78,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         console.log('[AuthProvider] Checking authentication state...');
         // Get user from localStorage first for immediate UI update
         const storedUser = getUser();
-        if (storedUser) {
-          console.log('[AuthProvider] Found user in localStorage:', storedUser);
+        const token = getToken();
+        
+        console.log(`[AuthProvider] Initial auth check - Token: ${token ? 'Found' : 'Missing'}, User: ${storedUser ? 'Found' : 'Missing'}`);
+        
+        if (storedUser && token) {
+          console.log('[AuthProvider] Found user and token in storage:', storedUser);
           setUser(storedUser);
           // Then validate with the server
           await refreshAuthState();
+        } else if (token) {
+          console.log('[AuthProvider] Found token but no user, attempting to validate with server');
+          await refreshAuthState();
         } else {
-          console.log('[AuthProvider] No user in localStorage, trying to hydrate from cookie via /api/auth/validate');
+          console.log('[AuthProvider] No auth in storage, trying to hydrate from cookie via /api/auth/validate');
           try {
             const timestamp = new Date().getTime();
             const res = await fetch(`/api/auth/validate?_=${timestamp}`, {
@@ -91,15 +113,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 console.log('[AuthProvider] Hydrated user from cookie via /api/auth/validate:', user);
               } else {
                 console.warn('[AuthProvider] Missing user or token in successful response');
+                setIsLoading(false);
               }
             } else {
               const errorData = await res.json().catch(() => ({}));
               console.warn('[AuthProvider] Failed to hydrate from cookie. /api/auth/validate response:', res.status, errorData);
+              setIsLoading(false);
             }
           } catch (fetchError) {
             console.error('[AuthProvider] Error fetching validation endpoint:', fetchError);
+            setIsLoading(false);
           }
-          setIsLoading(false);
         }
       } catch (error) {
         console.error('[AuthProvider] Authentication check failed:', error);

@@ -1,47 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-// Use the Node.js compatible function here
-import { getUserFromTokenInNode } from '@/lib/auth'; 
+import { getUserFromToken, verifyToken } from '@/lib/auth';
+import jwt from 'jsonwebtoken';
+import { logger } from '@/lib/logger';
 
-export async function GET(request: NextRequest) {
-  console.log('[/api/auth/validate:Node] Received request.');
-  // Try to get token from Authorization header first
-  let token = request.headers.get('authorization')?.replace(/^Bearer /, '');
-  console.log(`[/api/auth/validate:Node] Token from header: ${!!token}`);
-
-  // If not in header, try to get from cookies
-  if (!token) {
-    token = request.cookies.get('token')?.value;
-    console.log(`[/api/auth/validate:Node] Token from cookies: ${!!token}`);
-  }
-
-  if (!token) {
-    console.log('[/api/auth/validate:Node] No token found, returning 401.');
-    return NextResponse.json({ error: 'No token provided' }, { status: 401 });
-  }
-
-  // Use the Node.js function which verifies and fetches from DB
-  const user = await getUserFromTokenInNode(token);
-  if (!user) {
-    console.log('[/api/auth/validate:Node] getUserFromTokenInNode failed, returning 401.');
-    // Clear the invalid cookie on the client side by sending back an expired cookie instruction
-    const response = NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
-    response.cookies.set('token', '', { path: '/', maxAge: 0 });
+/**
+ * GET /api/auth/validate
+ * Validates a token and returns the associated user's information
+ */
+export async function GET(request: Request) {
+  logger.info('[API][/api/auth/validate] Processing token validation request');
+  
+  try {
+    // Extract the token from the Authorization header
+    const authHeader = request.headers.get('Authorization');
+    let token: string | null = null;
+    
+    if (authHeader) {
+      const parts = authHeader.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        token = parts[1];
+      }
+    }
+    
+    // If no Authorization header, check for token in cookies
+    if (!token) {
+      const cookieHeader = request.headers.get('cookie');
+      if (cookieHeader) {
+        const cookies = cookieHeader.split(';').map(c => c.trim());
+        const tokenCookie = cookies.find(c => c.startsWith('token='));
+        if (tokenCookie) {
+          token = tokenCookie.substring('token='.length);
+        }
+      }
+    }
+    
+    if (!token) {
+      logger.warn('[API][/api/auth/validate] No token found in request');
+      return NextResponse.json({ error: 'Authentication token is missing' }, { status: 401 });
+    }
+    
+    logger.info('[API][/api/auth/validate] Verifying token');
+    
+    // Verify the token
+    const payload = await verifyToken(token);
+    if (!payload) {
+      logger.warn('[API][/api/auth/validate] Invalid or expired token');
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+    }
+    
+    // Retrieve user information
+    const user = await getUserFromToken(token);
+    if (!user) {
+      logger.warn('[API][/api/auth/validate] User not found for valid token');
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    
+    logger.info(`[API][/api/auth/validate] User authenticated: ${user.username}`);
+    
+    // Generate a fresh token to extend the session
+    const newToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        username: user.username,
+        isAdmin: user.isAdmin || false
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: '7d' }
+    );
+    
+    // Set the token in a HTTP-only cookie as well
+    const response = NextResponse.json({
+      user,
+      token: newToken
+    });
+    
+    // Set cookie with 7-day expiration
+    response.cookies.set({
+      name: 'token',
+      value: newToken,
+      path: '/',
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      sameSite: 'lax'
+    });
+    
     return response;
+  } catch (error) {
+    logger.error('[API][/api/auth/validate] Error validating token', error);
+    return NextResponse.json({ error: 'Failed to validate token' }, { status: 500 });
   }
-
-  console.log('[/api/auth/validate:Node] Token valid, user found, returning user and token.', { userId: user.id });
-  // Return both user and token for client-side storage
-  const response = NextResponse.json({ user, token });
-  
-  // Also ensure the cookie is set with the valid token
-  // Use same-site strict for security and httpOnly for XSS protection
-  response.cookies.set('token', token, {
-    httpOnly: true,
-    path: '/',
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 // 1 week
-  });
-  
-  return response;
 }
