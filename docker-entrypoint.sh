@@ -37,12 +37,15 @@ if [ "$NODE_ENV" = "production" ]; then
   export SOCKET_URL="${SOCKET_URL:-wss://bidpazar.com}"
   export WEBRTC_SERVER="${WEBRTC_SERVER:-https://bidpazar.com}"
   export BACKEND_API_URL="${BACKEND_API_URL:-https://bidpazar.com/api}"
-  
-  # Force-set the NEXT_PUBLIC variables to ensure they override any embedded defaults
-  export NEXT_PUBLIC_APP_URL="${APP_URL}"
-  export NEXT_PUBLIC_API_URL="${API_URL}"
-  export NEXT_PUBLIC_SOCKET_URL="${SOCKET_URL}"
-  export NEXT_PUBLIC_WEBRTC_SERVER="${WEBRTC_SERVER}"
+  export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://bidpazar.com/api}"
+  export NEXT_PUBLIC_SOCKET_URL="${NEXT_PUBLIC_SOCKET_URL:-wss://bidpazar.com}"
+  export NEXT_PUBLIC_WEBRTC_SERVER="${NEXT_PUBLIC_WEBRTC_SERVER:-https://bidpazar.com}"
+  export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-https://bidpazar.com}"
+  export NEXT_PUBLIC_TURN_SERVER_URL="${NEXT_PUBLIC_TURN_SERVER_URL:-turn:45.147.46.183:3478}"
+  export NEXT_PUBLIC_TURN_USERNAME="${NEXT_PUBLIC_TURN_USERNAME:-bidpazar}"
+  export NEXT_PUBLIC_TURN_PASSWORD="${NEXT_PUBLIC_TURN_PASSWORD:-bidpazarpass}"
+  export NEXT_PUBLIC_STUN_SERVER_URL="${NEXT_PUBLIC_STUN_SERVER_URL:-stun:45.147.46.183:3478}"
+  export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL:-/api/rtc/socket}"
   
   # Print all production environment variables
   echo "Production environment variables:"
