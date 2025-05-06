@@ -72,15 +72,15 @@ export interface Product {
   currency: string;
   userId: string;
   categoryId: string;
-  createdAt: string;
-  updatedAt: string;
+  images: { id: string; url: string; type: string }[];
+  category?: { id: string; name: string };
   user?: {
     id: string;
     username: string;
     name?: string;
   };
-  category?: Category;
-  images?: ProductMedia[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Kullanıcı tipi
@@ -388,60 +388,248 @@ export const getProductsByCategory = async (categoryId: string): Promise<Product
   });
 };
 
-export const getUserProducts = async (): Promise<Product[]> => {
-  return fetcher<Product[]>(`products/user`, {
-    requireAuth: true,
-    returnEmptyOnError: true,
-    defaultValue: []
-  });
+export interface WonAuction {
+  id: string;
+  auctionId: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  winDate: string;
+  winningBid: number;
+  status: string;
+  seller: {
+    id: string;
+    name: string;
+    username: string;
+  };
+  isPaid: boolean;
+  isLiveStream: boolean;
+  streamId?: string;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  date: string;
+  total: number;
+  status: string;
+  items: {
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+    imageUrl: string;
+  }[];
+}
+
+// Function to handle API errors
+const handleApiError = (error: any) => {
+  console.error('API error:', error);
+  
+  // Let the error propagate without the additional "Unauthorized: Please log in again"
+  // This allows the calling function to decide how to handle auth issues
+  throw error;
 };
 
-export const createProduct = async (data: {
-  title: string;
-  description: string;
-  price: number;
-  categoryId: string;
-}): Promise<Product> => {
-  return fetcher<Product>("products", {
-    method: "POST",
-    body: data,
-    requireAuth: true,
-  });
-};
-
-export const updateProduct = async (
-  id: string,
-  data: {
-    title?: string;
-    description?: string;
-    price?: number;
-    categoryId?: string;
+// Fetcher for making API calls with auth
+const fetcherAuth = async (url: string, options: RequestInit = {}) => {
+  // Get token and add to headers
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {})
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
-): Promise<Product> => {
-  return fetcher<Product>(`products/${id}`, {
-    method: "PUT",
-    body: data,
-    requireAuth: true,
+  
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include', // Include cookies for auth
   });
+  
+  if (!response.ok) {
+    const error: any = new Error(`API error: ${response.status} ${response.statusText}`);
+    error.status = response.status;
+    
+    // Try to parse error response as JSON, but don't fail if it's not valid JSON
+    try {
+      error.info = await response.json();
+    } catch (jsonError) {
+      error.info = { message: 'Could not parse error response' };
+      error.responseText = await response.text().catch(() => '');
+    }
+    
+    throw error;
+  }
+  
+  // For successful responses, safely parse JSON
+  try {
+    return await response.json();
+  } catch (jsonError) {
+    console.warn('Response was not valid JSON:', jsonError);
+    return {}; // Return empty object instead of failing
+  }
 };
 
-export const deleteProduct = async (id: string): Promise<void> => {
-  return fetcher<void>(`products/${id}`, {
-    method: "DELETE",
-    requireAuth: true,
-  });
-};
+// Get user's products
+export async function getUserProducts(): Promise<Product[]> {
+  try {
+    // Try to get token from localStorage or cookie
+    const token = getToken();
+    if (!token) {
+      console.warn('No authentication token available for getUserProducts');
+      return [];
+    }
 
-export const addProductMedia = async (
-  id: string,
-  data: { url: string; type: string }
-): Promise<ProductMedia> => {
-  return fetcher<ProductMedia>(`products/${id}/media`, {
-    method: "POST",
-    body: data,
-    requireAuth: true,
-  });
-};
+    // First attempt with current token
+    try {
+      return await fetcherAuth('/api/products/user');
+    } catch (error: any) {
+      // If unauthorized, try to refresh token once before failing
+      if (error.status === 401) {
+        console.log('Token expired, attempting refresh before retrying getUserProducts');
+        const { refreshToken } = await import('./frontend-auth');
+        const refreshed = await refreshToken();
+        
+        if (refreshed) {
+          // Retry with new token
+          console.log('Token refreshed, retrying getUserProducts');
+          return await fetcherAuth('/api/products/user');
+        } else {
+          // Return empty array instead of triggering auth error
+          console.warn('Token refresh failed, returning empty products array');
+          return [];
+        }
+      }
+      throw error; // Re-throw non-auth errors
+    }
+  } catch (error) {
+    console.error('Error fetching user products:', error);
+    // Return empty array instead of error to prevent login loops
+    return [];
+  }
+}
+
+// Get user's won auctions (both types)
+export async function getUserWonAuctions(): Promise<WonAuction[]> {
+  try {
+    // Fetch both types of auctions the user has won
+    const [productAuctions, livestreamAuctions] = await Promise.all([
+      fetcherAuth('/api/auctions/won'),
+      fetcherAuth('/api/listings/won')
+    ]);
+    
+    // Process regular auctions
+    const processedProductAuctions = productAuctions.map((auction: any) => ({
+      id: auction.id,
+      auctionId: auction.id,
+      productId: auction.product.id,
+      productName: auction.product.title,
+      productImage: auction.product.media?.[0]?.url || 'https://via.placeholder.com/150',
+      winDate: new Date(auction.updatedAt).toISOString(),
+      winningBid: auction.currentPrice,
+      status: getAuctionStatus(auction.status),
+      seller: {
+        id: auction.product.userId,
+        name: auction.product.user?.name || auction.product.user?.username || 'Satıcı',
+        username: auction.product.user?.username || 'user'
+      },
+      isPaid: auction.isPaid || false,
+      isLiveStream: false
+    }));
+    
+    // Process livestream auctions
+    const processedLivestreamAuctions = livestreamAuctions.map((listing: any) => ({
+      id: listing.id,
+      auctionId: listing.id,
+      productId: listing.product.id,
+      productName: listing.product.title,
+      productImage: listing.product.media?.[0]?.url || 'https://via.placeholder.com/150',
+      winDate: new Date(listing.updatedAt).toISOString(),
+      winningBid: listing.winningBid?.amount || listing.startPrice,
+      status: getListingStatus(listing.status),
+      seller: {
+        id: listing.product.userId,
+        name: listing.product.user?.name || listing.product.user?.username || 'Satıcı',
+        username: listing.product.user?.username || 'user'
+      },
+      isPaid: listing.isPaid || false,
+      isLiveStream: true,
+      streamId: listing.liveStreamId
+    }));
+    
+    // Combine both types and sort by win date (newest first)
+    return [...processedProductAuctions, ...processedLivestreamAuctions]
+      .sort((a, b) => new Date(b.winDate).getTime() - new Date(a.winDate).getTime());
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// Get user's orders
+export async function getUserOrders(): Promise<Order[]> {
+  try {
+    // Since we don't have a dedicated Orders table, we'll use winning bids as orders
+    const wonAuctions = await getUserWonAuctions();
+    
+    // Transform won auctions into orders format
+    return wonAuctions
+      .filter(auction => auction.isPaid) // Only paid auctions are considered orders
+      .map((auction, index) => ({
+        id: auction.id,
+        orderNumber: `BP-${new Date().getFullYear()}-${String(index + 1).padStart(3, '0')}`,
+        date: auction.winDate,
+        total: auction.winningBid,
+        status: mapAuctionStatusToOrderStatus(auction.status),
+        items: [
+          {
+            id: auction.productId,
+            name: auction.productName,
+            quantity: 1,
+            price: auction.winningBid,
+            imageUrl: auction.productImage
+          }
+        ]
+      }));
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// Helper functions to map statuses
+function getAuctionStatus(status: string): string {
+  switch (status) {
+    case 'COMPLETED': return 'Tamamlandı';
+    case 'ACTIVE': return 'İşleniyor';
+    case 'PENDING': return 'Beklemede';
+    case 'CANCELLED': return 'İptal Edildi';
+    default: return 'Beklemede';
+  }
+}
+
+function getListingStatus(status: string): string {
+  switch (status) {
+    case 'COMPLETED': return 'Tamamlandı';
+    case 'ACTIVE': return 'İşleniyor';
+    case 'COUNTDOWN': return 'İşleniyor';
+    case 'PENDING': return 'Beklemede';
+    case 'CANCELLED': return 'İptal Edildi';
+    default: return 'Beklemede';
+  }
+}
+
+function mapAuctionStatusToOrderStatus(status: string): string {
+  switch (status) {
+    case 'Tamamlandı': return 'Tamamlandı';
+    case 'İşleniyor': return 'Kargoda';
+    case 'Beklemede': return 'Beklemede';
+    case 'İptal Edildi': return 'İptal Edildi';
+    default: return 'Beklemede';
+  }
+}
 
 // Admin işlemleri
 export const getAllUsers = async (): Promise<User[]> => {

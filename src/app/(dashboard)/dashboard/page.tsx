@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Product, getUserProducts } from '@/lib/api';
+import { resendVerificationCode, verifyCode } from '@/lib/frontend-auth';
 
 export default function Dashboard() {
   const { user, logout, refreshAuthState } = useAuth();
@@ -14,6 +15,14 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  
+  // SMS verification state
+  const [verificationCode, setVerificationCode] = useState('');
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [verificationSuccess, setVerificationSuccess] = useState<string | null>(null);
+  const [isSendingSms, setIsSendingSms] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   useEffect(() => {
     async function fetchUserProducts() {
@@ -24,35 +33,17 @@ export default function Dashboard() {
         // Use the API function which now calls the Next.js route via fetcher
         const data = await getUserProducts();
         setProducts(data);
+        setError(null); // Clear any previous errors on success
       } catch (err: any) {
         console.error('Ürünler yüklenirken hata oluştu:', err);
         
-        // Check if it's an auth error
-        if (err.message?.includes('Unauthorized') || err.status === 401) {
-          console.log('Authentication error, trying to refresh token...');
-          
-          // Try to refresh the auth state
-          await refreshAuthState();
-          
-          // If still no user after refresh, redirect to login
-          if (!user) {
-            console.log('Token refresh failed, redirecting to login');
-            router.push('/sign-in?redirect=/dashboard');
-            return;
-          }
-          
-          // Try fetching again after refresh
-          try {
-            const data = await getUserProducts();
-            setProducts(data);
-            setError(null);
-          } catch (refreshErr) {
-            setError('Oturum süreniz dolmuş olabilir. Lütfen tekrar giriş yapın.');
-            logout();
-            router.push('/sign-in?redirect=/dashboard');
-          }
-        } else {
-          setError(err.message || 'Ürünleriniz yüklenirken bir hata oluştu.');
+        // Only show a generic error message to the user
+        // The actual token refresh logic is now handled in getUserProducts
+        setError('Ürünleriniz yüklenirken bir hata oluştu. Lütfen sayfayı yenileyiniz.');
+        
+        // If products array is empty, show some suggestions to the user
+        if (products.length === 0) {
+          setProducts([]);
         }
       } finally {
         setIsLoading(false);
@@ -60,7 +51,51 @@ export default function Dashboard() {
     }
 
     fetchUserProducts();
-  }, [user, refreshAuthState, logout, router]);
+  }, [user]);
+
+  // Function to trigger SMS verification
+  const handleSendVerificationCode = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setIsSendingSms(true);
+      setVerificationError(null);
+      const response = await resendVerificationCode(user.id);
+      
+      if (response.smsSent) {
+        setShowVerificationModal(true);
+        setVerificationSuccess('Doğrulama kodu telefonunuza gönderildi.');
+      } else {
+        setVerificationError('SMS gönderilemedi. Lütfen daha sonra tekrar deneyin.');
+      }
+    } catch (error: any) {
+      setVerificationError(error.message || 'SMS gönderilirken bir hata oluştu.');
+    } finally {
+      setIsSendingSms(false);
+    }
+  };
+
+  // Function to verify SMS code
+  const handleVerifyCode = async () => {
+    if (!user?.id || !verificationCode) return;
+    
+    try {
+      setIsVerifying(true);
+      setVerificationError(null);
+      const response = await verifyCode(verificationCode, user.id);
+      
+      if (response.user) {
+        setVerificationSuccess('Telefon numaranız başarıyla doğrulandı!');
+        setShowVerificationModal(false);
+        // Refresh auth state to update user verification status
+        await refreshAuthState();
+      }
+    } catch (error: any) {
+      setVerificationError(error.message || 'Doğrulama kodunu kontrol edin ve tekrar deneyin.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -130,11 +165,32 @@ export default function Dashboard() {
                       <span className="mr-1">✓</span> SMS Onaylı Üye
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-yellow-500 to-orange-600 text-white">
-                      <span className="mr-1">!</span> Doğrulama Gerekli
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-yellow-500 to-orange-600 text-white">
+                        <span className="mr-1">!</span> Doğrulama Gerekli
+                      </span>
+                      <button
+                        onClick={handleSendVerificationCode}
+                        disabled={isSendingSms}
+                        className="px-3 py-1 bg-[var(--accent)] text-white rounded-full text-sm hover:shadow-md transition-all"
+                      >
+                        {isSendingSms ? 'Gönderiliyor...' : 'SMS Doğrula'}
+                      </button>
+                    </div>
                   )}
                 </div>
+                
+                {verificationError && (
+                  <div className="mt-2 text-red-500 text-sm">
+                    {verificationError}
+                  </div>
+                )}
+                
+                {verificationSuccess && !showVerificationModal && (
+                  <div className="mt-2 text-green-500 text-sm">
+                    {verificationSuccess}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -144,19 +200,57 @@ export default function Dashboard() {
                   href="/dashboard/profile"
                   className="px-4 py-2 bg-[var(--background)] border border-[var(--accent)] text-[var(--accent)] rounded-md hover:bg-[var(--accent)] hover:text-white transition-colors text-sm"
                 >
-                  Profili Düzenle
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Profili Düzenle
+                  </span>
+                </Link>
+                <Link
+                  href="/dashboard/change-password"
+                  className="px-4 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Şifre Değiştir
+                  </span>
                 </Link>
                 <Link
                   href="/dashboard/addresses"
                   className="px-4 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
                 >
-                  Adreslerim
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Adreslerim
+                  </span>
                 </Link>
                 <Link
                   href="/dashboard/orders"
                   className="px-4 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
                 >
-                  Siparişlerim
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                    </svg>
+                    Siparişlerim
+                  </span>
+                </Link>
+                <Link
+                  href="/dashboard/won-auctions"
+                  className="px-4 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
+                >
+                  <span className="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                    </svg>
+                    Kazandığım Açık Arttırmalar
+                  </span>
                 </Link>
               </div>
             </div>
@@ -350,6 +444,83 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
+      
+      {/* SMS Verification Modal */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" aria-hidden="true"></div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-[var(--background)] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-[var(--background)] px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-[var(--foreground)]" id="modal-title">
+                      Telefon Numaranızı Doğrulayın
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-[var(--foreground)] opacity-70">
+                        Telefonunuza gönderilen 6 haneli doğrulama kodunu girin.
+                      </p>
+                      
+                      {verificationSuccess && (
+                        <div className="mt-2 p-2 bg-green-100 text-green-800 rounded-md text-sm">
+                          {verificationSuccess}
+                        </div>
+                      )}
+                      
+                      {verificationError && (
+                        <div className="mt-2 p-2 bg-red-100 text-red-800 rounded-md text-sm">
+                          {verificationError}
+                        </div>
+                      )}
+                      
+                      <div className="mt-4">
+                        <input
+                          type="text"
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value)}
+                          placeholder="Doğrulama kodu"
+                          className="w-full px-3 py-2 border border-[var(--border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--foreground)] bg-[var(--background)]"
+                          maxLength={6}
+                        />
+                      </div>
+                      
+                      <div className="mt-2 text-xs text-[var(--foreground)] opacity-70">
+                        Kod almadınız mı? 
+                        <button 
+                          className="ml-1 text-[var(--accent)] hover:underline"
+                          onClick={handleSendVerificationCode}
+                          disabled={isSendingSms}
+                        >
+                          {isSendingSms ? 'Gönderiliyor...' : 'Tekrar Gönder'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-[var(--background)] px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleVerifyCode}
+                  disabled={isVerifying || verificationCode.length !== 6}
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-[var(--accent)] text-base font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--accent)] sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  {isVerifying ? 'Doğrulanıyor...' : 'Doğrula'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowVerificationModal(false)}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-[var(--border)] shadow-sm px-4 py-2 bg-[var(--background)] text-base font-medium text-[var(--foreground)] hover:bg-[var(--secondary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)] sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </ProtectedRoute>
   );
 } 

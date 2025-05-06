@@ -131,7 +131,8 @@ export default function Home() {
               categoryId: "cat1",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              category: { id: "cat1", name: "Antika", description: "Antika ürünler", createdAt: "", updatedAt: "" }
+              category: { id: "cat1", name: "Antika" },
+              images: []
             },
             {
               id: "mock-2",
@@ -143,7 +144,8 @@ export default function Home() {
               categoryId: "cat2",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              category: { id: "cat2", name: "Sanat", description: "Sanat eserleri", createdAt: "", updatedAt: "" }
+              category: { id: "cat2", name: "Sanat" },
+              images: []
             }
           ]);
         }
