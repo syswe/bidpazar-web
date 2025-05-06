@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getUserLiveStreams, LiveStream, startLiveStream, endLiveStream } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { getToken } from "@/lib/frontend-auth";
-import { env } from "@/lib/env"; // Import env config
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext'; // Import the hook
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -33,6 +33,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export default function MyStreamsPage() {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig(); // Use the hook
   const [streams, setStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export default function MyStreamsPage() {
   const fetchStreams = async () => {
     try {
       setLoading(true);
-      // First try with our helper function
+      // First try with our helper function (uses relative paths)
       try {
         const userStreams = await getUserLiveStreams();
         setStreams(userStreams);
@@ -57,8 +58,19 @@ export default function MyStreamsPage() {
       if (!token) {
         throw new Error("Authentication required");
       }
+      
+      // Get runtime API URL from context for fallback
+      if (isConfigLoading || !runtimeConfig) {
+        console.warn("Runtime config not ready for fallback fetch");
+        throw new Error("Configuration loading...");
+      }
+      const apiUrl = runtimeConfig.apiUrl;
 
-      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/user/streams`, {
+      // Construct the full URL using runtime config
+      const fetchUrl = `${apiUrl}/live-streams/user/streams`; 
+      console.warn(`Using fallback fetch URL: ${fetchUrl}`);
+      
+      const response = await fetch(fetchUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

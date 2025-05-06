@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuth } from "@/lib/frontend-auth";
 import { toast } from "sonner";
-import { env } from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 import {
   Loader2,
   Users,
@@ -70,6 +70,7 @@ export default function LiveStreamPage() {
   const { token } = getAuth();
   const userId = user?.id;
   const username = user?.username;
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
 
   const [streamDetails, setStreamDetails] = useState<LiveStreamDetails | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -153,6 +154,17 @@ export default function LiveStreamPage() {
 
   // Add system information diagnostics
   const collectSystemDiagnostics = useCallback(() => {
+    // Use runtime config values if available
+    const runtimeEnv = runtimeConfig ? {
+      appUrl: runtimeConfig.appUrl,
+      apiUrl: runtimeConfig.apiUrl,
+      socketUrl: runtimeConfig.socketUrl,
+      wsUrl: runtimeConfig.wsUrl,
+      webrtcServer: runtimeConfig.webrtcServer,
+      turnServer: runtimeConfig.turnServerUrl,
+      stunServer: runtimeConfig.stunServerUrl
+    } : { status: 'loading or error' };
+
     const diag = {
       browser: {
         userAgent: navigator.userAgent,
@@ -183,20 +195,14 @@ export default function LiveStreamPage() {
         protocol: window.location.protocol,
         host: window.location.host,
         pathname: window.location.pathname,
-        appUrl: env.APP_URL,
-        apiUrl: env.API_URL,
-        socketUrl: env.SOCKET_URL,
-        wsUrl: env.WS_URL,
-        webrtcServer: env.WEBRTC_SERVER,
-        turnServer: env.TURN_SERVER_URL,
-        stunServer: env.STUN_SERVER_URL
+        runtimeConfig: runtimeEnv
       },
       timestamp: new Date().toISOString()
     };
     
     logMessage('System diagnostic information collected', 'debug', diag);
     return diag;
-  }, [logMessage]);
+  }, [logMessage, runtimeConfig]);
 
   const fetchStreamDetails = useCallback(async () => {
     const fetchStartTime = performance.now();
@@ -217,6 +223,12 @@ export default function LiveStreamPage() {
     setIsLoading(true);
     setError(null);
 
+    if (isConfigLoading || !runtimeConfig) {
+      logMessage("Fetch stream details cancelled: Runtime config not ready", 'warn');
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl;
+
     try {
       const authToken = token ?? getCookie('token') as string | undefined;
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -234,14 +246,14 @@ export default function LiveStreamPage() {
       // Log the request URL and headers
       logMessage("Making API request", 'debug', {
         method: 'GET',
-        url: `${env.BACKEND_API_URL}/live-streams/${streamId}`,
+        url: `${backendApiUrl}/live-streams/${streamId}`,
         headers: Object.keys(headers)
       });
 
       // Track performance
       performance.mark('stream-fetch-start');
       
-      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}`, { headers });
+      const response = await fetch(`${backendApiUrl}/live-streams/${streamId}`, { headers });
       
       performance.mark('stream-fetch-end');
       performance.measure('stream-fetch-duration', 'stream-fetch-start', 'stream-fetch-end');
@@ -323,7 +335,7 @@ export default function LiveStreamPage() {
         totalTime: `${(performance.now() - fetchStartTime).toFixed(2)}ms`
       });
     }
-  }, [streamId, userId, token, getCookie, logMessage, collectSystemDiagnostics]);
+  }, [streamId, userId, token, getCookie, logMessage, runtimeConfig, isConfigLoading, collectSystemDiagnostics]);
 
   useEffect(() => {
     // Log component mount
@@ -349,6 +361,16 @@ export default function LiveStreamPage() {
   const canRenderWebRTC = shouldRenderWebRTC && (currentStreamStatus === 'LIVE' || (isStreamer && currentStreamStatus === 'SCHEDULED'));
 
   useEffect(() => {
+    // Use runtime config values if available for logging
+    const runtimeEnv = runtimeConfig ? {
+      SOCKET_URL: runtimeConfig.socketUrl,
+      WS_URL: runtimeConfig.wsUrl,
+      WEBRTC_SERVER: runtimeConfig.webrtcServer,
+      API_URL: runtimeConfig.apiUrl,
+      // Note: BACKEND_API_URL is usually same as API_URL in this setup
+      BACKEND_API_URL: runtimeConfig.apiUrl 
+    } : { status: 'loading or error' };
+
     // Log whenever important state changes
     logMessage('[LiveStreamPage] Render check variables:', 'debug', {
       isLoading,
@@ -360,13 +382,7 @@ export default function LiveStreamPage() {
       derivedIsStreamer: isStreamer,
       shouldRenderBase: shouldRenderWebRTC,
       canRenderFinal: canRenderWebRTC,
-      env: {
-        SOCKET_URL: env.SOCKET_URL,
-        WS_URL: env.WS_URL,
-        WEBRTC_SERVER: env.WEBRTC_SERVER,
-        API_URL: env.API_URL,
-        BACKEND_API_URL: env.BACKEND_API_URL
-      },
+      env: runtimeEnv, // Log runtime config
       browser: {
         userAgent: navigator.userAgent,
         language: navigator.language
@@ -378,7 +394,7 @@ export default function LiveStreamPage() {
         } : 'not available'
       }
     });
-  }, [isLoading, streamDetails, userId, username, streamId, currentStreamStatus, isStreamer, shouldRenderWebRTC, canRenderWebRTC, logMessage]);
+  }, [isLoading, streamDetails, userId, username, streamId, currentStreamStatus, isStreamer, shouldRenderWebRTC, canRenderWebRTC, logMessage, runtimeConfig]);
 
   const handleStartStream = async () => {
     const startTime = performance.now();
@@ -400,6 +416,15 @@ export default function LiveStreamPage() {
     }
     
     setIsLoading(true);
+    
+    if (isConfigLoading || !runtimeConfig) {
+      logMessage("Start stream failed: Runtime config not ready", 'error');
+      toast.error("Configuration not loaded. Cannot start stream.");
+      setIsLoading(false);
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl;
+
     try {
       if (!token) {
         logMessage("Start stream failed: No auth token from context", "error", {
@@ -411,12 +436,12 @@ export default function LiveStreamPage() {
 
       performance.mark('stream-start-api-call-begin');
       logMessage('[LiveStreamPage] Calling /start endpoint...', 'debug', {
-        url: `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
+        url: `${backendApiUrl}/live-streams/${streamId}/start`,
         method: 'POST',
         hasToken: !!token
       });
       
-      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${streamId}/start`, {
+      const response = await fetch(`${backendApiUrl}/live-streams/${streamId}/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -6,7 +6,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
-import { env } from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 import { getToken } from "@/lib/frontend-auth";
 
 export default function CreateListingPage() {
@@ -15,6 +15,7 @@ export default function CreateListingPage() {
   const { id } = params;
   const { isAuthenticated } = useAuth();
   const token = getToken();
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -30,12 +31,27 @@ export default function CreateListingPage() {
       router.push(`/live-streams/${id}`);
       return;
     }
+    // Also check config loading state
+    if (isConfigLoading) {
+      // Still loading config, can show loading state or wait
+      console.log("Waiting for runtime config in create listing page...");
+    } else if (!runtimeConfig) {
+      toast.error("Failed to load configuration. Cannot create listing.");
+      router.push(`/live-streams/${id}`);
+    } else {
+      setLoading(false); // Only set loading false when config is ready
+    }
 
-    setLoading(false);
-  }, [id, isAuthenticated, token, router]);
+  }, [id, isAuthenticated, token, router, isConfigLoading, runtimeConfig]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!runtimeConfig) {
+      toast.error("Configuration not loaded. Cannot submit.");
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl; // Use runtime config
 
     if (!productName) {
       toast.error("Please enter a product name");
@@ -51,7 +67,7 @@ export default function CreateListingPage() {
       setSubmitting(true);
 
       // Create a minimal listing with just the necessary information
-      const response = await fetch(`${env.BACKEND_API_URL}/live-streams/${id}/listings/simplified`, {
+      const response = await fetch(`${backendApiUrl}/live-streams/${id}/listings/simplified`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -70,7 +86,7 @@ export default function CreateListingPage() {
         // If the simplified endpoint fails, try the original endpoint with a fallback method
         console.log("Simplified API failed, trying fallback method");
 
-        const fallbackResponse = await fetch(`${env.BACKEND_API_URL}/live-streams/${id}/listings`, {
+        const fallbackResponse = await fetch(`${backendApiUrl}/live-streams/${id}/listings`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -107,7 +123,7 @@ export default function CreateListingPage() {
     }
   };
 
-  if (loading) {
+  if (loading || isConfigLoading) { // Also check config loading
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="w-8 h-8 animate-spin" />

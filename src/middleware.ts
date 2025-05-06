@@ -21,11 +21,13 @@ export async function middleware(request: NextRequest) {
     path === '/' ||  // Allow home page for everyone
     path.startsWith('/products') ||  // Allow product pages for everyone
     path.startsWith('/api/products') ||  // Allow product API routes for everyone
+    path.startsWith('/api/product-auctions') ||  // Allow product auction API routes for everyone
     path.startsWith('/streams') ||  // Allow stream viewing for everyone
     path.startsWith('/api/auth/') || // Allow all auth API routes
     path.startsWith('/live-streams') || // Allow live stream viewing for everyone
     path.startsWith('/api/live-streams') || // Allow live stream API routes for everyone
-    path.startsWith('/api/rtc/'); // Allow all RTC API routes for everyone
+    path.startsWith('/api/rtc/') || // Allow all RTC API routes for everyone
+    path === '/api/config'; // <<< Make config API public
 
   console.log(`[Middleware] Is public path: ${isPublicPath}`);
 
@@ -98,6 +100,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // If none of the above conditions met, allow the request to proceed
+  // Add specific log for root path
+  if (path === '/') {
+    console.log(`[Middleware] Allowing request for root path: /`);
+  }
   console.log(`[Middleware] Request allowed for path: ${path}`);
   return NextResponse.next();
 }
@@ -108,6 +114,6 @@ export const config = {
     // Match all routes except static files and _next internal paths
     '/((?!api/auth/logout|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     // Explicitly include specific API routes if needed beyond the general exclusion
-    '/api/((?!auth/|products/).)*', // Protect all API routes except /api/auth/* and /api/products/*
+    '/api/((?!auth/|products/|product-auctions/).)*', // Protect all API routes except /api/auth/*, /api/products/*, and /api/product-auctions/*
   ],
 }; 

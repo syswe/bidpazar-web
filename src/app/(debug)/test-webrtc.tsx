@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
-import env from '@/lib/env';
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 
 export default function TestWebRTC() {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   const [logs, setLogs] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +125,19 @@ export default function TestWebRTC() {
     const runTest = async () => {
       addLog('Starting WebRTC test with live media...');
       
+      if (isConfigLoading || !runtimeConfig) {
+        addLog('Waiting for runtime config...');
+        // Optionally set an error or wait state
+        setError("Configuration not loaded yet.");
+        return;
+      }
+
       try {
         // 1. Create WebSocket connection
-        const socketUrl = env.SOCKET_URL;
+        const socketUrl = runtimeConfig.socketUrl;
+        if (!socketUrl) {
+          throw new Error("SOCKET_URL is not configured in runtime config.");
+        }
         const wsUrl = socketUrl.startsWith('ws') 
           ? socketUrl.replace(/\/$/, '') 
           : socketUrl.replace(/^http/, 'ws').replace(/\/$/, '');
@@ -342,7 +353,7 @@ export default function TestWebRTC() {
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [isConfigLoading, runtimeConfig]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

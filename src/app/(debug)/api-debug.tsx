@@ -2,24 +2,35 @@
 
 import React, { useState, useEffect } from 'react';
 import { getAuth } from '@/lib/frontend-auth';
-import { env } from '@/lib/env'; // Import env config
+// import { env } from '@/lib/env'; // Remove direct env import
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext'; // Import the hook
 
 const ApiDebug: React.FC = () => {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig(); // Use the hook
   const [response, setResponse] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
-  // Use the BACKEND_API_URL for backend calls
-  const url = env.BACKEND_API_URL;
+  // Use the BACKEND_API_URL for backend calls (get from context)
+  // const url = env.BACKEND_API_URL; // Old way
 
   const testApi = async () => {
     setLoading(true);
     setError(null);
     setResponse(null);
+    
+    if (isConfigLoading || !runtimeConfig) {
+      setError("Runtime config not loaded yet.");
+      setLoading(false);
+      return;
+    }
+    const apiUrl = runtimeConfig.apiUrl; // Use runtime config
+    const testEndpoint = `${apiUrl}/health`; // Construct full URL
+
     const { token } = getAuth();
     
     try {
-      const res = await fetch(`${url}/health`, { // Example: hitting backend health endpoint
+      const res = await fetch(testEndpoint, { // Use the constructed endpoint
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -46,7 +57,7 @@ const ApiDebug: React.FC = () => {
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">API Debug</h2>
-      <p className="mb-2">Testing API Endpoint: {url}/health</p>
+      <p className="mb-2">Testing API Endpoint: {isConfigLoading ? 'Loading...' : runtimeConfig?.apiUrl ? `${runtimeConfig.apiUrl}/health` : 'Config Error'}</p>
       <button 
         onClick={testApi} 
         disabled={loading} 

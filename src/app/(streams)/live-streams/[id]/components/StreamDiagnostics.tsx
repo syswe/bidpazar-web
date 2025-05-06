@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { getToken } from "@/lib/frontend-auth";
-import { env } from "@/lib/env"; // Import env config
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext'; // Import the hook
 
 interface LogItem {
   timestamp: string;
@@ -31,6 +31,7 @@ interface DiagnosticResult {
 }
 
 export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, connectionState }: StreamDiagnosticsProps) {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig(); // Use the hook
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
   const [summary, setSummary] = useState<string>('');
@@ -82,8 +83,18 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
   };
 
   const checkNetworkConnectivity = async () => {
+    if (isConfigLoading || !runtimeConfig) {
+      addResult({
+        success: false,
+        message: 'Network connectivity check failed',
+        details: ['Runtime configuration not loaded']
+      });
+      throw new Error('Runtime configuration not loaded');
+    }
+    const apiUrl = runtimeConfig.apiUrl; // Use runtime config
+
     try {
-      const response = await fetch(`${env.API_URL}/health`);
+      const response = await fetch(`${apiUrl}/health`); // Use runtime apiUrl
       if (response.ok) {
         addResult({
           success: true,
@@ -210,8 +221,20 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
   };
 
   const testSignalingServer = async () => {
+    if (isConfigLoading || !runtimeConfig) {
+      addResult({
+        success: false,
+        message: 'Signaling server connection check failed',
+        details: ['Runtime configuration not loaded']
+      });
+      throw new Error('Runtime configuration not loaded');
+    }
+    const socketUrl = runtimeConfig.socketUrl; // Use runtime config
+
     try {
-      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3000';
+      if (!socketUrl) {
+        throw new Error('Socket URL is not configured');
+      }
       
       // Ensure socket URL uses correct protocol and remove any trailing slashes
       const wsUrl = socketUrl.startsWith('ws')
@@ -273,10 +296,20 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
   };
 
   const checkStreamStatus = async () => {
+    if (isConfigLoading || !runtimeConfig) {
+      addResult({
+        success: false,
+        message: 'Stream status check failed',
+        details: ['Runtime configuration not loaded']
+      });
+      throw new Error('Runtime configuration not loaded');
+    }
+    const apiUrl = runtimeConfig.apiUrl; // Use runtime config
+
     try {
       // Check stream status via API
       const token = getToken();
-      const response = await fetch(`${env.API_URL}/live-streams/${streamIdToUse}`, {
+      const response = await fetch(`${apiUrl}/live-streams/${streamIdToUse}`, { // Use runtime apiUrl
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -316,8 +349,14 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
   };
 
   useEffect(() => {
-    runDiagnostics();
-  }, [streamId]);
+    if (!isConfigLoading && runtimeConfig) { // Only run when config is ready
+      runDiagnostics();
+    } else if (!isConfigLoading && !runtimeConfig) {
+      // Handle config error state
+      setSummary("Error: Failed to load runtime configuration.");
+      setIsRunning(false);
+    }
+  }, [streamId, runtimeConfig, isConfigLoading]); // Add dependencies
 
   // If logs are provided, render them
   if (hasExternalLogs) {

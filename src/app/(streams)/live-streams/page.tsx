@@ -7,7 +7,7 @@ import Image from "next/image";
 import { Loader2, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/AuthProvider";
-import { env } from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 import { getToken } from "@/lib/frontend-auth";
 
 interface LiveStreamUser {
@@ -35,6 +35,7 @@ interface LiveStream {
 }
 
 export default function LiveStreamsPage() {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   const token = getToken();
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,9 +43,15 @@ export default function LiveStreamsPage() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
-        console.log("Fetching live streams from:", `${env.BACKEND_API_URL}/live-streams`);
+        if (isConfigLoading || !runtimeConfig) {
+          console.log("Waiting for runtime config...");
+          return;
+        }
+        
+        const apiUrl = runtimeConfig.apiUrl;
+        console.log("Fetching live streams from:", `${apiUrl}/live-streams`);
 
-        const response = await fetch(`${env.BACKEND_API_URL}/live-streams`, {
+        const response = await fetch(`${apiUrl}/live-streams`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           next: { revalidate: 60 },
         });
@@ -81,8 +88,14 @@ export default function LiveStreamsPage() {
       }
     };
 
-    fetchLiveStreams();
-  }, [token]);
+    if (!isConfigLoading && runtimeConfig) {
+      fetchLiveStreams();
+    } else if (!isConfigLoading && !runtimeConfig) {
+      console.error("Runtime config failed to load.");
+      toast.error("Failed to load configuration.");
+      setLoading(false);
+    }
+  }, [token, runtimeConfig, isConfigLoading]);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "TBA";

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/components/AuthProvider';
 import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2 } from 'lucide-react';
 import { getAuth } from "@/lib/frontend-auth";
-import { env } from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 
 interface StreamDetails {
   id: string;
@@ -40,6 +40,7 @@ const StreamControls = ({
 }: StreamControlsProps) => {
   const { user } = useAuth();
   const { token } = getAuth();
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   const [isProcessing, setIsProcessing] = useState(false);
   const [detailedStreamInfo, setDetailedStreamInfo] = useState<StreamDetails | null>(null);
 
@@ -63,13 +64,17 @@ const StreamControls = ({
   // Fetch detailed stream information
   useEffect(() => {
     const fetchStreamDetails = async () => {
-      if (!streamId || !token) return;
+      if (!streamId || !token || isConfigLoading || !runtimeConfig) {
+        console.debug('[StreamControls] Cannot fetch details: Missing required info or config.');
+        return;
+      }
+      const backendApiUrl = runtimeConfig.apiUrl;
 
       console.debug('[StreamControls] Fetching stream details for stream:', streamId);
 
       try {
         const response = await axios.get(
-          `${env.BACKEND_API_URL}/live-streams/${streamId}`,
+          `${backendApiUrl}/live-streams/${streamId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`
@@ -85,19 +90,25 @@ const StreamControls = ({
     };
 
     fetchStreamDetails();
-  }, [streamId, token]);
+  }, [streamId, token, runtimeConfig, isConfigLoading]);
 
   const handleStartStream = async () => {
+    if (isConfigLoading || !runtimeConfig) {
+      toast.error("Configuration not loaded. Cannot start stream.");
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl;
+
     try {
       setIsProcessing(true);
       console.debug("[StreamControls] Starting stream:", {
         streamId,
-        endpoint: `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
+        endpoint: `${backendApiUrl}/live-streams/${streamId}/start`,
         hasToken: !!token
       });
 
       const response = await axios.post(
-        `${env.BACKEND_API_URL}/live-streams/${streamId}/start`,
+        `${backendApiUrl}/live-streams/${streamId}/start`,
         {},
         {
           headers: {
@@ -121,16 +132,22 @@ const StreamControls = ({
   };
 
   const handleEndStream = async () => {
+    if (isConfigLoading || !runtimeConfig) {
+      toast.error("Configuration not loaded. Cannot end stream.");
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl;
+
     try {
       setIsProcessing(true);
       console.debug("[StreamControls] Ending stream:", {
         streamId,
-        endpoint: `${env.BACKEND_API_URL}/live-streams/${streamId}/end`,
+        endpoint: `${backendApiUrl}/live-streams/${streamId}/end`,
         hasToken: !!token
       });
 
       const response = await axios.post(
-        `${env.BACKEND_API_URL}/live-streams/${streamId}/end`,
+        `${backendApiUrl}/live-streams/${streamId}/end`,
         {},
         {
           headers: {

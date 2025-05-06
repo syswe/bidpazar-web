@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { getAuth, validateToken } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
-import { env } from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 
 export default function AuthDebugPage() {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   const [authData, setAuthData] = useState<{
     token: string | null;
     user: any | null;
@@ -51,16 +52,16 @@ export default function AuthDebugPage() {
         return;
       }
       
-      // Test the API URL construction
-      const baseUrl = env.BACKEND_API_URL;
-      const apiUrl = baseUrl.endsWith('/api') 
-        ? `${baseUrl}/messages/conversations`
-        : `${baseUrl}/api/messages/conversations`;
+      if (isConfigLoading || !runtimeConfig) {
+        setApiTestResult('Runtime config not loaded yet.');
+        return;
+      }
+      const apiUrl = runtimeConfig.apiUrl;
       
-      setApiTestResult(`Testing API URL: ${apiUrl}\n`);
+      const testEndpoint = '/api/messages/conversations';
+      setApiTestResult(`Testing API Endpoint: ${testEndpoint}\n`);
       
-      // Test the conversations API
-      const response = await fetch('/api/messages/conversations', {
+      const response = await fetch(testEndpoint, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

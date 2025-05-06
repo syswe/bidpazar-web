@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
 import { useAuth } from '@/components/AuthProvider';
-import env from "@/lib/env";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 import DeviceSelector from './DeviceSelector';
 import { getAuth } from "@/lib/frontend-auth";
 import { v4 as uuidv4 } from 'uuid';
@@ -12,7 +12,6 @@ import { io, Socket } from 'socket.io-client';
 import { Loader2, Volume2, VolumeX, Video, VideoOff, Settings, AlertTriangle } from 'lucide-react';
 import { Device } from 'mediasoup-client';
 import { logger } from '@/lib/logger';
-import { getIceServers, getSocketUrl } from '@/lib/webrtc-config';
 
 // ===================== LOGGING SYSTEM =====================
 const LOG_LEVELS = {
@@ -111,19 +110,14 @@ const formatError = (err: unknown): Record<string, any> => {
 };
 
 // ===================== WEBRTC CONFIG =====================
-// Use centralized configuration for ICE servers
+// No longer needed here if we use context
+/*
 const getMediasoupIceServers = () => {
   const iceServers = getIceServers();
-  
-  // Log the ICE servers for debugging
-  logger.info('[WebRTC] Using ICE servers:', {
-    stunServer: iceServers[0]?.urls,
-    turnServer: iceServers[1]?.urls,
-    hasCredentials: !!iceServers[1]?.username && !!iceServers[1]?.credential
-  });
-
+  logger.info('[WebRTC] Using ICE servers:', { ... });
   return iceServers;
 };
+*/
 
 // ===================== COMPONENT TYPES =====================
 interface WebRTCStreamManagerProps {
@@ -144,6 +138,7 @@ export default function WebRTCStreamManager({
   onParticipantCount,
   className,
 }: WebRTCStreamManagerProps) {
+  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   logInfo('Component initialized', { streamId, userId, username, isStreamer });
   
   // =========== AUTH STATE ===========
@@ -196,11 +191,18 @@ export default function WebRTCStreamManager({
   // =========== SOCKET CONNECTION =====================
   // Connect to WebRTC signaling server
   const connectToSignalingServer = () => {
+    if (isConfigLoading || !runtimeConfig || !runtimeConfig.socketUrl) {
+      logWarn('[WebRTC] Cannot connect to signaling server: Runtime config not ready or socketUrl missing.');
+      setError("Configuration Error: Socket URL not found."); // Set error state
+      setConnectionStatus('disconnected');
+      return;
+    }
+    
     logger.info('[WebRTC] Connecting to signaling server');
     
-    // Get the connection parameters from our centralized config
-    const socketUrl = getSocketUrl();
-    const socketPath = '/api/rtc/socket';
+    // Get the connection parameters from runtime config
+    const socketUrl = runtimeConfig.socketUrl;
+    const socketPath = '/api/rtc/socket'; // Assuming path is fixed
     
     logger.debug('[WebRTC] Socket connection parameters', { 
       socketUrl, 
@@ -375,8 +377,16 @@ export default function WebRTCStreamManager({
       return null;
     }
     
+    if (isConfigLoading || !runtimeConfig) { 
+      logError('Cannot set up producer transport: Runtime config not ready');
+      return null;
+    }
+    
     try {
       logger.debug('Creating producer transport', transportOptions);
+      
+      // Get ICE servers using runtime config
+      const iceServers = getIceServers(runtimeConfig); 
       
       // Create the transport
       const transport = deviceRef.current.createSendTransport({
@@ -384,7 +394,7 @@ export default function WebRTCStreamManager({
         iceParameters: transportOptions.iceParameters,
         iceCandidates: transportOptions.iceCandidates,
         dtlsParameters: transportOptions.dtlsParameters,
-        iceServers: getMediasoupIceServers(),
+        iceServers: iceServers, // Use runtime ICE servers
       });
       
       logger.info('Producer transport created', { transportId: transport.id });
@@ -470,7 +480,7 @@ export default function WebRTCStreamManager({
       setError('Failed to set up media connection. Please reload and try again.');
       return null;
     }
-  }, [streamId, effectiveUserId]);
+  }, [streamId, effectiveUserId, runtimeConfig, isConfigLoading]);
   
   /**
    * Create and set up a consumer transport for the viewer
@@ -481,8 +491,16 @@ export default function WebRTCStreamManager({
       return null;
     }
     
+    if (isConfigLoading || !runtimeConfig) {
+      logError('Cannot set up consumer transport: Runtime config not ready');
+      return null;
+    }
+    
     try {
       logger.debug('Creating consumer transport', transportOptions);
+      
+      // Get ICE servers using runtime config
+      const iceServers = getIceServers(runtimeConfig);
       
       // Create the transport
       const transport = deviceRef.current.createRecvTransport({
@@ -490,7 +508,7 @@ export default function WebRTCStreamManager({
         iceParameters: transportOptions.iceParameters,
         iceCandidates: transportOptions.iceCandidates,
         dtlsParameters: transportOptions.dtlsParameters,
-        iceServers: getMediasoupIceServers(),
+        iceServers: iceServers, // Use runtime ICE servers
       });
       
       logger.info('Consumer transport created', { transportId: transport.id });
@@ -551,7 +569,7 @@ export default function WebRTCStreamManager({
       setError('Failed to set up media connection. Please reload and try again.');
       return null;
     }
-  }, [streamId]);
+  }, [streamId, runtimeConfig, isConfigLoading]);
   
   /**
    * Create media producers with the local stream
@@ -1096,4 +1114,29 @@ export default function WebRTCStreamManager({
     </div>
   );
 }
+
+// Helper function to get ICE servers (adjust based on your actual config structure)
+// This could be moved to a separate config file if preferred
+const getIceServers = (config: any | null): RTCIceServer[] => {
+  const iceServers: RTCIceServer[] = [];
+
+  // Default STUN servers (always good to have)
+  iceServers.push({ urls: "stun:stun.l.google.com:19302" });
+  iceServers.push({ urls: "stun:stun1.l.google.com:19302" });
+
+  if (config?.stunServerUrl) {
+     iceServers.push({ urls: config.stunServerUrl });
+  }
+  
+  if (config?.turnServerUrl && config.turnUsername && config.turnPassword) {
+    iceServers.push({
+      urls: config.turnServerUrl,
+      username: config.turnUsername,
+      credential: config.turnPassword,
+    });
+  }
+  
+  logDebug('[WebRTC] Generated ICE servers list', { iceServers });
+  return iceServers;
+};
       

@@ -1146,6 +1146,13 @@ export const addBidToProductAuction = async (
   });
 };
 
+export const getProductAuctionByProductId = async (productId: string): Promise<ProductAuction | null> => {
+  return fetcher<ProductAuction | null>(`product-auctions/by-product/${productId}`, {
+    returnEmptyOnError: true,
+    defaultValue: null
+  });
+};
+
 /**
  * HTTP methods for use with API requests
  */

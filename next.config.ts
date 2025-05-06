@@ -35,17 +35,10 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  // Increase API body size limit to 10MB for file uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-    responseLimit: false,
-  },
-  // Enable WebSocket support for Socket.IO
-  webSocketServer: {
-    url: '/api/rtc/socket',
-  },
+  // Note: Removed deprecated 'api' and 'webSocketServer' keys.
+  // API body size limits should be configured per-route if needed.
+  // WebSocket handling is typically done within the API route itself.
+  
   webpack: (config) => {
     config.externals.push({
       'utf-8-validate': 'commonjs utf-8-validate',

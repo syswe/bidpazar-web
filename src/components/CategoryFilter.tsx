@@ -51,7 +51,7 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
           Tümü
         </button>
 
-        {categories.map((category) => (
+        {Array.isArray(categories) && categories.map((category) => (
           <button
             key={category.id}
             onClick={() => onCategoryChange(category.id)}

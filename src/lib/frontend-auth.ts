@@ -24,10 +24,11 @@ interface AuthResponse {
 
 import { env } from "./env";
 
-// Use env.API_URL for all API calls
-const API_URL = env.API_URL;
+// Define the base path for auth API routes, consistent with api.ts
+const AUTH_API_BASE = '/api/auth'; 
 
-console.log("Auth service initialized with API URL:", API_URL);
+// Remove direct dependency on env.API_URL for client-side flexibility
+// console.log("Auth service initialized. API Base:", AUTH_API_BASE);
 
 /**
  * Store authentication data in localStorage
@@ -119,7 +120,7 @@ export const refreshToken = async (): Promise<boolean> => {
     console.log("Attempting to refresh token...");
     lastRefreshTime = now; // Update timestamp before the request
     
-    const response = await fetch(`${API_URL}/auth/refresh-token`, {
+    const response = await fetch(`${AUTH_API_BASE}/refresh-token`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${currentToken}`,
@@ -183,7 +184,7 @@ export const register = async (
   phoneNumber?: string
 ): Promise<AuthResponse> => {
   try {
-    console.log(`Sending registration request to ${API_URL}/auth/register with data:`, {
+    console.log(`Sending registration request to ${AUTH_API_BASE}/register with data:`, {
       email,
       username,
       password: '********',
@@ -191,7 +192,7 @@ export const register = async (
       phoneNumber
     });
 
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch(`${AUTH_API_BASE}/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -248,7 +249,7 @@ export const login = async (
   password: string
 ): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(`${AUTH_API_BASE}/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -282,7 +283,7 @@ export const logout = async (): Promise<void> => {
   // Try to call logout endpoint if we have a token
   const token = getToken();
   if (token) {
-    fetch(`${API_URL}/auth/logout`, {
+    fetch(`${AUTH_API_BASE}/logout`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -345,7 +346,7 @@ export const validateToken = async (forceCheck = false): Promise<User | null> =>
     console.log(`Validating token with backend (admin route: ${adminRouteChecking ? 'yes' : 'no'})`);
     lastValidationTime = now; // Update timestamp before the request
     
-    const response = await fetch(`${API_URL}/auth/validate?_=${timestamp}`, {
+    const response = await fetch(`${AUTH_API_BASE}/validate?_=${timestamp}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -419,13 +420,13 @@ export const verifyCode = async (
   userId: string
 ): Promise<AuthResponse> => {
   try {
-    console.log(`Sending verification request to ${API_URL}/auth/verify with data:`, {
+    console.log(`Sending verification request to ${AUTH_API_BASE}/verify with data:`, {
       code,
       userId,
       isRegistration: false
     });
     
-    const response = await fetch(`${API_URL}/auth/verify`, {
+    const response = await fetch(`${AUTH_API_BASE}/verify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -458,12 +459,12 @@ export const resendVerificationCode = async (
   userId: string
 ): Promise<{ message: string }> => {
   try {
-    console.log(`Sending resend verification request to ${API_URL}/auth/resend-verification with data:`, {
+    console.log(`Sending resend verification request to ${AUTH_API_BASE}/resend-verification with data:`, {
       userId,
       isRegistration: false
     });
     
-    const response = await fetch(`${API_URL}/auth/resend-verification`, {
+    const response = await fetch(`${AUTH_API_BASE}/resend-verification`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Product, getProductById, createProductAuction, ProductAuction, getProductAuctionById, addBidToProductAuction } from '@/lib/api';
+import { Product, getProductById, createProductAuction, ProductAuction, getProductAuctionById, addBidToProductAuction, getProductAuctionByProductId } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { logger } from '@/lib/logger';
 
@@ -72,13 +72,9 @@ export default function ProductDetailPage() {
     try {
       logger.debug('Fetching product auction', { productId: id });
       setIsAuctionLoading(true);
-      // API call to get product auction by product ID
-      // For demo purposes, we'll use a simple approach checking product auctions
-      const response = await fetch(`/api/product-auctions?status=ACTIVE`);
-      const auctions = await response.json();
       
-      // Find auction for this product
-      const productAuction = auctions.find((a: ProductAuction) => a.productId === id);
+      // Use the new API function to get auction by product ID
+      const productAuction = await getProductAuctionByProductId(id);
       
       if (productAuction) {
         logger.info('Found active auction for product', { 
