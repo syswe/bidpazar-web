@@ -3,6 +3,7 @@ const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
 const { join } = require('path');
+const fs = require('fs');
 
 // Important: Set Next.js runtime flags before loading anything else
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -18,42 +19,117 @@ if (!global.AsyncLocalStorage) {
   global.AsyncLocalStorage = AsyncLocalStorage;
 }
 
-// We can't require a TypeScript file directly in Node.js, so we need
-// to require the compiled version from the .next directory after Next.js has built it
+// Debug file structure - print directory contents
+console.log("DEBUG: Current directory:", __dirname);
+console.log("DEBUG: Listing root directory content:");
+try {
+  console.log(fs.readdirSync(__dirname));
+
+  if (fs.existsSync(join(__dirname, 'src'))) {
+    console.log("DEBUG: src directory exists, listing content:");
+    console.log(fs.readdirSync(join(__dirname, 'src')));
+    
+    if (fs.existsSync(join(__dirname, 'src', 'lib'))) {
+      console.log("DEBUG: src/lib directory exists, listing content:");
+      console.log(fs.readdirSync(join(__dirname, 'src', 'lib')));
+      
+      if (fs.existsSync(join(__dirname, 'src', 'lib', 'socket'))) {
+        console.log("DEBUG: src/lib/socket directory exists, listing content:");
+        console.log(fs.readdirSync(join(__dirname, 'src', 'lib', 'socket')));
+      } else {
+        console.log("DEBUG: src/lib/socket directory NOT found");
+      }
+    } else {
+      console.log("DEBUG: src/lib directory NOT found");
+    }
+  } else {
+    console.log("DEBUG: src directory NOT found");
+  }
+} catch (e) {
+  console.error("DEBUG: Error listing directories:", e);
+}
+
+// Set up module alias for @ path resolution used in TypeScript files
+// This assumes that the 'src' directory (with compiled .js files) 
+// is available relative to __dirname after the build and Docker copy.
+// For server.js at /app/server.js, __dirname is /app, so @ resolves to /app/src
+try {
+  require('module-alias').addAliases({
+    '@': join(__dirname, 'src')
+  });
+  console.log("DEBUG: Set up module-alias with @ pointing to:", join(__dirname, 'src'));
+} catch (e) {
+  console.error("DEBUG: Error setting up module-alias:", e);
+}
+
 let initializeSocketIOServer;
 let logger;
 
-// Set up module alias for @ path resolution used in TypeScript files
-require('module-alias').addAliases({
-  '@': join(__dirname, 'src')
-});
+// Try to load in different ways with fallbacks
+function tryRequireMultiplePaths(moduleName, paths) {
+  let lastError = null;
+  for (const path of paths) {
+    try {
+      console.log(`DEBUG: Trying to require '${path}'`);
+      const module = require(path);
+      console.log(`DEBUG: Successfully loaded '${path}'`);
+      return module;
+    } catch (e) {
+      console.log(`DEBUG: Failed to load '${path}':`, e.message);
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
 
-try {
-  // Try to require from compiled output first (production)
-  initializeSocketIOServer = require('./.next/server/lib/socket/socketHandler').initializeSocketIOServer;
-  logger = require('./.next/server/lib/logger').logger;
-  console.log('Successfully loaded modules from compiled Next.js output.');
-} catch (e) {
-  console.warn('Could not load modules from .next build directory, looking in src (dev mode)');
+if (process.env.NODE_ENV === 'production') {
   try {
-    // Try to require from TypeScript source via ts-node (development)
-    // Note: This requires ts-node to be installed and available in the environment
+    // Try to load the bundled JavaScript files from the dist directory
+    console.log('Loading bundled JavaScript modules in production mode...');
+    
+    // For socketHandler
+    try {
+      const socketModule = require('./dist/socketHandler');
+      initializeSocketIOServer = socketModule.initializeSocketIOServer;
+      console.log('Successfully loaded socketHandler from bundled JavaScript');
+    } catch (e) {
+      console.error('CRITICAL: Failed to load socketHandler module:', e);
+      throw e;
+    }
+    
+    // For logger
+    try {
+      const loggerModule = require('./dist/logger');
+      logger = loggerModule.logger;
+      console.log('Successfully loaded logger from bundled JavaScript');
+    } catch (e) {
+      console.error('CRITICAL: Failed to load logger module:', e);
+      throw e;
+    }
+    
+    console.log('Successfully loaded all required modules in production mode');
+  } catch (e) {
+    console.error('CRITICAL: Failed to load required modules in production:', e);
+    console.error('Ensure the compiled files are correctly included in the Docker container');
+    process.exit(1); // Exit if critical modules can\'t be loaded
+  }
+} else {
+  // Development mode: use ts-node
+  try {
+    console.log('Attempting to load modules via ts-node for development mode...');
     require('ts-node').register({ 
-      project: './tsconfig.json',
-      transpileOnly: true, // Faster but no type checking
+      project: './tsconfig.json', // Ensure tsconfig.json is available
+      transpileOnly: true, 
       compilerOptions: {
-        // Override the module resolution for ts-node
         module: 'commonjs'
       }
     });
-    
-    initializeSocketIOServer = require('./src/lib/socket/socketHandler').initializeSocketIOServer;
-    logger = require('./src/lib/logger').logger;
-    console.log('Successfully loaded modules via ts-node from source.');
+    // Use the alias, which ts-node will respect for .ts files
+    initializeSocketIOServer = require('@/lib/socket/socketHandler').initializeSocketIOServer;
+    logger = require('@/lib/logger').logger;
+    console.log('Successfully loaded modules via ts-node from source (development mode).');
   } catch (e2) {
-    console.error('Failed to load required modules:', e2);
-    console.error('Please make sure you have built the project with `npm run build` first,');
-    console.error('or have installed ts-node with `npm install -D ts-node` for development mode.');
+    console.error('CRITICAL: Failed to load required modules via ts-node (development mode):', e2);
     process.exit(1);
   }
 }
@@ -61,7 +137,7 @@ try {
 // Better error handling for process
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
-  // Don't exit the process in production to maintain server uptime
+  // Don\'t exit the process in production to maintain server uptime, unless it\'s a startup failure handled above.
   if (process.env.NODE_ENV !== 'production') {
     process.exit(1);
   }
@@ -80,7 +156,7 @@ const socketHttpServer = createServer();
 
 // Start by initializing the Socket.IO server
 console.log('Initializing Socket.IO server...');
-initializeSocketIOServer(socketHttpServer);
+initializeSocketIOServer(socketHttpServer); // This must be defined by now
 console.log('Socket.IO server initialized on a separate HTTP server');
 
 // Start the Socket.IO server first

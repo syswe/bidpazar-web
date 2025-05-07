@@ -27,9 +27,23 @@ RUN npx prisma generate
 # Build the Next.js application
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # Build next.js app with standalone output
 RUN npm run build
+
+# Directly include the original TypeScript files and compile them at runtime with a full bundle
+# This avoids complex module resolution issues
+RUN npm install --no-save esbuild && \
+    mkdir -p ./dist && \
+    npx esbuild ./src/lib/socket/socketHandler.ts --bundle --platform=node --outfile=./dist/socketHandler.js && \
+    npx esbuild ./src/lib/logger.ts --bundle --platform=node --outfile=./dist/logger.js
+
+# Create a simple build script for TypeScript files
+RUN echo '{ "compilerOptions": { "target": "es2020", "module": "commonjs", "moduleResolution": "node", "esModuleInterop": true, "outDir": "./dist", "strict": false, "baseUrl": ".", "paths": { "@/*": ["src/*"] } }, "include": ["src/lib/socket/socketHandler.ts", "src/lib/logger.ts"] }' > tsconfig.server.json
+
+# Manually compile TypeScript files with a controlled environment
+RUN npx tsc -p tsconfig.server.json || true
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -50,19 +64,20 @@ COPY --from=builder /app/package.json ./
 # Make sure server.js is in the image
 COPY --from=builder /app/server.js ./
 
-# Copy all node_modules required for ts-node to work correctly
+# Copy source and compiled JS files
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/dist ./dist
+
+# Copy module-alias package which is required by server.js
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
-COPY --from=builder /app/node_modules/ts-node ./node_modules/ts-node
-COPY --from=builder /app/node_modules/@types ./node_modules/@types
-COPY --from=builder /app/node_modules/make-error ./node_modules/make-error
-COPY --from=builder /app/node_modules/arg ./node_modules/arg
-COPY --from=builder /app/node_modules/v8-compile-cache-lib ./node_modules/v8-compile-cache-lib
-COPY --from=builder /app/node_modules/yn ./node_modules/yn
-COPY --from=builder /app/node_modules/diff ./node_modules/diff
-COPY --from=builder /app/node_modules/typescript ./node_modules/typescript
-COPY --from=builder /app/node_modules/create-require ./node_modules/create-require
-COPY --from=builder /app/node_modules/acorn ./node_modules/acorn
-COPY --from=builder /app/node_modules/acorn-walk ./node_modules/acorn-walk
+
+# Install required packages for the custom server
+RUN npm install --no-save socket.io socket.io-client ws 
+# Install mediasoup with proper build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip make g++ && \
+    npm install --no-save mediasoup mediasoup-client && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 # Consider if this is truly necessary or if volumes handle uploads
@@ -79,4 +94,4 @@ EXPOSE 3001
 EXPOSE 40000-40100/udp
 
 # Start with our simplified entrypoint script
-CMD ["/app/docker-entrypoint.sh"] 
+CMD ["/app/docker-entrypoint.sh"]
