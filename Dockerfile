@@ -51,6 +51,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Make sure the server binds to all interfaces, not just localhost
+ENV HOST=0.0.0.0
+ENV HOSTNAME=0.0.0.0
 
 # Copy necessary files from builder stage
 COPY --from=builder /app/public ./public
