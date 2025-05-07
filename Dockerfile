@@ -73,11 +73,14 @@ COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 
 # Install required packages for the custom server
 RUN npm install --no-save socket.io socket.io-client ws 
-# Install mediasoup with proper build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip make g++ && \
-    npm install --no-save mediasoup mediasoup-client && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+
+# Install MediaSoup with proper build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip make g++ pkg-config libssl-dev \
+    && npm install --no-save mediasoup@3 mediasoup-client@3 \
+    && ln -sf $(npm root)/mediasoup/worker /worker \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 # Consider if this is truly necessary or if volumes handle uploads
