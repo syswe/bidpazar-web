@@ -102,7 +102,7 @@ export function initializeSocketIOServer(httpServer: ExtendedHttpServer): Socket
       origin: "*",
       methods: ['GET', 'POST'],
     },
-    transports: ['websocket'],
+    transports: ['polling', 'websocket'],
   });
 
   startMediasoupWorker().catch(err => {

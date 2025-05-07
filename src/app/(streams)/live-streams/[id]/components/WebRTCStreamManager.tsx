@@ -26,7 +26,7 @@ type LogLevel = typeof LOG_LEVELS[keyof typeof LOG_LEVELS];
 type LogData = Record<string, any> | null | undefined;
 
 // Set to desired log level (can be controlled via environment variable in production)
-const CURRENT_LOG_LEVEL = LOG_LEVELS.DEBUG;
+const CURRENT_LOG_LEVEL = LOG_LEVELS.TRACE; // For detailed debugging
 
 // Log formatting helper functions
 const formatTimestamp = () => new Date().toISOString();
@@ -287,7 +287,7 @@ export default function WebRTCStreamManager({
           username: effectiveUsername,
           isStreamer: isStreamer ? 1 : 0
         },
-        transports: ['websocket'],
+        transports: ['polling', 'websocket'],
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: 10,

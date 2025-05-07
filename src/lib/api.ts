@@ -14,6 +14,24 @@ declare global {
   }
 }
 
+// Enable client-side debugging in development
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  const existingDebug = localStorage.getItem('debug') || '';
+  const newDebugScopes = [];
+
+  if (!existingDebug.includes('socket.io-client:*')) {
+    newDebugScopes.push('socket.io-client:*');
+  }
+  if (!existingDebug.includes('mediasoup-client:*')) {
+    newDebugScopes.push('mediasoup-client:*');
+  }
+
+  if (newDebugScopes.length > 0) {
+    localStorage.setItem('debug', [existingDebug, ...newDebugScopes].filter(Boolean).join(','));
+    console.log('[Dev Logging] Enabled Socket.IO and Mediasoup client debug logs. Current localStorage.debug:', localStorage.getItem('debug'));
+  }
+}
+
 // Log API URL for clarity - Keep minimal logging
 // console.log("--- Environment Variables ---");
 // console.log(`env.API_URL: ${env.API_URL}`);

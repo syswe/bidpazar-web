@@ -27,9 +27,13 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/live-streams') || // Allow live stream viewing for everyone
     // Add /api/config to public paths
     path === '/api/config' ||
+    // Allow the main live-streams API endpoint
+    path === '/api/live-streams' ||
     // Allow WebSocket connections
     path.startsWith('/api/rtc/socket') ||
     path.includes('/api/rtc/socket/chat/') ||
+    // Allow Socket.IO connections
+    path.startsWith('/socket.io/') ||
     // Allow read-only stream API endpoints
     path.startsWith('/api/live-streams/') && request.method === 'GET' ||
     // Allow create-listing endpoint
@@ -144,7 +148,10 @@ export async function middleware(request: NextRequest) {
   // Check if this is a WebSocket upgrade request for our socket endpoint public
   if (
     request.method === 'GET' &&
-    request.nextUrl.pathname.startsWith('/api/rtc/socket') &&
+    (
+      request.nextUrl.pathname.startsWith('/api/rtc/socket') ||
+      request.nextUrl.pathname.startsWith('/socket.io')
+    ) &&
     (request.headers.get('upgrade') === 'websocket' ||
      request.headers.get('connection')?.includes('Upgrade'))
   ) {

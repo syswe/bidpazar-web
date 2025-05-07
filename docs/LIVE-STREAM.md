@@ -11,8 +11,9 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 5. [User Experience & UI](#user-experience--ui)
 6. [Notifications & Messaging](#notifications--messaging)
 7. [API Endpoints & Components](#api-endpoints--components)
-8. [Security Considerations](#security-considerations)
-9. [Implementation Checklist](#implementation-checklist)
+8. [Technical Implementation](#technical-implementation)
+9. [Security Considerations](#security-considerations)
+10. [Implementation Checklist](#implementation-checklist)
 
 ## Feature Overview
 
@@ -96,24 +97,104 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 
 ## API Endpoints & Components
 
-- **Live Stream API**:
-  - `POST /api/live-streams` — Start a new live broadcast
-  - `POST /api/live-streams/[id]/products` — Add product during live
-  - `POST /api/live-streams/[id]/products/[productId]/bids` — Place a bid
-  - `POST /api/live-streams/[id]/products/[productId]/start-counter` — Start countdown
-  - `POST /api/live-streams/[id]/products/[productId]/cancel` — Cancel product
-  - `POST /api/live-streams/[id]/end` — End broadcast and generate report
-  - `GET /api/live-streams/[id]/report` — Get end-of-broadcast report
-- **Messaging/Notification API**:
-  - `/api/messages`, `/api/notifications` — For post-auction communication
-- **Frontend Components**:
-  - `LiveStreamManager.tsx` — Main live stream logic
-  - `ProductAdder.tsx` — Add product during live
-  - `BidButton.tsx`, `BidList.tsx` — Bidding UI
-  - `CountdownTimer.tsx` — Auction countdown
-  - `EndOfBroadcastReport.tsx` — Seller report
-  - `Chat.tsx` — Real-time chat
-  - `VerticalLiveStreamLayout.tsx` — Mobile/web vertical UI
+### HTTP API Endpoints
+
+#### Live Stream Management
+- `POST /api/live-streams` — Create a new live stream.
+- `GET /api/live-streams` — Get a list of all live streams (filterable by status and userId).
+- `GET /api/live-streams/[id]` — Get details for a specific stream (includes user, listings, products, bids, chat messages).
+- `POST /api/live-streams/[id]/start` — Start a stream by marking it as 'LIVE' and setting its start time.
+- `POST /api/live-streams/[id]/stop` — End a stream by marking it as 'ENDED' and setting its end time.
+- `DELETE /api/live-streams/[id]` — Delete a live stream (restricted to stream owner).
+- `GET /api/live-streams/[id]/status` — Get the current status of a stream.
+- `GET /api/live-streams/[id]/analytics` — Get detailed analytics for a stream (restricted to stream owner).
+
+#### Listing Management
+- `POST /api/live-streams/[id]/listings` — Add a product listing to the live stream.
+- `GET /api/live-streams/[id]/listings` — Get all listings for a specific stream.
+- `PUT /api/live-streams/[id]/listings/[listingId]` — Update a listing's status (ACTIVE, COUNTDOWN, COMPLETED, CANCELLED) or countdown time.
+- `POST /api/live-streams/[id]/listings/[listingId]/bids` — Place a bid on a specific listing.
+- `GET /api/live-streams/[id]/listings/[listingId]/bids` — Get all bids for a specific listing.
+- `GET /api/live-streams/[id]/product` — Get the currently active product in a stream.
+
+### WebSocket Events (Socket.IO)
+
+The WebSocket server is initialized in `server.js` and the handler logic is implemented in `src/lib/socket/socketHandler.ts`.
+
+#### Connection
+- Clients connect to the Socket.IO server with query parameters: `streamId`, `userId`, `username`, and `isStreamer`.
+
+#### WebRTC Signaling Events
+- `getRouterRtpCapabilities`: Client requests Mediasoup router's capabilities.
+- `createWebRtcTransport`: Client requests to create a WebRTC transport on the server.
+- `connectTransport`: Client provides its DTLS parameters to connect the transport.
+- `produce`: Streamer client sends media tracks (audio/video).
+- `consume`: Viewer client receives media tracks from a producer.
+- `newProducer`: Server broadcasts when a new producer becomes available.
+- `resumeConsumer`: Client requests to resume a paused consumer.
+
+#### Chat Events
+- `joinChatRoom`: Client joins a chat room.
+- `sendChatMessage`: Client sends a chat message.
+- `newChatMessage`: Server broadcasts a new chat message.
+- `leaveChatRoom`: Client leaves a chat room.
+
+#### Peer Management Events
+- `peerClosed`: Server notifies when a peer disconnects.
+
+### Frontend Components
+
+- `WebRTCStreamManager.tsx` — Handles WebRTC connection and media streaming.
+- `ProductDisplay.tsx` — Shows product information and countdown timer.
+- `BiddingInterface.tsx` — UI for placing bids.
+- `StreamChat.tsx` — Real-time chat interface.
+- `CreateProductForm.tsx` — Form for adding products during livestream.
+- `StreamDiagnostics.tsx` — Debug information for stream quality.
+- `StreamControls.tsx` — Controls for the streamer.
+
+## Technical Implementation
+
+### WebRTC Streaming Architecture
+
+BidPazar uses MediaSoup, a powerful WebRTC Selective Forwarding Unit (SFU), for low-latency, high-quality streaming:
+
+1. **Server Integration**: 
+   - MediaSoup is integrated directly with the Next.js application through a custom server (`server.js`).
+   - WebRTC signaling is handled via Socket.IO on the same server.
+
+2. **Media Flow**:
+   ```
+   STREAMER (Producer) -> MEDIASOUP SERVER -> VIEWERS (Consumers)
+   ```
+
+3. **Configuration Requirements**:
+   - Server requires proper UDP port configuration (default: 40000-40100)
+   - Server needs a correctly configured `MEDIASOUP_ANNOUNCED_IP` environment variable
+   - STUN/TURN servers for NAT traversal in production environments
+
+4. **Known Issues and Workarounds**:
+   - IP configuration is the most common source of problems
+   - Proper firewall configuration is critical (both TCP for signaling and UDP for media)
+   - Client-to-server network connectivity must be verified
+
+For detailed technical setup, configuration, and troubleshooting:
+- See [MEDIASOUP-SETUP.md](./MEDIASOUP-SETUP.md) for configuration details.
+- See [WEBRTC-TROUBLESHOOTING.md](./WEBRTC-TROUBLESHOOTING.md) for troubleshooting steps.
+
+### Alternative Streaming Options (if WebRTC proves challenging)
+
+If WebRTC streaming is causing significant implementation challenges, consider these alternatives:
+
+1. **HLS Streaming** (HTTP Live Streaming):
+   - Higher latency (5-30 seconds) but more reliable and scalable
+   - Easier to implement and maintain
+   - Better compatibility with CDNs and caching
+   - Well-suited for one-to-many broadcasting scenarios
+
+2. **Third-Party Streaming Services**:
+   - Agora.io - Managed WebRTC service with simplified API
+   - Twilio Live - Managed live streaming platform
+   - Amazon IVS - Interactive Video Service with low latency
 
 ## Security Considerations
 

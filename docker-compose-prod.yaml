@@ -6,13 +6,11 @@ services:
     restart: always
     ports:
       - "3000:3000"
-      - "3001:3001"
       - "40000-40100:40000-40100/udp"
     env_file:
       - ./bidpazar-web/.env.docker
     environment:
       - PORT=3000
-      - PORT_SOCKET=3001
     volumes:
       - ./uploads:/app/public/uploads
     networks:

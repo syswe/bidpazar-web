@@ -146,73 +146,44 @@ process.on('uncaughtException', (err) => {
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOST || 'localhost';
 const port = parseInt(process.env.PORT || '3000', 10);
-const socketPort = parseInt(process.env.PORT_SOCKET || '3001', 10);
 
 console.log(`Starting server in ${dev ? 'development' : 'production'} mode on ${hostname}`);
-console.log(`Web server port: ${port}, Socket.IO server port: ${socketPort}`);
+console.log(`Web and WebSocket server port: ${port}`);
 
-// Create a separate HTTP server for Socket.IO
-const socketHttpServer = createServer();
+// Create the Next.js app instance
+const app = next({ dev, hostname, port });
+const handle = app.getRequestHandler();
 
-// Start by initializing the Socket.IO server
-console.log('Initializing Socket.IO server...');
-initializeSocketIOServer(socketHttpServer); // This must be defined by now
-console.log('Socket.IO server initialized on a separate HTTP server');
-
-// Start the Socket.IO server first
-socketHttpServer.listen(socketPort, hostname, (err) => {
-  if (err) {
-    console.error('Failed to start Socket.IO server:', err);
-    process.exit(1);
-  }
-  console.log(`> Socket.IO server running on http://${hostname}:${socketPort}`);
-  
-  // Then start Next.js after Socket.IO is running
-  startNextJsServer();
-});
-
-// Function to start the Next.js server
-function startNextJsServer() {
-  // Create the Next.js app instance
-  const app = next({ dev, hostname, port });
-  const handle = app.getRequestHandler();
-
-  app.prepare().then(() => {
-    const nextHttpServer = createServer(async (req, res) => {
-      try {
-        const parsedUrl = parse(req.url || '', true);
-        
-        // For WebSocket requests, redirect to the Socket.IO server
-        if (parsedUrl.pathname?.startsWith('/socket.io/')) {
-          // Redirect socket.io requests to the separate socket.io server
-          res.writeHead(302, {
-            'Location': `http://${hostname}:${socketPort}${req.url}`
-          });
-          res.end();
-          return;
-        }
-        
-        // Otherwise, handle with Next.js
-        await handle(req, res, parsedUrl);
-      } catch (err) {
-        console.error('Error handling request:', err);
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.end('internal server error');
-        }
+app.prepare().then(() => {
+  // Create a single HTTP server for both Next.js and Socket.IO
+  const httpServer = createServer(async (req, res) => {
+    try {
+      const parsedUrl = parse(req.url || '', true);
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error('Error handling request:', err);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end('internal server error');
       }
-    });
-
-    nextHttpServer.listen(port, hostname, (err) => {
-      if (err) {
-        console.error('Failed to start Next.js server:', err);
-        process.exit(1);
-      }
-      console.log(`> Next.js server ready on http://${hostname}:${port}`);
-      console.log(`> Full system running - Web: port ${port}, Socket.IO: port ${socketPort}`);
-    });
-  }).catch(err => {
-    console.error('Error during Next.js app.prepare():', err);
-    process.exit(1);
+    }
   });
-} 
+
+  // Initialize Socket.IO on the same server
+  console.log('Initializing Socket.IO server...');
+  initializeSocketIOServer(httpServer);
+  console.log('Socket.IO server initialized on the HTTP server');
+
+  // Start the server
+  httpServer.listen(port, hostname, (err) => {
+    if (err) {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    }
+    console.log(`> Server ready on http://${hostname}:${port}`);
+    console.log(`> Socket.IO path: /socket.io/`);
+  });
+}).catch(err => {
+  console.error('Error during Next.js app.prepare():', err);
+  process.exit(1);
+}); 
