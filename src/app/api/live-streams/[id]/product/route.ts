@@ -5,13 +5,12 @@ import { logger } from '@/lib/logger';
 // In-memory store for active products (in a real app, use a database)
 const activeProducts: Record<string, any> = {};
 
-// Simplified version - no type annotations on second parameter
+// Updated with correct type definition for Next.js 15.2.2
 export async function GET(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Get the streamId from params correctly
-  const streamId = ctx.params.id;
+  const { id: streamId } = await params;
   logger.info(`API GET /api/live-streams/${streamId}/product`, { streamId });
 
   try {
@@ -62,13 +61,12 @@ export async function GET(
   }
 }
 
-// Simplified version - no type annotations on second parameter
+// Updated with correct type definition for Next.js 15.2.2
 export async function POST(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Get the streamId from params correctly
-  const streamId = ctx.params.id;
+  const { id: streamId } = await params;
   logger.info(`API POST /api/live-streams/${streamId}/product`, { streamId });
 
   try {
