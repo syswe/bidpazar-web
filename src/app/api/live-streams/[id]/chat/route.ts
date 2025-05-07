@@ -1,112 +1,86 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions, getUserFromTokenInNode } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { headers } from 'next/headers';
 
 // Validation schema
 const chatMessageSchema = z.object({
   message: z.string().min(1).max(500),
 });
 
-// GET /api/live-streams/[id]/chat - Get chat messages
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const messages = await prisma.chatMessage.findMany({
-      where: { liveStreamId: id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
+// Temporary in-memory store for messages (in a real app, use a database)
+const chatMessages: Record<string, any[]> = {};
 
-    return NextResponse.json(messages);
-  } catch (error) {
-    console.error('Error fetching chat messages:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch chat messages' },
-      { status: 500 }
-    );
-  }
+// GET /api/live-streams/[id]/chat - Get chat messages
+export async function GET(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
+  const streamId = params.id;
+  console.log(`[API][/api/live-streams/${streamId}/chat] GET request received`);
+  
+  // Return messages for this stream, or empty array if none exist
+  const messages = chatMessages[streamId] || [];
+  
+  return NextResponse.json({ 
+    success: true, 
+    messages 
+  });
 }
 
 // POST /api/live-streams/[id]/chat - Send a chat message
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = await paramsPromise;
+  const streamId = params.id;
+  console.log(`[API][/api/live-streams/${streamId}/chat] POST request received`);
+  
   try {
-    const { id } = await params;
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
     const body = await request.json();
-    const validatedData = chatMessageSchema.parse(body);
-
-    const stream = await prisma.liveStream.findUnique({
-      where: { id },
-    });
-
-    if (!stream) {
-      return NextResponse.json(
-        { error: 'Stream not found' },
-        { status: 404 }
-      );
+    
+    if (!body.message) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Message content is required' 
+      }, { status: 400 });
     }
-
-    if (stream.status !== 'LIVE') {
-      return NextResponse.json(
-        { error: 'Chat is only available during live streams' },
-        { status: 400 }
-      );
+    
+    // Get user info from request cookies or headers
+    // In a real app, validate the user authentication
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader && authHeader.startsWith('Bearer ') 
+      ? authHeader.substring(7) 
+      : null;
+    
+    // Create a new message object
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      liveStreamId: streamId,
+      content: body.message,
+      userId: body.userId || 'anonymous',
+      username: body.username || 'Anonymous',
+      createdAt: new Date().toISOString()
+    };
+    
+    // Initialize the messages array for this stream if it doesn't exist
+    if (!chatMessages[streamId]) {
+      chatMessages[streamId] = [];
     }
-
-    const message = await prisma.chatMessage.create({
-      data: {
-        message: validatedData.message,
-        userId: session.user.id,
-        liveStreamId: id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-          },
-        },
-      },
+    
+    // Add the message to the store
+    chatMessages[streamId].push(message);
+    
+    // In a real application, broadcast this message to all connected clients
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Message sent successfully',
+      data: message
     });
-
-    return NextResponse.json(message, { status: 201 });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Invalid input', details: error.errors },
-        { status: 400 }
-      );
-    }
-    console.error('Error sending chat message:', error);
-    return NextResponse.json(
-      { error: 'Failed to send chat message' },
-      { status: 500 }
-    );
+    console.error(`[API][/api/live-streams/${streamId}/chat] Error:`, error);
+    return NextResponse.json({ 
+      success: false, 
+      message: `Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    }, { status: 500 });
   }
 } 

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  web:
+    image: arcanteus/bidpazar-web:0.2
+    restart: always
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "40000-40100:40000-40100/udp"
+    env_file:
+      - ./bidpazar-web/.env.docker
+    environment:
+      - PORT=3000
+      - PORT_SOCKET=3001
+    volumes:
+      - ./uploads:/app/public/uploads
+    networks:
+      - shared-network
+    depends_on:
+      - coturn
+
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49160-49200:49160-49200/udp"
+    environment:
+      - TURN_USERNAME=bidpazar
+      - TURN_PASSWORD=bidpazarpass
+      - TURN_REALM=bidpazar.com
+      - EXTERNAL_IP=45.147.46.183
+    command: >
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-cli
+      --no-tls
+      --no-dtls
+      --realm=bidpazar.com
+      --user=bidpazar:bidpazarpass
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    external: true

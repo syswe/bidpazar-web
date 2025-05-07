@@ -5,9 +5,11 @@ set -e
 export APP_URL="${APP_URL:-http://localhost:3000}"
 export API_URL="${API_URL:-http://localhost:3000/api}"
 export BACKEND_API_URL="${BACKEND_API_URL:-http://localhost:3000/api}"
-export SOCKET_URL="${SOCKET_URL:-ws://localhost:3000}"
-export WEBRTC_SERVER="${WEBRTC_SERVER:-http://localhost:3000}"
-export WS_URL="${WS_URL:-/api/rtc/socket}"
+export SOCKET_URL="${SOCKET_URL:-ws://localhost:3001}"
+export WEBRTC_SERVER="${WEBRTC_SERVER:-http://localhost:3001}"
+export WS_URL="${WS_URL:-/socket.io/}"
+export PORT="${PORT:-3000}"
+export PORT_SOCKET="${PORT_SOCKET:-3001}"
 export TURN_SERVER_URL="${TURN_SERVER_URL:-turn:localhost:3478}"
 export TURN_USERNAME="${TURN_USERNAME:-bidpazar}"
 export TURN_PASSWORD="${TURN_PASSWORD:-bidpazarpass}"
@@ -17,11 +19,12 @@ export STUN_SERVER_URL="${STUN_SERVER_URL:-stun:localhost:3478}"
 if [ "$NODE_ENV" = "production" ]; then
   export APP_URL="${APP_URL:-https://bidpazar.com}"
   export API_URL="${API_URL:-https://bidpazar.com/api}"
-  export SOCKET_URL="${SOCKET_URL:-wss://bidpazar.com}"
-  export WEBRTC_SERVER="${WEBRTC_SERVER:-https://bidpazar.com}"
+  export SOCKET_URL="${SOCKET_URL:-wss://socket.bidpazar.com}"
+  export WEBRTC_SERVER="${WEBRTC_SERVER:-https://socket.bidpazar.com}"
   export BACKEND_API_URL="${BACKEND_API_URL:-https://bidpazar.com/api}"
   export TURN_SERVER_URL="${TURN_SERVER_URL:-turn:45.147.46.183:3478}"
   export STUN_SERVER_URL="${STUN_SERVER_URL:-stun:45.147.46.183:3478}"
+  export WS_URL="${WS_URL:-/socket.io/}"
 fi
 
 # --- Ensure NEXT_PUBLIC_ versions exist for client build-time access (if needed) ---
@@ -52,4 +55,5 @@ fi
 
 # Execute the Next.js server
 # No need to pass env vars via 'env' command, Node.js inherits them automatically
+echo "Starting custom server with WebSocket support on ports ${PORT} and ${PORT_SOCKET}..."
 exec node server.js 

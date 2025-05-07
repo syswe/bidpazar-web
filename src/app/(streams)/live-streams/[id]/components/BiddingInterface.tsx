@@ -5,6 +5,8 @@ import { io, Socket } from "socket.io-client";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuth } from "@/lib/frontend-auth";
 import { ArrowUp, DollarSign, Clock, XCircle, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
+import { toast } from "sonner";
 
 interface BiddingInterfaceProps {
   streamId: string;
@@ -40,8 +42,11 @@ export default function BiddingInterface({
   const [bidSuccess, setBidSuccess] = useState<boolean>(false);
   const [countdownTime, setCountdownTime] = useState<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const bidInputRef = useRef<HTMLInputElement>(null);
+  const { config: runtimeConfig } = useRuntimeConfig();
+
+  const isAuthenticated = !!user && !!user.id;
 
   // Countdown timer
   useEffect(() => {
@@ -153,8 +158,15 @@ export default function BiddingInterface({
   }, [streamId, user]);
 
   // Handle submitting a bid
-  const handleBid = (e: FormEvent) => {
+  const handleBid = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!isAuthenticated) {
+      toast.error("You must be logged in to place a bid", {
+        description: "Please sign in or register to participate in auctions"
+      });
+      return;
+    }
 
     if (!bidAmount || !socketRef.current || !isConnected || !user || !product) {
       return;
@@ -170,15 +182,38 @@ export default function BiddingInterface({
       return;
     }
 
-    socketRef.current.emit("place-bid", {
-      streamId,
-      listingId: product.id,
-      amount: amount,
-    });
+    setLoading(true);
 
-    // Clear bid input and focus it again for quick bidding
-    setBidAmount("");
-    bidInputRef.current?.focus();
+    try {
+      if (!runtimeConfig) {
+        throw new Error("Configuration not loaded");
+      }
+      
+      const response = await fetch(`${runtimeConfig.apiUrl}/live-streams/${streamId}/active-bid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: amount,
+          productId: product.id
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("Bid placed successfully!");
+        setBidAmount("");
+        bidInputRef.current?.focus();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to place bid");
+      }
+    } catch (error) {
+      console.error('Error placing bid:', error);
+      toast.error("Failed to place bid. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatTimeLeft = (seconds: number): string => {
@@ -288,7 +323,7 @@ export default function BiddingInterface({
         
         <button
           type="submit"
-          disabled={!isConnected || !user || loading}
+          disabled={!isConnected || !user || loading || !isAuthenticated}
           className="w-full py-1.5 sm:py-2 bg-accent text-accent-foreground font-medium text-xs sm:text-sm flex items-center justify-center rounded-md disabled:opacity-50"
         >
           {!isConnected ? (

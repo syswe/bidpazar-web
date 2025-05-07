@@ -110,14 +110,51 @@ const formatError = (err: unknown): Record<string, any> => {
 };
 
 // ===================== WEBRTC CONFIG =====================
-// No longer needed here if we use context
-/*
-const getMediasoupIceServers = () => {
-  const iceServers = getIceServers();
-  logger.info('[WebRTC] Using ICE servers:', { ... });
+const getIceServers = (config: any | null): RTCIceServer[] => {
+  // Default to public STUN servers if no config is available
+  if (!config) {
+    logWarn('No runtime config available for ICE servers, using public fallbacks');
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+  }
+
+  const iceServers: RTCIceServer[] = [];
+  
+  // Add multiple STUN servers for better connectivity
+  // Google's public STUN servers are well maintained and broadly accessible
+  iceServers.push({ urls: 'stun:stun.l.google.com:19302' });
+  iceServers.push({ urls: 'stun:stun1.l.google.com:19302' });
+  
+  // Add configured STUN server if available
+  if (config.stunServerUrl && !iceServers.some(server => server.urls === config.stunServerUrl)) {
+    iceServers.push({ urls: config.stunServerUrl });
+    logInfo('Added configured STUN server to ICE configuration', { url: config.stunServerUrl });
+  }
+  
+  // Add TURN server if credentials are configured
+  if (config.turnServerUrl && config.turnUsername && config.turnPassword) {
+    iceServers.push({
+      urls: config.turnServerUrl,
+      username: config.turnUsername,
+      credential: config.turnPassword,
+    });
+    logInfo('Added TURN server to ICE configuration', { 
+      url: config.turnServerUrl,
+      username: config.turnUsername 
+    });
+  }
+  
+  // Ensure we have at least one TURN server for NAT traversal
+  // This is critical for users behind symmetric NATs
+  if (!iceServers.some(server => String(server.urls).startsWith('turn:'))) {
+    logWarn('No TURN server configured, NAT traversal may fail for some users');
+  }
+  
+  logDebug('Using ICE servers', { serverCount: iceServers.length, servers: iceServers });
   return iceServers;
 };
-*/
 
 // ===================== COMPONENT TYPES =====================
 interface WebRTCStreamManagerProps {
@@ -190,154 +227,231 @@ export default function WebRTCStreamManager({
   
   // =========== SOCKET CONNECTION =====================
   // Connect to WebRTC signaling server
-  const connectToSignalingServer = () => {
-    if (isConfigLoading || !runtimeConfig || !runtimeConfig.socketUrl) {
-      logWarn('[WebRTC] Cannot connect to signaling server: Runtime config not ready or socketUrl missing.');
+  const connectToSignalingServer = async () => {
+    // Wait for runtime config to be ready
+    if (isConfigLoading) {
+      logWarn('Runtime config still loading, using fallback values if needed');
+    }
+    
+    // Use fallback values if runtime config is not available
+    const socketUrl = runtimeConfig?.socketUrl || window.location.origin;
+    
+    // Fix: ensure wsUrl doesn't contain duplicate /api paths
+    const baseWsUrl = window.location.origin.replace(/^http/, 'ws');
+    const wsUrl = runtimeConfig?.wsUrl || baseWsUrl;
+    
+    if (!socketUrl) {
+      logError('Cannot connect to signaling server: No Socket URL available', { 
+        isConfigLoading,
+        hasConfig: !!runtimeConfig
+      });
       setError("Configuration Error: Socket URL not found."); // Set error state
       setConnectionStatus('disconnected');
       return;
     }
-    
-    logger.info('[WebRTC] Connecting to signaling server');
-    
-    // Get the connection parameters from runtime config
-    const socketUrl = runtimeConfig.socketUrl;
-    const socketPath = '/api/rtc/socket'; // Assuming path is fixed
-    
-    logger.debug('[WebRTC] Socket connection parameters', { 
-      socketUrl, 
-      socketPath,
-      hostname: window.location.hostname,
-      port: window.location.port 
-    });
 
-    // Create Socket.IO connection with explicit configuration
-    const socket = io(socketUrl, {
-      path: socketPath,
-      transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      query: {
-        streamId,
-        userId,
-        username,
-        isStreamer: isStreamer ? 1 : 0
-      }
-    });
+    // Close any existing connection
+    if (socketRef.current) {
+      logInfo('Closing existing socket connection before reconnecting');
+      socketRef.current.close();
+      socketRef.current = null;
+    }
 
-    socketRef.current = socket;
+    // Make sure we have valid URLs
+    let finalSocketUrl = socketUrl;
     
-    // Set up socket event handlers
-    socket.on('connect', () => {
-      logger.info('Socket connected', {
-        socketId: socket.id,
-        connectionTime: performance.getEntriesByName('socket-connection-time')[0]?.duration
+    // Fix common issues with socket URL formatting
+    if (finalSocketUrl.startsWith('https://')) {
+      finalSocketUrl = finalSocketUrl.replace('https://', 'wss://');
+      logWarn('Socket URL corrected from HTTPS to WSS', { correctedUrl: finalSocketUrl });
+    } else if (finalSocketUrl.startsWith('http://')) {
+      finalSocketUrl = finalSocketUrl.replace('http://', 'ws://');
+      logWarn('Socket URL corrected from HTTP to WS', { correctedUrl: finalSocketUrl });
+    }
+    
+    // Ensure URL doesn't end with a slash before adding path
+    const fullSocketUrl = finalSocketUrl.endsWith('/') ? finalSocketUrl.slice(0, -1) : finalSocketUrl;
+    
+    try {
+      logInfo('Connecting to signaling server', { 
+        url: wsUrl,
+        userId: effectiveUserId,
+        streamId
       });
       
-      setConnectionStatus('connected');
-      setError(null);
-      connectionAttemptsRef.current = 0;
+      const socket = io(fullSocketUrl, {
+        path: '/socket.io',
+        query: {
+          streamId,
+          userId: effectiveUserId,
+          username: effectiveUsername,
+          isStreamer: isStreamer ? 1 : 0
+        },
+        transports: ['websocket'],
+        autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+      });
+
+      socketRef.current = socket;
       
-      // Request router capabilities
-      socket.emit('getRouterRtpCapabilities', { streamId });
-    });
-    
-    socket.on('disconnect', (reason) => {
-      logger.warn('Socket disconnected', { reason });
-      
-      setConnectionStatus('disconnected');
-      
-      // Attempt to reconnect if component is still mounted
-      if (mountedRef.current && connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
-        const nextAttempt = connectionAttemptsRef.current + 1;
-        logger.info('Scheduling reconnection attempt', { 
-          attempt: nextAttempt, 
-          maxAttempts: MAX_CONNECTION_ATTEMPTS 
+      // Set up socket event handlers
+      socket.on('connect', () => {
+        logInfo('Socket connected', {
+          socketId: socket.id,
         });
         
-        connectionAttemptsRef.current = nextAttempt;
+        setConnectionStatus('connected');
+        setError(null);
+        connectionAttemptsRef.current = 0;
         
-        const timeout = setTimeout(() => {
+        // Request router capabilities after successful connection
+        socket.emit('getRouterRtpCapabilities', { streamId }, (response: any) => {
+          if (response.error) {
+            logError('Failed to get router capabilities', { error: response.error });
+            setError(`Failed to initialize media: ${response.error}`);
+            return;
+          }
+          
+          logInfo('Received router capabilities', { capabilities: response.rtpCapabilities });
+          initializeMediasoupDevice(response.rtpCapabilities);
+        });
+      });
+      
+      socket.on('connect_error', (err) => {
+        logError('Socket connection attempt failed (connect_error)', {
+          message: err.message,
+          name: err.name,
+          data: (err as any).data, // err.data might contain more context
+          url: fullSocketUrl, // Log the URL attempted
+          path: '/socket.io',
+          query: { streamId, userId: effectiveUserId, username: effectiveUsername, isStreamer: isStreamer ? 1 : 0 }
+        });
+        setError(`Signaling server connection failed: ${err.message}. Will retry.`);
+        setConnectionStatus('disconnected'); // Ensure status reflects this
+        // Reconnection is typically handled by socket.io's built-in mechanism or the 'disconnect' event handler
+      });
+      
+      socket.on('disconnect', (reason) => {
+        logger.warn('Socket disconnected', { reason });
+        
+        setConnectionStatus('disconnected');
+        
+        // Attempt to reconnect if component is still mounted
+        if (mountedRef.current && connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
+          const nextAttempt = connectionAttemptsRef.current + 1;
+          logger.info('Scheduling reconnection attempt', { 
+            attempt: nextAttempt, 
+            maxAttempts: MAX_CONNECTION_ATTEMPTS 
+          });
+          
+          connectionAttemptsRef.current = nextAttempt;
+          
+          const timeout = setTimeout(() => {
+            if (mountedRef.current) {
+              connectToSignalingServer();
+            }
+          }, RETRY_DELAYS[Math.min(nextAttempt - 1, RETRY_DELAYS.length - 1)]);
+          
+          timeoutsRef.current.push(timeout);
+        } else if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
+          logger.error('Maximum reconnection attempts reached');
+          setError('Failed to connect after multiple attempts. Please refresh the page.');
+        }
+      });
+      
+      socket.on('error', (err) => {
+        logger.error('Socket connection error', formatError(err));
+        setError('Connection error occurred. Please check your network.');
+      });
+      
+      // Set up MediaSoup message handlers
+      socket.on('routerCapabilities', async (routerRtpCapabilities) => {
+        logger.info('Received router capabilities');
+        
+        // Initialize the MediaSoup device with router capabilities
+        const device = await initializeMediasoupDevice(routerRtpCapabilities);
+        
+        if (device) {
+          if (isStreamer) {
+            // Request to create a producer transport
+            socket.emit('createProducerTransport', { 
+              forceTcp: false,
+              rtpCapabilities: device.rtpCapabilities
+            });
+            
+            // For streamers, capture local media
+            await captureLocalMedia();
+          } else {
+            // Request to create a consumer transport for viewers
+            socket.emit('createConsumerTransport', { 
+              forceTcp: false,
+              rtpCapabilities: device.rtpCapabilities
+            });
+          }
+        }
+      });
+      
+      socket.on('producerTransportCreated', async (transportOptions) => {
+        logger.info('Producer transport created by server');
+        
+        if (isStreamer) {
+          const transport = await setupProducerTransport(transportOptions);
+          
+          if (transport && localStreamRef.current) {
+            await produceLocalMedia(transport, localStreamRef.current);
+          }
+        }
+      });
+      
+      socket.on('consumerTransportCreated', async (transportOptions) => {
+        logger.info('Consumer transport created by server');
+        
+        if (!isStreamer) {
+          await setupConsumerTransport(transportOptions);
+        }
+      });
+      
+      socket.on('consumerCreated', async (consumerData) => {
+        logger.info('Consumer created by server', { kind: consumerData.kind });
+        await handleConsume(consumerData);
+      });
+      
+      socket.on('connectionStats', (stats) => {
+        logger.debug('Connection stats received', stats);
+        
+        if (stats && typeof stats.participants === 'number') {
+          setParticipants(stats.participants);
+          onParticipantCount?.(stats.participants);
+        }
+      });
+      
+      return socket;
+    } catch (err) {
+      logError('Error connecting to signaling server', formatError(err));
+      setError('Failed to connect to streaming server');
+      setConnectionStatus('disconnected');
+      
+      // Try to reconnect if not at max attempts
+      if (connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
+        connectionAttemptsRef.current++;
+        const delay = RETRY_DELAYS[Math.min(connectionAttemptsRef.current - 1, RETRY_DELAYS.length - 1)];
+        
+        logInfo(`Scheduling reconnection attempt ${connectionAttemptsRef.current}/${MAX_CONNECTION_ATTEMPTS} in ${delay}ms`);
+        
+        const timeoutId = setTimeout(() => {
           if (mountedRef.current) {
             connectToSignalingServer();
           }
-        }, RETRY_DELAYS[Math.min(nextAttempt - 1, RETRY_DELAYS.length - 1)]);
+        }, delay);
         
-        timeoutsRef.current.push(timeout);
-      } else if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
-        logger.error('Maximum reconnection attempts reached');
-        setError('Failed to connect after multiple attempts. Please refresh the page.');
+        timeoutsRef.current.push(timeoutId);
+      } else {
+        logError('Max reconnection attempts reached, giving up', { attempts: connectionAttemptsRef.current });
       }
-    });
-    
-    socket.on('error', (err) => {
-      logger.error('Socket connection error', formatError(err));
-      setError('Connection error occurred. Please check your network.');
-    });
-    
-    // Set up MediaSoup message handlers
-    socket.on('routerCapabilities', async (routerRtpCapabilities) => {
-      logger.info('Received router capabilities');
-      
-      // Initialize the MediaSoup device with router capabilities
-      const device = await initializeMediasoupDevice(routerRtpCapabilities);
-      
-      if (device) {
-        if (isStreamer) {
-          // Request to create a producer transport
-          socket.emit('createProducerTransport', { 
-            forceTcp: false,
-            rtpCapabilities: device.rtpCapabilities
-          });
-          
-          // For streamers, capture local media
-          await captureLocalMedia();
-        } else {
-          // Request to create a consumer transport for viewers
-          socket.emit('createConsumerTransport', { 
-            forceTcp: false,
-            rtpCapabilities: device.rtpCapabilities
-          });
-        }
-      }
-    });
-    
-    socket.on('producerTransportCreated', async (transportOptions) => {
-      logger.info('Producer transport created by server');
-      
-      if (isStreamer) {
-        const transport = await setupProducerTransport(transportOptions);
-        
-        if (transport && localStreamRef.current) {
-          await produceLocalMedia(transport, localStreamRef.current);
-        }
-      }
-    });
-    
-    socket.on('consumerTransportCreated', async (transportOptions) => {
-      logger.info('Consumer transport created by server');
-      
-      if (!isStreamer) {
-        await setupConsumerTransport(transportOptions);
-      }
-    });
-    
-    socket.on('consumerCreated', async (consumerData) => {
-      logger.info('Consumer created by server', { kind: consumerData.kind });
-      await handleConsume(consumerData);
-    });
-    
-    socket.on('connectionStats', (stats) => {
-      logger.debug('Connection stats received', stats);
-      
-      if (stats && typeof stats.participants === 'number') {
-        setParticipants(stats.participants);
-        onParticipantCount?.(stats.participants);
-      }
-    });
-    
-    return socket;
+    }
   };
   
   // =========== MEDIASOUP UTILITIES ===========
@@ -777,19 +891,25 @@ export default function WebRTCStreamManager({
         localStreamRef.current = null;
       }
       
-      // Configure constraints based on selected devices
+      // Detect platform for optimal constraints
+      const isFirefox = navigator.userAgent.includes('Firefox');
+      const isChrome = navigator.userAgent.includes('Chrome');
+      const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      // Configure constraints based on selected devices and platform
       const constraints: MediaStreamConstraints = {
         video: selectedVideoDevice 
           ? {
               deviceId: { exact: selectedVideoDevice },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              frameRate: { ideal: 30 }
+              width: isMobile ? { ideal: 720 } : { ideal: 1280 },
+              height: isMobile ? { ideal: 480 } : { ideal: 720 },
+              frameRate: { ideal: 30, max: 30 }
             }
           : {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              frameRate: { ideal: 30 },
+              width: isMobile ? { ideal: 720 } : { ideal: 1280 },
+              height: isMobile ? { ideal: 480 } : { ideal: 720 },
+              frameRate: { ideal: 30, max: 30 },
               facingMode: 'user'
             },
         audio: selectedAudioDevice
@@ -806,14 +926,34 @@ export default function WebRTCStreamManager({
             }
       };
       
-      logger.debug('getUserMedia constraints', constraints);
+      logger.debug('getUserMedia constraints', {
+        ...constraints,
+        browserInfo: { isFirefox, isChrome, isSafari, isMobile }
+      });
       
       // Get media stream with selected devices
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream: MediaStream;
+      
+      try {
+        // First try with the full constraints
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        logger.warn('Failed to get media with full constraints, falling back to basic constraints', formatError(err));
+        
+        // Fall back to more basic constraints
+        const fallbackConstraints: MediaStreamConstraints = {
+          video: selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true,
+          audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true
+        };
+        
+        stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      }
       
       logger.info('Local media stream obtained', {
         videoTracks: stream.getVideoTracks().length,
-        audioTracks: stream.getAudioTracks().length
+        audioTracks: stream.getAudioTracks().length,
+        videoTrackSettings: stream.getVideoTracks()[0]?.getSettings(),
+        audioTrackSettings: stream.getAudioTracks()[0]?.getSettings()
       });
       
       localStreamRef.current = stream;
@@ -822,6 +962,14 @@ export default function WebRTCStreamManager({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.muted = true; // Always mute local preview to prevent feedback
+        
+        // Try to play the video immediately
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // This often happens due to autoplay policies
+          logger.warn('Could not autoplay video preview, user may need to interact', formatError(playErr));
+        }
       }
       
       // If we already have a producer transport, produce with the new stream
@@ -834,7 +982,18 @@ export default function WebRTCStreamManager({
       return stream;
     } catch (err) {
       logger.error('Error accessing media devices', formatError(err));
-      setError('Failed to access camera or microphone. Please check your permissions.');
+      
+      // Provide more specific error message
+      if ((err as any)?.name === 'NotAllowedError') {
+        setError('Camera/microphone access denied. Please check your browser permissions.');
+      } else if ((err as any)?.name === 'NotFoundError') {
+        setError('Camera or microphone not found. Please check your device connections.');
+      } else if ((err as any)?.name === 'NotReadableError') {
+        setError('Could not access your camera/microphone. They may be in use by another application.');
+      } else {
+        setError('Failed to access camera or microphone. Please check your permissions.');
+      }
+      
       return null;
     }
   }, [isStreamer, selectedVideoDevice, selectedAudioDevice, produceLocalMedia]);
@@ -882,99 +1041,58 @@ export default function WebRTCStreamManager({
   // =========== EFFECTS ===========
   // Initialize component
   useEffect(() => {
-    logger.info('Component mounted', { isStreamer });
     mountedRef.current = true;
+    logInfo('Component mounted', { streamId, isStreamer });
     
-    // Connect to signaling server once component mounts
-    connectToSignalingServer();
+    // Only connect when we have a valid runtime config
+    if (!isConfigLoading && runtimeConfig) {
+      logInfo('Runtime config ready, connecting to signaling server');
+      connectToSignalingServer();
+      didInitialSetupRef.current = true;
+    }
     
-    // Clean up on unmount
+    // Cleanup function
     return () => {
-      logger.info('Component unmounting - cleaning up resources');
       mountedRef.current = false;
+      logInfo('Component unmounting, cleaning up resources');
       
-      // Clear timeouts
-      timeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+      // Clear all pending timeouts
+      timeoutsRef.current.forEach(clearTimeout);
       timeoutsRef.current = [];
       
       // Close socket connection
       if (socketRef.current) {
-        try {
-          socketRef.current.disconnect();
-        } catch (err) {
-          logger.error('Error closing socket connection', formatError(err));
-        }
+        socketRef.current.close();
         socketRef.current = null;
       }
       
-      // Close media producers
-      if (producersRef.current.video) {
-        try {
-          producersRef.current.video.close();
-        } catch (err) {
-          logger.error('Error closing video producer', formatError(err));
-        }
-        producersRef.current.video = null;
-      }
-      
-      if (producersRef.current.audio) {
-        try {
-          producersRef.current.audio.close();
-        } catch (err) {
-          logger.error('Error closing audio producer', formatError(err));
-        }
-        producersRef.current.audio = null;
-      }
-      
-      // Close media consumers
-      if (consumersRef.current.video) {
-        try {
-          consumersRef.current.video.close();
-        } catch (err) {
-          logger.error('Error closing video consumer', formatError(err));
-        }
-        consumersRef.current.video = null;
-      }
-      
-      if (consumersRef.current.audio) {
-        try {
-          consumersRef.current.audio.close();
-        } catch (err) {
-          logger.error('Error closing audio consumer', formatError(err));
-        }
-        consumersRef.current.audio = null;
-      }
-      
-      // Close transports
+      // Close peer connection
       if (transportRef.current.producer) {
-        try {
-          transportRef.current.producer.close();
-        } catch (err) {
-          logger.error('Error closing producer transport', formatError(err));
-        }
+        transportRef.current.producer.close();
         transportRef.current.producer = null;
       }
       
       if (transportRef.current.consumer) {
-        try {
-          transportRef.current.consumer.close();
-        } catch (err) {
-          logger.error('Error closing consumer transport', formatError(err));
-        }
+        transportRef.current.consumer.close();
         transportRef.current.consumer = null;
       }
       
-      // Stop local media streams
+      // Stop local stream
       if (localStreamRef.current) {
-        try {
-          localStreamRef.current.getTracks().forEach(track => track.stop());
-        } catch (err) {
-          logger.error('Error stopping local media tracks', formatError(err));
-        }
+        localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
       }
     };
-  }, [isStreamer, connectToSignalingServer]);
+  }, [streamId, userId, isStreamer, runtimeConfig, isConfigLoading]);
+  
+  // Watch for runtime config availability and connect when it's ready
+  useEffect(() => {
+    if (!didInitialSetupRef.current && !isConfigLoading && runtimeConfig) {
+      logInfo('Runtime config now available, initializing connection');
+      connectToSignalingServer();
+      didInitialSetupRef.current = true;
+    }
+  }, [isConfigLoading, runtimeConfig]);
   
   // Effect to handle device changes after initial setup
   useEffect(() => {
@@ -1114,29 +1232,4 @@ export default function WebRTCStreamManager({
     </div>
   );
 }
-
-// Helper function to get ICE servers (adjust based on your actual config structure)
-// This could be moved to a separate config file if preferred
-const getIceServers = (config: any | null): RTCIceServer[] => {
-  const iceServers: RTCIceServer[] = [];
-
-  // Default STUN servers (always good to have)
-  iceServers.push({ urls: "stun:stun.l.google.com:19302" });
-  iceServers.push({ urls: "stun:stun1.l.google.com:19302" });
-
-  if (config?.stunServerUrl) {
-     iceServers.push({ urls: config.stunServerUrl });
-  }
-  
-  if (config?.turnServerUrl && config.turnUsername && config.turnPassword) {
-    iceServers.push({
-      urls: config.turnServerUrl,
-      username: config.turnUsername,
-      credential: config.turnPassword,
-    });
-  }
-  
-  logDebug('[WebRTC] Generated ICE servers list', { iceServers });
-  return iceServers;
-};
       

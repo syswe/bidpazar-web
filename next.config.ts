@@ -35,6 +35,15 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  // Add rewrites for Socket.IO paths to ensure Next.js doesn't intercept them
+  async rewrites() {
+    return [
+      {
+        source: '/socket.io/:path*',
+        destination: '/socket.io/:path*',
+      }
+    ];
+  },
   // Note: Removed deprecated 'api' and 'webSocketServer' keys.
   // API body size limits should be configured per-route if needed.
   // WebSocket handling is typically done within the API route itself.

@@ -47,6 +47,11 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
 
+# Make sure server.js is in the image
+COPY --from=builder /app/server.js ./
+COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
+COPY --from=builder /app/node_modules/ts-node ./node_modules/ts-node
+
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 # Consider if this is truly necessary or if volumes handle uploads
 RUN chmod -R 755 /app/public
@@ -55,8 +60,11 @@ RUN chmod -R 755 /app/public
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Expose the port the app runs on
+# Expose the ports the app runs on
 EXPOSE 3000
+EXPOSE 3001
+# Expose MediaSoup ports for WebRTC
+EXPOSE 40000-40100/udp
 
 # Start with our simplified entrypoint script
 CMD ["/app/docker-entrypoint.sh"] 

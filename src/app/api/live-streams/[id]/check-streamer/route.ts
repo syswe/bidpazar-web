@@ -21,11 +21,11 @@ export async function GET(
     const { id: streamId } = await params;
     logger.info(`[API] GET ${urlPath} - Extracted streamId: ${streamId}`);
 
-    // Extract token from authorization header
+    // Extract token from authorization header or cookie with fallback options
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') 
       ? authHeader.substring(7) 
-      : request.cookies.get('token')?.value;
+      : request.cookies.get('token')?.value || request.cookies.get('next-auth.session-token')?.value;
     
     if (!token) {
       logger.warn(`[API] GET ${urlPath} - Missing authentication token`);
@@ -48,7 +48,11 @@ export async function GET(
     // Find the stream and check if the user is the streamer
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
-      select: { userId: true }
+      select: { 
+        userId: true,
+        status: true,
+        title: true 
+      }
     });
 
     if (!stream) {
@@ -64,18 +68,21 @@ export async function GET(
     logger.info(`[API] GET ${urlPath} - Result: isStreamer=${isStreamer}`, {
       streamId,
       userId: user.id,
-      streamUserId: stream.userId
+      streamUserId: stream.userId,
+      streamStatus: stream.status
     });
 
     return NextResponse.json({ 
       isStreamer,
       userId: user.id,
-      streamUserId: stream.userId
+      streamUserId: stream.userId,
+      streamStatus: stream.status,
+      streamTitle: stream.title
     });
   } catch (error) {
     logger.error(`[API] Error in ${urlPath}`, error);
     return NextResponse.json(
-      { isStreamer: false, reason: "Internal server error" },
+      { isStreamer: false, reason: "Internal server error", error: String(error) },
       { status: 500 }
     );
   }

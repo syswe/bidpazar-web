@@ -27,7 +27,8 @@ import {
   MoveVertical,
   Volume2,
   VolumeX,
-  ChevronUp
+  ChevronUp,
+  Tv
 } from "lucide-react";
 import { StreamDiagnostics } from './components/StreamDiagnostics';
 import WebRTCStreamManager from './components/WebRTCStreamManager';
@@ -37,7 +38,9 @@ import { cookies } from "next/headers";
 import StreamChat from './components/StreamChat';
 import BiddingInterface from './components/BiddingInterface';
 import ProductDisplay from './components/ProductDisplay';
+import CreateProductForm from './components/CreateProductForm';
 import Image from "next/image";
+import StreamControls from './components/StreamControls';
 
 interface LiveStreamDetails {
   id: string;
@@ -61,6 +64,196 @@ interface LogItem {
   data?: unknown;
   level: 'info' | 'warn' | 'error' | 'debug';
 }
+
+// Add this CSS at the top of the file
+const verticalStreamStyles = `
+  .vertical-stream-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0;
+    background: var(--background);
+    min-height: 100vh;
+  }
+
+  .stream-content-wrapper {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--background);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  @media (max-width: 768px) {
+    .stream-content-wrapper {
+      max-width: 100%;
+      height: 100vh;
+      border-radius: 0;
+    }
+  }
+
+  .video-container {
+    flex: 1;
+    width: 100%;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+  }
+
+  .video-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .stream-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    z-index: 20;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%);
+    pointer-events: auto;
+  }
+
+  .stream-info-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  .stream-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem;
+    z-index: 20;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%);
+  }
+
+  .stream-info {
+    display: flex;
+    flex-direction: column;
+    margin-left: 0.5rem;
+  }
+
+  .stream-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: absolute;
+    right: 1rem;
+    bottom: 4rem;
+    z-index: 30;
+    gap: 0.75rem;
+    pointer-events: auto;
+  }
+
+  .action-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    pointer-events: auto;
+  }
+
+  .action-button:hover {
+    background: rgba(0, 0, 0, 0.8);
+    transform: scale(1.1);
+  }
+
+  .chat-container {
+    position: absolute;
+    bottom: 4rem;
+    left: 0;
+    width: 75%;
+    max-height: 35%;
+    overflow-y: auto;
+    z-index: 15;
+    padding: 0 1rem;
+    pointer-events: auto;
+  }
+
+  .product-container {
+    position: absolute;
+    bottom: calc(35% + 5rem);
+    left: 0;
+    width: 100%;
+    z-index: 16;
+    padding: 0 1rem;
+    pointer-events: auto;
+  }
+
+  .back-button {
+    margin-top: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    padding: 0.5rem;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    pointer-events: auto;
+  }
+
+  .back-button:hover {
+    background: rgba(0, 0, 0, 0.8);
+  }
+`;
+
+// Add a new interface for active product bids
+interface ActiveBid {
+  id: string;
+  productId: string;
+  streamId: string;
+  timeRemaining: number; // in seconds
+  isActive: boolean;
+}
+
+// Add this CSS at the top of the file after the existing CSS section
+const fixOverlapStyles = `
+  /* Fix for device selector overlapping with LIVE indicator */
+  .stream-header {
+    z-index: 30 !important; /* Higher z-index to appear above device selector */
+  }
+  
+  /* Position the device selector button properly */
+  .device-selector-container {
+    position: absolute;
+    top: 3.5rem; /* Push it down below the LIVE text */
+    right: 1rem;
+    z-index: 25;
+  }
+`;
 
 export default function LiveStreamPage() {
   const router = useRouter();
@@ -86,6 +279,8 @@ export default function LiveStreamPage() {
     lastError: string | null;
   }>({ isConnected: true, isReconnecting: false, lastError: null });
   const [showBiddingInterface, setShowBiddingInterface] = useState<boolean>(false);
+  const [activeProductBid, setActiveProductBid] = useState<ActiveBid | null>(null);
+  const [showCreateProduct, setShowCreateProduct] = useState<boolean>(false);
 
   const logMessage = useCallback((message: string, level: 'info' | 'warn' | 'error' | 'debug' = 'info', data?: unknown) => {
     const timestamp = new Date().toISOString();
@@ -205,104 +400,81 @@ export default function LiveStreamPage() {
   }, [logMessage, runtimeConfig]);
 
   const fetchStreamDetails = useCallback(async () => {
-    const fetchStartTime = performance.now();
+    if (!streamId || isConfigLoading) return;
     
-    if (!streamId) {
-      setError("Stream ID is missing.");
-      setIsLoading(false);
-      logMessage("Fetch cancelled: Stream ID missing", 'warn');
-      return;
-    }
-    
-    logMessage(`Fetching stream details for ID: ${streamId}`, 'debug', {
-      time: new Date().toISOString(), 
-      streamId,
-      userId
-    });
-    
-    setIsLoading(true);
-    setError(null);
-
-    if (isConfigLoading || !runtimeConfig) {
-      logMessage("Fetch stream details cancelled: Runtime config not ready", 'warn');
-      return;
-    }
-    const backendApiUrl = runtimeConfig.apiUrl;
-
     try {
+      // Get token explicitly from both sources
       const authToken = token ?? getCookie('token') as string | undefined;
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      const headers: HeadersInit = { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
       
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
-        logMessage("Using auth token for fetch", 'debug', { 
-          tokenLength: authToken.length,
-          tokenPrefix: authToken.substring(0, 10) + '...'
-        });
+        logMessage("Using auth token for stream details fetch", 'debug');
       } else {
-        logMessage("No auth token found for fetch", 'warn');
+        logMessage("No auth token found for stream details fetch", 'warn');
       }
-
-      // Log the request URL and headers
-      logMessage("Making API request", 'debug', {
-        method: 'GET',
-        url: `${backendApiUrl}/live-streams/${streamId}`,
+      
+      // Construct the correct API URL - ensure no duplication of /api/
+      const apiEndpoint = `/api/live-streams/${streamId}`;
+      
+      logMessage("Making stream details API request", 'debug', {
+        url: apiEndpoint,
         headers: Object.keys(headers)
       });
-
-      // Track performance
-      performance.mark('stream-fetch-start');
       
-      const response = await fetch(`${backendApiUrl}/live-streams/${streamId}`, { headers });
-      
-      performance.mark('stream-fetch-end');
-      performance.measure('stream-fetch-duration', 'stream-fetch-start', 'stream-fetch-end');
-      
-      const fetchDuration = performance.getEntriesByName('stream-fetch-duration')[0]?.duration || 0;
-      logMessage(`API response received in ${fetchDuration.toFixed(2)}ms`, 'debug', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries([...response.headers.entries()])
+      const response = await fetch(apiEndpoint, {
+        headers,
+        next: { revalidate: 10 }
       });
-
+      
       if (!response.ok) {
-        let errorMsg = `HTTP error ${response.status}`;
-        try {
-          const errorData = await response.text();
-          errorMsg += `: ${errorData}`;
-        } catch (e) { /* Ignore if response body can't be read */ }
-
         if (response.status === 404) {
           setError("Stream not found.");
           logMessage(`Fetch failed: Stream not found (404)`, 'error', {
             status: response.status, 
             streamId
           });
+          toast.error("Stream not found.");
+          setStreamDetails(null);
+          return;
+        }
+        throw new Error(`Failed to fetch stream details: ${response.status}`);
+      }
+      
+      // Check if we're getting HTML instead of JSON (which suggests a server error)
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        // Check if response is HTML
+        const text = await response.text();
+        if (text.includes('<!DOCTYPE html>') || text.includes('<html>')) {
+          setError("Received HTML instead of JSON. The server might be returning an error page.");
+          logMessage('Received HTML instead of JSON response', 'error', {
+            previewLength: Math.min(text.length, 100),
+            preview: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+          });
         } else {
-          setError(`Failed to load stream information (${response.status}). ${errorMsg}`);
-          logMessage(`Fetch failed: ${errorMsg}`, 'error', {
-            status: response.status, 
-            streamId, 
-            duration: `${fetchDuration.toFixed(2)}ms`
+          setError("Invalid response format from server.");
+          logMessage('Invalid response format', 'error', {
+            previewLength: Math.min(text.length, 100),
+            preview: text.substring(0, 100) + (text.length > 100 ? '...' : '')
           });
         }
+        
         setStreamDetails(null);
         return;
       }
-
-      const data: LiveStreamDetails = await response.json();
       
-      // Track parse performance
-      const parseTime = performance.now() - fetchStartTime - fetchDuration;
+      // At this point we know it's a valid JSON response
+      const data = await response.json();
       
       logMessage('Stream details fetched successfully', 'info', { 
         id: data.id, 
         status: data.status, 
         creatorId: data.creatorId, 
-        title: data.title,
-        fetchTime: `${fetchDuration.toFixed(2)}ms`,
-        parseTime: `${parseTime.toFixed(2)}ms`,
-        totalTime: `${(performance.now() - fetchStartTime).toFixed(2)}ms`
+        title: data.title
       });
       
       setStreamDetails(data);
@@ -315,14 +487,12 @@ export default function LiveStreamPage() {
       collectSystemDiagnostics();
 
     } catch (err: any) {
-      const fetchDuration = performance.now() - fetchStartTime;
       console.error('Error fetching stream details:', err);
       
       const errorMsg = err.message || 'Unknown fetch error';
       logMessage(`Fetch failed: ${errorMsg}`, 'error', {
         err,
         streamId,
-        fetchTime: `${fetchDuration.toFixed(2)}ms`,
         stack: err.stack
       });
       
@@ -331,11 +501,91 @@ export default function LiveStreamPage() {
       setStreamDetails(null);
     } finally {
       setIsLoading(false);
-      logMessage("Fetch stream details finished.", 'debug', {
-        totalTime: `${(performance.now() - fetchStartTime).toFixed(2)}ms`
-      });
+      logMessage("Fetch stream details finished.", 'debug');
     }
-  }, [streamId, userId, token, getCookie, logMessage, runtimeConfig, isConfigLoading, collectSystemDiagnostics]);
+  }, [streamId, userId, token, getCookie, logMessage, collectSystemDiagnostics, isConfigLoading]);
+
+  // Main stream view - determine if the current user is the streamer
+  const isCurrentUserStreamer = userId === streamDetails?.creatorId;
+  
+  // Add this function to fetch active bids
+  const fetchActiveBid = useCallback(async () => {
+    if (!streamId || isConfigLoading) return;
+    
+    try {
+      // Get token explicitly from both sources
+      const authToken = token ?? getCookie('token') as string | undefined;
+      const headers: HeadersInit = { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+      
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+        logMessage("Using auth token for active bid fetch", 'debug');
+      } else {
+        logMessage("No auth token found for active bid fetch", 'warn');
+      }
+      
+      // Construct the correct API URL - ensure no duplication of /api/
+      const apiEndpoint = `/api/live-streams/${streamId}/active-bid`;
+      
+      logMessage("Making active bid API request", 'debug', {
+        url: apiEndpoint,
+        headers: Object.keys(headers)
+      });
+      
+      const response = await fetch(apiEndpoint, {
+        headers,
+        next: { revalidate: 10 } // Check for new bids frequently
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch active bid: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Non-JSON response from active bid endpoint');
+      }
+      
+      const data = await response.json();
+      logMessage("Active bid data received", 'debug', data);
+      
+      if (data && data.isActive) {
+        setActiveProductBid({
+          id: data.id,
+          productId: data.productId,
+          streamId: data.streamId,
+          timeRemaining: data.timeRemaining,
+          isActive: true
+        });
+      } else {
+        setActiveProductBid(null);
+      }
+    } catch (error) {
+      console.error("Error fetching active bid:", error);
+      logMessage(`Error fetching active bid: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }, [streamId, token, getCookie, logMessage, isConfigLoading]);
+
+  // Add polling for active bids
+  useEffect(() => {
+    if (!isCurrentUserStreamer && streamDetails?.status === 'LIVE') {
+      fetchActiveBid();
+      
+      const bidInterval = setInterval(() => {
+        fetchActiveBid();
+      }, 5000); // Check every 5 seconds for new bids
+      
+      return () => clearInterval(bidInterval);
+    }
+  }, [fetchActiveBid, isCurrentUserStreamer, streamDetails?.status]);
+
+  // Handle creating a new product for bid
+  const handleCreateProduct = () => {
+    setShowCreateProduct(true);
+  };
 
   useEffect(() => {
     // Log component mount
@@ -417,13 +667,19 @@ export default function LiveStreamPage() {
     
     setIsLoading(true);
     
-    if (isConfigLoading || !runtimeConfig) {
-      logMessage("Start stream failed: Runtime config not ready", 'error');
-      toast.error("Configuration not loaded. Cannot start stream.");
-      setIsLoading(false);
-      return;
+    // If config is still loading, wait briefly
+    if (isConfigLoading) {
+      logMessage("Runtime config loading, waiting briefly for start stream...", 'debug');
+      // Wait for a short time to see if config loads
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    const backendApiUrl = runtimeConfig.apiUrl;
+
+    // Use config if available, or fall back to default
+    const apiUrl = runtimeConfig?.apiUrl || '/api';
+    
+    if (!runtimeConfig) {
+      logMessage("Using fallback API URL for start stream: " + apiUrl, 'warn');
+    }
 
     try {
       if (!token) {
@@ -431,21 +687,29 @@ export default function LiveStreamPage() {
           isAuthenticated: !!user,
           hasToken: !!token
         });
-        throw new Error("Authentication token not found.");
+        
+        toast.error("Authentication required. Please login and try again.");
+        setIsLoading(false);
+        return;
       }
 
       performance.mark('stream-start-api-call-begin');
-      logMessage('[LiveStreamPage] Calling /start endpoint...', 'debug', {
-        url: `${backendApiUrl}/live-streams/${streamId}/start`,
+      
+      // Ensure correct API path construction
+      const startEndpoint = `/api/live-streams/${streamId}/start`;
+      
+      logMessage('[LiveStreamPage] Calling start endpoint...', 'debug', {
+        url: startEndpoint,
         method: 'POST',
         hasToken: !!token
       });
       
-      const response = await fetch(`${backendApiUrl}/live-streams/${streamId}/start`, {
+      const response = await fetch(startEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`
         }
       });
       
@@ -458,18 +722,55 @@ export default function LiveStreamPage() {
 
       if (!response.ok) {
         let errorMsg = `Error starting stream: ${response.status}`;
-         try {
-            const errorText = await response.text();
-            errorMsg += ` - ${errorText}`;
-        } catch (e) { /* Ignore */ }
+        let errorBody = '';
+        
+        try {
+          // First try to parse as JSON
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorBody = errorJson.error || errorJson.message || JSON.stringify(errorJson);
+          } else {
+            // Fall back to text
+            errorBody = await response.text();
+          }
+          errorMsg += ` - ${errorBody}`;
+        } catch (e) { /* Ignore parsing errors */ }
         
         console.error(errorMsg);
         logMessage(`Start stream failed: ${errorMsg}`, 'error', {
           status: response.status,
           duration: `${apiCallDuration.toFixed(2)}ms`,
-          streamId
+          streamId,
+          responseType: response.headers.get('content-type')
         });
-        throw new Error(errorMsg);
+        
+        if (response.status === 401) {
+          toast.error('Authentication required. Please login and try again.');
+          
+          // Optionally redirect to login page
+          // router.push('/login');
+        } else {
+          toast.error(`Failed to start stream: ${errorBody || 'Unknown error'}`);
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
+      // Check the content type before trying to parse as JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        logMessage('Received non-JSON response from start endpoint', 'error', {
+          contentType,
+          status: response.status,
+          preview: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+        });
+        
+        toast.error('Unexpected response format. Please try again.');
+        setIsLoading(false);
+        return;
       }
 
       const data = await response.json();
@@ -538,345 +839,227 @@ export default function LiveStreamPage() {
     }
 };
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-red-500">{error}</div>
-      </div>
-    );
-  }
-
+  // Early return for loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-gradient-to-br from-[var(--accent)] to-[#071739]">
-        <div className="text-center px-4">
-          <Loader2 className="w-16 h-16 animate-spin text-white mx-auto mb-6" />
-          <h2 className="text-2xl font-semibold text-white mb-2">Yayın Yükleniyor</h2>
-          <p className="text-white/80">Canlı bağlantı kuruluyor...</p>
+      <div className="vertical-stream-container">
+        <style jsx>{verticalStreamStyles}</style>
+        <div className="stream-content-wrapper">
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-[var(--primary)]" />
+              <h2 className="text-lg font-medium">Yayın Yükleniyor</h2>
+              <p className="text-[var(--muted-foreground)] mt-2">Canlı bağlantı kuruluyor...</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="vertical-stream-container">
+        <style jsx>{verticalStreamStyles}</style>
+        <div className="stream-content-wrapper">
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="text-center max-w-md mx-auto px-4">
+              <TriangleAlert className="h-12 w-12 mx-auto mb-4 text-[var(--destructive)]" />
+              <h2 className="text-lg font-medium">Yayın Yüklenemedi</h2>
+              <p className="text-[var(--muted-foreground)] mt-2">{error}</p>
+              <button 
+                onClick={handleBackToHome}
+                className="mt-4 px-4 py-2 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg"
+              >
+                Ana Sayfaya Dön
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Stream not found or not live
   if (!streamDetails) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-gradient-to-br from-[var(--accent)] to-[#071739]">
-        <div className="text-center px-4 bg-white/10 p-8 rounded-lg shadow-xl border border-[var(--border)]">
-          <TriangleAlert className="w-16 h-16 text-yellow-400 mx-auto mb-6" />
-          <h2 className="text-2xl font-semibold text-white mb-2">Yayın Bilgisi Bulunamadı</h2>
-          <p className="text-white/80 mb-6">"{streamId}" ID'li yayın yüklenemedi veya mevcut değil.</p>
-          <button
-            onClick={handleBackToHome}
-            className="bg-[var(--accent)] text-white px-6 py-2 rounded-md hover:bg-[var(--accent)]/80 transition-colors flex items-center mx-auto"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Yayınlara Geri Dön
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (currentStreamStatus === 'SCHEDULED' && !isStreamer) {
-    return (
-      <div className="min-h-screen bg-[var(--background)]">
-        <div className="max-w-4xl mx-auto p-8">
-          <button
-            onClick={handleBackToHome}
-            className="text-[var(--accent)] hover:underline flex items-center mb-8 group"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Yayınlara Geri Dön
-          </button>
-
-          <div className="bg-gradient-to-r from-[var(--accent)]/5 to-[#071739]/5 border border-[var(--border)] rounded-xl p-8 text-center">
-            <div className="w-20 h-20 mx-auto bg-[var(--accent)]/10 rounded-full flex items-center justify-center mb-6">
-              <PlayCircle className="w-10 h-10 text-[var(--accent)]" />
-            </div>
-
-            <h1 className="text-2xl md:text-3xl font-bold text-[var(--foreground)] mb-3">
-              {streamDetails.title || 'Yayın Başlığı'}
-            </h1>
-
-            <p className="text-[var(--foreground)]/60 mb-6 max-w-xl mx-auto">
-              {streamDetails.description || 'Bu yayın henüz başlamadı. Daha sonra tekrar kontrol edin.'}
-            </p>
-
-            <div className="inline-flex items-center bg-[var(--accent)]/10 px-4 py-2 rounded-full text-[var(--accent)] font-medium mb-8">
-              <Calendar className="w-4 h-4 mr-2" />
-              <span>
-                {streamDetails.startTime
-                  ? new Date(streamDetails.startTime).toLocaleString('tr-TR')
-                  : 'Başlangıç zamanı belirtilmedi'}
-              </span>
-            </div>
-
-            <button
-              onClick={handleBackToHome}
-              className="px-6 py-3 bg-gradient-to-r from-[var(--accent)] to-[#071739] text-white rounded-lg hover:shadow-lg transition-all"
-            >
-              Yayınlara Geri Dön
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (currentStreamStatus === 'SCHEDULED' && isStreamer) {
-    return (
-      <div className="min-h-screen bg-[var(--background)] flex flex-col">
-        <header className="bg-[var(--background)]/80 backdrop-blur-sm border-b border-[var(--border)] sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <button onClick={handleBackToHome} className="text-[var(--foreground)]/80 hover:text-[var(--foreground)] flex items-center text-sm">
-              <ArrowLeft className="w-4 h-4 mr-1.5" />
-              Yayınlara Dön
-            </button>
-            <h1 className="text-lg font-semibold text-[var(--foreground)] truncate px-4">
-              {streamDetails.title} (Planlandı)
-            </h1>
-            <div className="w-24 text-right">
-                 {isLoading && <Loader2 className="w-5 h-5 animate-spin inline-block text-[var(--foreground)]/50" />}
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-grow flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-[var(--accent)]/5 to-[#071739]/5 border border-[var(--border)] rounded-xl p-8 md:p-12 text-center max-w-2xl w-full shadow-lg">
-            <div className="w-24 h-24 mx-auto bg-[var(--accent)]/10 rounded-full flex items-center justify-center mb-8 border-2 border-[var(--accent)]/30">
-              <Radio className="w-12 h-12 text-[var(--accent)]" />
-            </div>
-
-            <h2 className="text-2xl md:text-3xl font-bold text-[var(--foreground)] mb-3">
-              Yayına Başlamaya Hazır Mısın?
-            </h2>
-
-            <p className="text-[var(--foreground)]/60 mb-8 max-w-lg mx-auto">
-              "{streamDetails.title}" başlıklı yayınınız planlandı. Başlatmak için aşağıdaki düğmeye tıklayın. Önce kamera ve mikrofon erişimine izin vermeniz istenecektir.
-            </p>
-
-            {shouldRenderWebRTC && (
-              <div className="mb-6 border border-[var(--border)] rounded-md overflow-hidden bg-black aspect-video max-w-lg mx-auto relative">
-                 <WebRTCStreamManager
-                    streamId={streamId}
-                    userId={userId || 'anonymous'}
-                    username={username || 'Anonymous User'}
-                    isStreamer={isStreamer}
-                 />
+      <div className="vertical-stream-container">
+        <style jsx>{verticalStreamStyles}</style>
+        <div className="stream-content-wrapper">
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="text-center max-w-md mx-auto px-4">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--muted)] flex items-center justify-center">
+                <Tv className="h-8 w-8 text-[var(--muted-foreground)]" />
               </div>
-            )}
-
-            <button
-              onClick={handleStartStream}
-              disabled={!shouldRenderWebRTC || isLoading}
-              className="mt-4 bg-[var(--accent)] text-white px-8 py-3 rounded-lg font-semibold hover:bg-[var(--accent)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto w-full max-w-xs"
-            >
-              {isLoading ? (
-                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-              ) : (
-                 <Play className="w-5 h-5 mr-2" />
-              )}
-              {isLoading ? 'Başlatılıyor...' : 'Yayını Başlat'}
-            </button>
-
+              <h2 className="text-lg font-medium">Yayın Bulunamadı</h2>
+              <p className="text-[var(--muted-foreground)] mt-2">
+                Bu yayın artık mevcut değil veya henüz başlamamış olabilir.
+              </p>
+              <button 
+                onClick={handleBackToHome}
+                className="mt-4 px-4 py-2 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg"
+              >
+                Ana Sayfaya Dön
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  if (currentStreamStatus === 'ENDED') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-black/30 backdrop-blur-lg border border-gray-700 rounded-xl p-8 md:p-12 text-center shadow-2xl">
-           <button
-             onClick={handleBackToHome}
-             className="absolute top-4 left-4 text-white/70 hover:text-white transition-colors flex items-center text-sm z-10"
-           >
-             <ArrowLeft className="w-4 h-4 mr-1.5" />
-             Geri
-           </button>
-           <div className="w-20 h-20 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-6 border-2 border-gray-600">
-             <X className="w-10 h-10 text-gray-400" />
-           </div>
-           <h1 className="text-2xl md:text-3xl font-bold text-white mb-3">
-             {streamDetails.title || 'Yayın Başlığı'}
-           </h1>
-           <p className="text-white/70 mb-6 max-w-xl mx-auto">
-             Bu yayın sona erdi.
-           </p>
-           <div className="inline-flex items-center bg-gray-700/40 px-4 py-2 rounded-full text-gray-300 font-medium mb-8 text-sm">
-             <Clock className="w-4 h-4 mr-2" />
-             Bitiş Zamanı: {formatDate(streamDetails.updatedAt)}
-           </div>
-           <button
-             onClick={handleBackToHome}
-             className="mt-4 bg-gray-600 text-white px-6 py-2 rounded-md hover:bg-gray-700 transition-colors flex items-center mx-auto"
-           >
-             <ArrowLeft className="w-4 h-4 mr-2" />
-             Yayınlara Geri Dön
-           </button>
-         </div>
-      </div>
-    );
-  }
-
-  // TikTok-style vertical video layout for LIVE streams
   return (
-    <div className="fixed inset-0 bg-black w-screen h-screen overflow-hidden">
-      {/* Minimal header with back button */}
-      <div className="absolute top-0 left-0 w-full z-30 p-2 sm:p-4 flex items-center justify-between">
-        <button 
-          onClick={handleBackToHome}
-          className="text-white/80 hover:text-white transition-colors z-10 p-2"
-        >
-          <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-        
-        <div className="flex items-center space-x-2">
-          {currentStreamStatus === 'LIVE' && (
-            <div className="flex items-center bg-red-500/20 px-2 py-1 rounded-full">
-              <Radio className="w-3 h-3 text-red-500 mr-1 animate-pulse" />
-              <span className="text-xs font-bold text-white">LIVE</span>
-            </div>
-          )}
-          <button
-            onClick={() => setShowDiagnostics(prev => !prev)}
-            className={`p-2 rounded-md transition-colors ${showDiagnostics ? 'bg-blue-500/20 text-blue-400' : 'text-white/70 hover:text-white'}`}
-          >
-            <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area - Video, Chat, and Product Info */}
-      <div className="flex flex-col h-[calc(100%-60px)] sm:h-[calc(100%-80px)] relative">
-        {/* Video Container - Full width/height with absolute positioning for overlays */}
-        <div className="relative flex-1 bg-black overflow-hidden">
-          {/* Main video stream */}
-          <WebRTCStreamManager
-            streamId={streamId}
-            userId={userId || 'anonymous'}
-            username={username || 'Anonymous User'}
-            isStreamer={isStreamer}
-            className="w-full h-full object-cover"
-          />
-          
-          {/* Creator info overlay */}
-          <div className="absolute bottom-[80px] sm:bottom-[120px] left-2 sm:left-4 flex flex-col">
-            <div className="flex items-center gap-2 text-white">
-              <div className="relative">
-                {streamDetails?.user?.profileImage ? (
-                  <Image 
-                    src={streamDetails.user.profileImage} 
-                    alt={streamDetails.user.username || 'Creator'} 
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white"
-                  />
+    <>
+      <style jsx global>{verticalStreamStyles}</style>
+      <style jsx global>{fixOverlapStyles}</style>
+      <div className="vertical-stream-container">
+        <div className="stream-content-wrapper">
+          {/* Main video container */}
+          <div className="video-container">
+            <WebRTCStreamManager
+              streamId={streamId}
+              userId={userId || ''}
+              username={username || ''}
+              isStreamer={isCurrentUserStreamer}
+            />
+            
+            {/* Video overlay elements */}
+            <div className="video-overlay">
+              {/* Stream header */}
+              <div className="stream-header">
+                <div className="stream-info-wrapper">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 rounded-full bg-[var(--accent)] flex items-center justify-center text-white">
+                      {streamDetails.user?.username?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                    <div className="stream-info">
+                      <span className="text-white font-medium">{streamDetails.user?.username || 'Unknown User'}</span>
+                      <span className="text-white/80 text-sm">{streamDetails.title}</span>
+                    </div>
+                  </div>
+                  {/* Status badge */}
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2 py-1 rounded-full bg-red-500 text-white text-xs flex items-center">
+                      <Radio className="h-3 w-3 mr-1 animate-pulse" />
+                      LIVE
+                    </span>
+                  </div>
+                </div>
+                <button onClick={handleBackToHome} className="back-button">
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+              </div>
+              
+              {/* Stream actions - moved to right side vertical */}
+              <div className="stream-actions">
+                <button onClick={handleLike} className="action-button" aria-label="Like stream">
+                  <Heart className={`h-5 w-5 ${isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                </button>
+                <button className="action-button" aria-label="Share stream">
+                  <Share2 className="h-5 w-5" />
+                </button>
+                <button onClick={() => setShowDiagnostics(!showDiagnostics)} className="action-button" aria-label="Stream diagnostics">
+                  <Terminal className="h-5 w-5" />
+                </button>
+              </div>
+              
+              {/* Product display for bidding - moved above chat */}
+              <div className="product-container">
+                {isCurrentUserStreamer ? (
+                  // Streamer view - always show product controls
+                  showCreateProduct ? (
+                    <CreateProductForm 
+                      streamId={streamId}
+                      onCancel={() => setShowCreateProduct(false)}
+                      onSuccess={() => {
+                        setShowCreateProduct(false);
+                        // Refresh active bids after creating a new product
+                        fetchActiveBid();
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col space-y-2">
+                      <ProductDisplay 
+                        streamId={streamId} 
+                        className="pointer-events-auto"
+                        onBidClick={() => setShowBiddingInterface(true)}
+                      />
+                      <button 
+                        onClick={handleCreateProduct}
+                        className="bg-[var(--primary)] text-[var(--primary-foreground)] px-4 py-2 rounded-md text-sm font-medium"
+                      >
+                        Create New Product Bid
+                      </button>
+                    </div>
+                  )
                 ) : (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white text-lg font-bold">
-                    {streamDetails?.user?.username?.charAt(0)?.toUpperCase() || 'C'}
+                  // Viewer view - only show product when there's an active bid
+                  activeProductBid?.isActive ? (
+                    <div className="relative">
+                      <ProductDisplay 
+                        streamId={streamId} 
+                        className="pointer-events-auto"
+                        onBidClick={() => setShowBiddingInterface(true)}
+                      />
+                      {activeProductBid.timeRemaining > 0 && (
+                        <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs flex items-center">
+                          <Timer className="h-3 w-3 mr-1" />
+                          {activeProductBid.timeRemaining}s
+                        </div>
+                      )}
+                    </div>
+                  ) : null
+                )}
+              </div>
+              
+              {/* Chat container - allocated more space */}
+              <div className="chat-container">
+                <StreamChat 
+                  streamId={streamId} 
+                  currentUserId={userId || ''} 
+                  currentUsername={username || ''}
+                  className="w-full h-full"
+                />
+              </div>
+              
+              {/* Stream footer - countdown timer etc. */}
+              <div className="stream-footer">
+                {isCurrentUserStreamer ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-white text-sm">Streamer controls</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-white text-sm">Viewer controls</span>
                   </div>
                 )}
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-[6px] sm:text-[8px] font-bold">LIVE</span>
-                </div>
-              </div>
-              <div>
-                <p className="font-bold text-xs sm:text-sm">{streamDetails?.user?.username || 'Creator'}</p>
-                <p className="text-[10px] sm:text-xs text-white/70 max-w-[120px] sm:max-w-[180px] truncate">{streamDetails?.title || 'Live stream'}</p>
               </div>
             </div>
           </div>
-
-          {/* Media controls - add volume controls and other stream controls */}
-          <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 flex items-center space-x-2">
-            <button
-              onClick={toggleMute}
-              className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-            >
-              {isMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />}
-            </button>
-            
-            <button
-              onClick={handleLike}
-              className={`p-2 rounded-full ${isLiked ? 'bg-red-500 text-white' : 'bg-black/50 text-white'} hover:bg-black/70 transition-colors`}
-            >
-              <Heart className={`w-4 h-4 sm:w-5 sm:h-5 ${isLiked ? 'fill-white' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {/* Active auction or product display - made responsive */}
-        {currentStreamStatus === 'LIVE' && (
-          <div className="relative z-10">
-            {showBiddingInterface ? (
-              <BiddingInterface 
-                streamId={streamId}
-                isExpanded={true}
-                onMinimize={() => setShowBiddingInterface(false)}
-                className="z-20 max-h-[40vh] overflow-y-auto"
-              />
-            ) : (
-              <ProductDisplay 
-                streamId={streamId}
-                onBidClick={() => setShowBiddingInterface(true)}
-                className="z-10"
-              />
-            )}
-          </div>
-        )}
-
-        {/* Chat interface - made responsive */}
-        {canRenderWebRTC && currentStreamStatus === 'LIVE' && (
-          <div className="max-h-[35vh] sm:max-h-[30vh] overflow-hidden">
-            <StreamChat 
-              streamId={streamId}
-              currentUserId={userId}
-              dataChannel={undefined} // The WebRTCStreamManager should provide this
-            />
-          </div>
-        )}
-      </div>
-
-      {connectionState.isReconnecting && (
-        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-40">
-          <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-white mb-4" />
-          <p className="text-white text-base sm:text-lg font-semibold">Bağlantı yeniden kuruluyor...</p>
-          {connectionState.lastError && (
-            <p className="text-red-400 text-xs sm:text-sm mt-2">Son Hata: {connectionState.lastError}</p>
+          
+          {/* Diagnostics panel */}
+          {showDiagnostics && (
+            <div className="absolute bottom-0 left-0 right-0 bg-black/90 text-white z-50 h-1/2 overflow-auto">
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">Stream Diagnostics</h3>
+                  <button onClick={() => setShowDiagnostics(false)} className="text-white">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <StreamDiagnostics 
+                  streamId={streamId} 
+                  streamInfo={streamDetails}
+                  connectionState={connectionState}
+                  logs={logs}
+                  onReset={handleConnectionReset}
+                />
+              </div>
+            </div>
           )}
-          <button 
-            onClick={handleConnectionReset}
-            className="mt-4 bg-white/10 backdrop-blur-sm text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded flex items-center text-sm"
-          >
-            <RotateCw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" /> Bağlantıyı Sıfırla
-          </button>
         </div>
-      )}
-
-      {/* Stream diagnostics overlay */}
-      {showDiagnostics && (
-        <div className="absolute inset-0 bg-black/90 flex flex-col z-50 overflow-auto">
-          <div className="p-4 flex justify-between items-center bg-blue-900/30 border-b border-blue-800/50">
-            <h2 className="text-blue-400 font-mono text-sm sm:text-base font-semibold">Stream Diagnostics</h2>
-            <button 
-              onClick={() => setShowDiagnostics(false)}
-              className="text-white/70 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <StreamDiagnostics 
-            logs={logs} 
-            streamInfo={streamDetails}
-            connectionState={connectionState}
-          />
-        </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }

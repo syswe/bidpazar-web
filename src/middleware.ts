@@ -25,21 +25,42 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/streams') ||  // Allow stream viewing for everyone
     path.startsWith('/api/auth/') || // Allow all auth API routes
     path.startsWith('/live-streams') || // Allow live stream viewing for everyone
-    path.startsWith('/api/live-streams') || // Allow live stream API routes for everyone
-    path.startsWith('/api/rtc/') || // Allow all RTC API routes for everyone
-    path === '/api/config'; // <<< Make config API public
+    // Add /api/config to public paths
+    path === '/api/config' ||
+    // Allow WebSocket connections
+    path.startsWith('/api/rtc/socket') ||
+    path.includes('/api/rtc/socket/chat/') ||
+    // Allow read-only stream API endpoints
+    path.startsWith('/api/live-streams/') && request.method === 'GET' ||
+    // Allow create-listing endpoint
+    path.includes('/create-listing') ||
+    path.includes('/active-listing') ||
+    path.includes('/active-bid');
 
-  console.log(`[Middleware] Is public path: ${isPublicPath}`);
+  // API endpoints that require authentication (writing data)
+  const requiresAuth = 
+    (path.startsWith('/api/live-streams') && path.includes('/chat') && request.method === 'POST') || // Posting chat messages requires auth
+    (path.startsWith('/api/live-streams') && path.includes('/active-bid') && request.method === 'POST') || // Placing bids requires auth
+    (path.startsWith('/api/live-streams') && path.includes('/product') && request.method === 'POST') || // Creating products requires auth
+    (path.startsWith('/api/live-streams') && path.endsWith('/start') && request.method === 'POST'); // Starting stream requires auth
+
+  console.log(`[Middleware] Is public path: ${isPublicPath}, Requires Auth: ${requiresAuth}`);
 
   // Check if it's an admin path that needs special handling
   const isAdminPath = path.startsWith('/admin');
   
   // Get the token from the cookies
   const token = request.cookies.get('token')?.value || '';
-  console.log(`[Middleware] Token present: ${!!token}`);
+  
+  // Also check for token in Authorization header (Bearer token)
+  const authHeader = request.headers.get('Authorization');
+  const authToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const effectiveToken = authToken || token;
+  
+  console.log(`[Middleware] Token present: ${!!effectiveToken}`);
 
   // Verify the session token using the Edge-compatible function
-  const payload = token ? await verifyAuthSession(token) : null;
+  const payload = effectiveToken ? await verifyAuthSession(effectiveToken) : null;
   const isAuthenticated = !!payload;
   console.log(`[Middleware] Is authenticated (based on token verification): ${isAuthenticated}`);
   
@@ -75,8 +96,40 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // 2. Handle protected paths
-  if (!isPublicPath && !isAuthenticated) {
+  // 2. Handle protected paths and API endpoints that require auth
+  if ((!isPublicPath || requiresAuth) && !isAuthenticated) {
+    // For API routes that require auth, return 401 Unauthorized
+    if (path.startsWith('/api/')) {
+      console.log(`[Middleware] Protected API route (${path}) and user not authenticated, returning 401`);
+      
+      // Specifically check if this is a GET request to /api/live-streams/:id
+      const isLiveStreamDetailsRequest = 
+        path.match(/^\/api\/live-streams\/[^\/]+$/) && request.method === 'GET';
+      
+      if (isLiveStreamDetailsRequest) {
+        // Allow GET request to /api/live-streams/:id even without auth
+        console.log(`[Middleware] Allowing unauthenticated access to stream details: ${path}`);
+        return NextResponse.next();
+      }
+      
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Unauthorized', 
+          message: 'Authentication required for this action'
+        }),
+        { 
+          status: 401,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          } 
+        }
+      );
+    }
+    
+    // For page routes, redirect to login
     console.log(`[Middleware] Protected path (${path}) and user not authenticated, redirecting to login`);
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', path);

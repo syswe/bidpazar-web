@@ -18,11 +18,11 @@ export async function POST(
       params: { id },
     });
 
-    // Extract token from authorization header
+    // Extract token from authorization header or cookie with fallback options
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.startsWith('Bearer ') 
       ? authHeader.substring(7) 
-      : request.cookies.get('token')?.value;
+      : request.cookies.get('token')?.value || request.cookies.get('next-auth.session-token')?.value;
     
     if (!token) {
       logger.warn('API POST /api/live-streams/[id]/start - Missing authentication token');
@@ -67,10 +67,17 @@ export async function POST(
     // Check if the stream is already live
     if (stream.status === 'LIVE') {
       logger.info(`API POST /api/live-streams/[id]/start - Stream ${id} is already live`);
-      return NextResponse.json(
-        { message: 'Stream is already live', status: 'LIVE' },
-        { status: 200 }
-      );
+      return NextResponse.json({
+        message: 'Stream is already live',
+        status: 'LIVE',
+        stream: {
+          id: stream.id,
+          title: stream.title,
+          status: stream.status,
+          startTime: stream.startTime,
+          userId: stream.userId
+        }
+      }, { status: 200 });
     }
 
     // Check if the stream has ended
@@ -87,7 +94,8 @@ export async function POST(
       where: { id },
       data: {
         status: 'LIVE',
-        startTime: new Date().toISOString(), // Set the start time to now if not already set
+        startTime: new Date().toISOString(), // Set the start time to now
+        endTime: null, // Clear any previous end time
       },
       include: {
         user: {
@@ -101,11 +109,17 @@ export async function POST(
     });
 
     logger.info(`API POST /api/live-streams/[id]/start - Stream ${id} started successfully`);
-    return NextResponse.json(updatedStream);
+    
+    // Return a consistent response format
+    return NextResponse.json({
+      message: 'Stream started successfully',
+      status: 'LIVE',
+      stream: updatedStream
+    });
   } catch (error) {
     logger.error('Error starting stream:', error);
     return NextResponse.json(
-      { error: 'Failed to start stream' },
+      { error: 'Failed to start stream', message: String(error) },
       { status: 500 }
     );
   }

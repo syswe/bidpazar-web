@@ -105,6 +105,32 @@ frontend/
     npm start
     ```
 
+-   **Run Custom Socket.IO Server (for WebRTC streaming):**
+    ```bash
+    # First build the Next.js app
+    npm run build
+    # Then run the custom server
+    npm run dev:socket
+    ```
+    This starts a custom server that supports persistent WebSocket connections for live streaming.
+    
+    The custom server runs:
+    - A regular Next.js HTTP server on port 3000
+    - A dedicated Socket.IO server on port 3001 for WebSocket connections
+    
+    For production environments:
+    ```bash
+    NODE_ENV=production npm run start:socket
+    ```
+    
+    To test the Socket.IO connection:
+    ```bash
+    # In a new terminal window after starting the server
+    npm run socket:test
+    ```
+    
+    Note: The custom server handles both HTTP requests (like a regular Next.js server) and WebSocket connections for real-time streaming.
+
 ## Key Features & Concepts
 
 - **App Router:** Uses the Next.js App Router for routing and layouts (`src/app/`).

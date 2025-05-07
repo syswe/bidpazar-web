@@ -1,0 +1,51 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "40000-40100:40000-40100/udp"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - PORT_SOCKET=3001
+      - MEDIASOUP_ANNOUNCED_IP=192.168.1.5
+      - MEDIASOUP_MIN_PORT=40000
+      - MEDIASOUP_MAX_PORT=40100
+      - NEXT_PUBLIC_TURN_SERVER_URL=turn:localhost:3478
+      - NEXT_PUBLIC_STUN_SERVER_URL=stun:localhost:3478
+      - TURN_SERVER_URL=turn:localhost:3478
+      - STUN_SERVER_URL=stun:localhost:3478
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - coturn
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49160-49200:49160-49200/udp"
+    environment:
+      - TURN_USERNAME=bidpazar
+      - TURN_PASSWORD=bidpazarpass
+      - TURN_REALM=bidpazar.com
+      - EXTERNAL_IP=192.168.1.5
+    command: >
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-cli
+      --no-tls
+      --no-dtls
+      --realm=bidpazar.com
+      --user=bidpazar:bidpazarpass

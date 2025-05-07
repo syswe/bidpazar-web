@@ -14,6 +14,62 @@ const smsRateLimitCache: Record<string, RateLimitEntry> = {};
 const SMS_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes cooldown
 const MAX_SMS_PER_DAY = 5; // Maximum 5 SMS per day per IP/user
 
+// Check if an IP is in a trusted range (internal networks, Docker, etc.)
+function isTrustedIP(ip: string): boolean {
+  // Skip if using userId instead of IP
+  if (ip.startsWith('user_')) {
+    return false;
+  }
+
+  // Localhost
+  if (ip === '127.0.0.1' || ip === 'localhost' || ip === '::1') {
+    return true;
+  }
+
+  // Check for common Docker and internal network ranges
+  const privateRanges = [
+    { cidr: '10.0.0.0/8' },     // Private network
+    { cidr: '172.16.0.0/12' },  // Private network (includes Docker's default 172.17.0.0/16)
+    { cidr: '192.168.0.0/16' }, // Private network
+    { cidr: '169.254.0.0/16' }, // Link-local
+  ];
+
+  // Check IP against private ranges
+  for (const range of privateRanges) {
+    if (isIPInCIDR(ip, range.cidr)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Helper function to check if an IP is in a CIDR range
+function isIPInCIDR(ip: string, cidr: string): boolean {
+  try {
+    const [rangeIP, bits] = cidr.split('/');
+    const ipLong = ipToLong(ip);
+    const rangeLong = ipToLong(rangeIP);
+    const mask = -1 << (32 - parseInt(bits));
+    return (ipLong & mask) === (rangeLong & mask);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Convert IPv4 to long number for comparison
+function ipToLong(ip: string): number {
+  const parts = ip.split('.');
+  // Handle only IPv4 addresses
+  if (parts.length !== 4) {
+    return 0;
+  }
+  return ((parseInt(parts[0], 10) << 24) |
+         (parseInt(parts[1], 10) << 16) |
+         (parseInt(parts[2], 10) << 8) |
+          parseInt(parts[3], 10)) >>> 0;
+}
+
 // Generate a 6-digit verification code
 export function generateVerificationCode(): string {
   return crypto.randomInt(100000, 999999).toString();
@@ -26,6 +82,14 @@ export function canSendSMS(userIdOrIp: string): {
   retryAfterMs?: number;
   dailyRemaining?: number;
 } {
+  // Always allow trusted IPs (Docker, internal networks, etc.)
+  if (isTrustedIP(userIdOrIp)) {
+    return { 
+      allowed: true,
+      dailyRemaining: MAX_SMS_PER_DAY // Don't decrement for trusted IPs
+    };
+  }
+
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
   // Initialize or reset daily counter if it's a new day
@@ -68,6 +132,11 @@ export function canSendSMS(userIdOrIp: string): {
 
 // Update rate limit cache after sending SMS
 function updateRateLimitCache(userIdOrIp: string): void {
+  // Skip updating for trusted IPs to avoid rate limiting internal systems
+  if (isTrustedIP(userIdOrIp)) {
+    return;
+  }
+
   const today = new Date().toISOString().split('T')[0];
   
   if (!smsRateLimitCache[userIdOrIp] || smsRateLimitCache[userIdOrIp].countResetDate !== today) {

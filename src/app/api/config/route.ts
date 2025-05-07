@@ -15,35 +15,73 @@ interface ClientConfig {
 }
 
 export async function GET() {
-  // Read runtime environment variables from the server's process.env
-  // Use empty string fallbacks for safety
-  const config: ClientConfig = {
-    apiUrl: process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || '',
-    socketUrl: process.env.SOCKET_URL || process.env.NEXT_PUBLIC_SOCKET_URL || '',
-    appUrl: process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || '',
-    webrtcServer: process.env.WEBRTC_SERVER || process.env.NEXT_PUBLIC_WEBRTC_SERVER || '',
-    wsUrl: process.env.WS_URL || process.env.NEXT_PUBLIC_WS_URL || '',
-    turnServerUrl: process.env.TURN_SERVER_URL || process.env.NEXT_PUBLIC_TURN_SERVER_URL,
-    turnUsername: process.env.TURN_USERNAME || process.env.NEXT_PUBLIC_TURN_USERNAME,
-    // Consider if the client *really* needs the TURN password directly.
-    // Often, the client only needs the URL and username, and the server handles credential generation.
-    // If the client library requires it, keep it, otherwise remove.
-    turnPassword: process.env.TURN_PASSWORD || process.env.NEXT_PUBLIC_TURN_PASSWORD,
-    stunServerUrl: process.env.STUN_SERVER_URL || process.env.NEXT_PUBLIC_STUN_SERVER_URL,
-  };
-
-  // Basic check to ensure essential config is present
-  if (!config.apiUrl || !config.appUrl) {
-    console.error('[API Config] Critical environment variables missing on server.');
-    // Avoid sending back incomplete essential config
-    return NextResponse.json(
-      { error: 'Server configuration error.' }, 
-      { status: 500 }
-    );
+  console.log('[API Config] Fetching runtime configuration');
+  
+  try {
+    // Read runtime environment variables from the server's process.env
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hostname = process.env.APP_URL || 'http://localhost:3000';
+    
+    // Carefully build configuration - add fallbacks for everything
+    const config: ClientConfig = {
+      apiUrl: process.env.API_URL || `${hostname}/api`,
+      socketUrl: process.env.SOCKET_URL || hostname.replace(/^http/, 'ws'),
+      appUrl: process.env.APP_URL || hostname,
+      webrtcServer: process.env.WEBRTC_SERVER || hostname,
+      wsUrl: process.env.WS_URL || '/api/rtc/socket'
+    };
+    
+    // Add TURN/STUN credentials if available 
+    if (process.env.TURN_SERVER_URL) {
+      config.turnServerUrl = process.env.TURN_SERVER_URL;
+    }
+    
+    if (process.env.TURN_USERNAME && process.env.TURN_PASSWORD) {
+      config.turnUsername = process.env.TURN_USERNAME;
+      config.turnPassword = process.env.TURN_PASSWORD;
+    }
+    
+    if (process.env.STUN_SERVER_URL) {
+      config.stunServerUrl = process.env.STUN_SERVER_URL;
+    } else {
+      // Always provide a default STUN server
+      config.stunServerUrl = 'stun:stun.l.google.com:19302';
+    }
+    
+    console.log('[API Config] Generated runtime config:', config);
+    
+    return NextResponse.json(config, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, max-age=0'
+      }
+    });
+  } catch (error) {
+    console.error('[API Config] Error generating config:', error);
+    
+    // Always return a valid JSON object, even in case of error
+    // This prevents HTML error pages from being sent
+    const fallbackConfig: ClientConfig = {
+      apiUrl: '/api',
+      socketUrl: (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') 
+        ? 'wss://localhost:3000' 
+        : 'ws://localhost:3000',
+      appUrl: 'http://localhost:3000',
+      webrtcServer: 'http://localhost:3000',
+      wsUrl: '/api/rtc/socket',
+      stunServerUrl: 'stun:stun.l.google.com:19302'
+    };
+    
+    return NextResponse.json(fallbackConfig, {
+      status: 200, // Return 200 even with fallback to avoid client failures
+      headers: {
+        'Content-Type': 'application/json', 
+        'Cache-Control': 'no-store, max-age=0',
+        'X-Config-Fallback': 'true'
+      }
+    });
   }
-
-  // console.log('[API Config] Sending runtime config to client:', config);
-  return NextResponse.json(config);
 }
 
 // Opt out of caching for this dynamic config route
