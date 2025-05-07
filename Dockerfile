@@ -49,8 +49,20 @@ COPY --from=builder /app/package.json ./
 
 # Make sure server.js is in the image
 COPY --from=builder /app/server.js ./
+
+# Copy all node_modules required for ts-node to work correctly
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 COPY --from=builder /app/node_modules/ts-node ./node_modules/ts-node
+COPY --from=builder /app/node_modules/@types ./node_modules/@types
+COPY --from=builder /app/node_modules/make-error ./node_modules/make-error
+COPY --from=builder /app/node_modules/arg ./node_modules/arg
+COPY --from=builder /app/node_modules/v8-compile-cache-lib ./node_modules/v8-compile-cache-lib
+COPY --from=builder /app/node_modules/yn ./node_modules/yn
+COPY --from=builder /app/node_modules/diff ./node_modules/diff
+COPY --from=builder /app/node_modules/typescript ./node_modules/typescript
+COPY --from=builder /app/node_modules/create-require ./node_modules/create-require
+COPY --from=builder /app/node_modules/acorn ./node_modules/acorn
+COPY --from=builder /app/node_modules/acorn-walk ./node_modules/acorn-walk
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 # Consider if this is truly necessary or if volumes handle uploads

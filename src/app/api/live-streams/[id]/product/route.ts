@@ -8,10 +8,10 @@ const activeProducts: Record<string, any> = {};
 // Simplified version - no type annotations on second parameter
 export async function GET(
   req: NextRequest,
-  ctx: any
+  ctx: { params: { id: string } }
 ) {
-  const id = ctx.params.id;
-  const streamId = id;
+  // Get the streamId from params correctly
+  const streamId = ctx.params.id;
   logger.info(`API GET /api/live-streams/${streamId}/product`, { streamId });
 
   try {
@@ -65,10 +65,10 @@ export async function GET(
 // Simplified version - no type annotations on second parameter
 export async function POST(
   req: NextRequest,
-  ctx: any
+  ctx: { params: { id: string } }
 ) {
-  const id = ctx.params.id;
-  const streamId = id;
+  // Get the streamId from params correctly
+  const streamId = ctx.params.id;
   logger.info(`API POST /api/live-streams/${streamId}/product`, { streamId });
 
   try {

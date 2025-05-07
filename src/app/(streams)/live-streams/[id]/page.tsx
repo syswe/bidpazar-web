@@ -230,6 +230,30 @@ const verticalStreamStyles = `
   }
 `;
 
+// Add this CSS at the top of the file after the existing CSS section
+const fixOverlapStyles = `
+  /* Fix for device selector overlapping with LIVE indicator */
+  .stream-header {
+    z-index: 30 !important; /* Higher z-index to appear above device selector */
+  }
+  
+  /* Override the device selector position in WebRTCStreamManager to place it below the LIVE indicator */
+  .video-container .absolute.top-4.right-4.z-10 {
+    top: 6rem !important; /* Increased from top-4 to position well below LIVE indicator */
+    z-index: 25 !important; /* Ensure it's below the stream header but above other elements */
+  }
+  
+  /* Make sure the dropdown appears correctly */
+  .video-container .absolute.top-4.right-4.z-10 .absolute.right-0 {
+    z-index: 26 !important; /* Higher z-index for the dropdown */
+  }
+  
+  /* Hide the device selector for non-streamers */
+  .hide-for-viewers {
+    display: none !important;
+  }
+`;
+
 // Add a new interface for active product bids
 interface ActiveBid {
   id: string;
@@ -238,22 +262,6 @@ interface ActiveBid {
   timeRemaining: number; // in seconds
   isActive: boolean;
 }
-
-// Add this CSS at the top of the file after the existing CSS section
-const fixOverlapStyles = `
-  /* Fix for device selector overlapping with LIVE indicator */
-  .stream-header {
-    z-index: 30 !important; /* Higher z-index to appear above device selector */
-  }
-  
-  /* Position the device selector button properly */
-  .device-selector-container {
-    position: absolute;
-    top: 3.5rem; /* Push it down below the LIVE text */
-    right: 1rem;
-    z-index: 25;
-  }
-`;
 
 export default function LiveStreamPage() {
   const router = useRouter();

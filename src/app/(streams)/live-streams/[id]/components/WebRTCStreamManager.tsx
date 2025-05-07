@@ -1195,28 +1195,26 @@ export default function WebRTCStreamManager({
       </div>
       
       {/* Device selector (for streamers only) */}
-      {isStreamer && (
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            onClick={() => setShowDeviceSelector(prev => !prev)}
-            className="bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
-            aria-label={showDeviceSelector ? "Hide device settings" : "Show device settings"}
-            title={showDeviceSelector ? "Hide device settings" : "Show device settings"}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-          
-          {showDeviceSelector && (
-            <div className="absolute right-0 w-72 mt-2 bg-background/90 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden border border-border">
-              <DeviceSelector
-                onDeviceChange={handleDeviceChange}
-                initialVideoDeviceId={selectedVideoDevice}
-                initialAudioDeviceId={selectedAudioDevice}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <div className={`absolute top-4 right-4 z-10 ${!isStreamer ? 'hide-for-viewers' : ''}`}>
+        <button
+          onClick={() => setShowDeviceSelector(prev => !prev)}
+          className="bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+          aria-label={showDeviceSelector ? "Hide device settings" : "Show device settings"}
+          title={showDeviceSelector ? "Hide device settings" : "Show device settings"}
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+        
+        {showDeviceSelector && (
+          <div className="absolute right-0 w-72 mt-2 bg-background/90 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden border border-border">
+            <DeviceSelector
+              onDeviceChange={handleDeviceChange}
+              initialVideoDeviceId={selectedVideoDevice}
+              initialAudioDeviceId={selectedAudioDevice}
+            />
+          </div>
+        )}
+      </div>
       
       {/* Not ready overlay */}
       {!streamReady && !error && connectionStatus === 'connected' && (
