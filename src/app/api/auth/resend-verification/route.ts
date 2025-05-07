@@ -1,24 +1,87 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
-import { generateVerificationCode, sendVerificationCode } from '@/lib/sms';
+import { generateVerificationCode, sendVerificationCode, canSendSMS } from '@/lib/sms';
 import { logger } from '@/lib/logger';
+import { headers } from 'next/headers';
 
 const resendSchema = z.object({
   userId: z.string(),
 });
 
+// Helper to get client IP from headers - needs to be async since headers() returns Promise in Next.js 15
+async function getClientIp(req: Request): Promise<string> {
+  const headersList = await headers();
+  
+  // Try standard headers first
+  const forwardedFor = headersList.get('x-forwarded-for');
+  if (forwardedFor) {
+    // Get the first IP if there are multiple
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  // Try other common headers
+  const realIp = headersList.get('x-real-ip');
+  if (realIp) {
+    return realIp;
+  }
+  
+  // Fall back to request remote address or a default
+  return req.headers.get('host') || '127.0.0.1';
+}
+
 export async function POST(request: Request) {
-  const headers = Object.fromEntries(request.headers.entries());
+  // Get client IP asynchronously
+  const clientIp = await getClientIp(request);
+  const requestHeaders = Object.fromEntries(request.headers.entries());
   let body;
   try {
     body = await request.json();
   } catch {
     body = undefined;
   }
-  logger.info('API POST /api/auth/resend-verification', { headers, body });
+  logger.info('API POST /api/auth/resend-verification', { 
+    headers: requestHeaders, 
+    body, 
+    clientIp 
+  });
+  
   try {
     const { userId } = resendSchema.parse(body);
+
+    // Rate limit check by IP first (to prevent abuse before DB lookup)
+    const ipRateLimit = canSendSMS(clientIp);
+    if (!ipRateLimit.allowed) {
+      logger.warn('SMS rate limit exceeded for IP', { 
+        clientIp, 
+        reason: ipRateLimit.reason, 
+        remainingDaily: ipRateLimit.dailyRemaining 
+      });
+      
+      let statusCode = 429; // Too Many Requests
+      let errorMessage = 'Too many verification attempts';
+      
+      if (ipRateLimit.reason === 'cooldown') {
+        const retryAfterSec = Math.ceil((ipRateLimit.retryAfterMs || 0) / 1000);
+        return NextResponse.json(
+          { 
+            error: 'Please wait before requesting another code', 
+            retryAfterSec
+          },
+          { 
+            status: statusCode,
+            headers: {
+              'Retry-After': retryAfterSec.toString()
+            }
+          }
+        );
+      } else {
+        return NextResponse.json(
+          { error: 'Daily verification limit reached. Please try again tomorrow.' },
+          { status: statusCode }
+        );
+      }
+    }
 
     // Find user
     const user = await prisma.user.findUnique({
@@ -45,6 +108,39 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    
+    // Double rate limit check using userId (more specific than IP)
+    const userRateLimit = canSendSMS(`user_${userId}`);
+    if (!userRateLimit.allowed) {
+      logger.warn('SMS rate limit exceeded for user', { 
+        userId, 
+        reason: userRateLimit.reason,
+        remainingDaily: userRateLimit.dailyRemaining
+      });
+      
+      let statusCode = 429; // Too Many Requests
+      
+      if (userRateLimit.reason === 'cooldown') {
+        const retryAfterSec = Math.ceil((userRateLimit.retryAfterMs || 0) / 1000);
+        return NextResponse.json(
+          { 
+            error: 'Please wait before requesting another code', 
+            retryAfterSec
+          },
+          { 
+            status: statusCode,
+            headers: {
+              'Retry-After': retryAfterSec.toString()
+            }
+          }
+        );
+      } else {
+        return NextResponse.json(
+          { error: 'Daily verification limit reached. Please try again tomorrow.' },
+          { status: statusCode }
+        );
+      }
+    }
 
     // Generate new verification code
     const verificationCode = generateVerificationCode();
@@ -59,7 +155,8 @@ export async function POST(request: Request) {
     
     let smsSent = false;
     try {
-      smsSent = await sendVerificationCode(user.phoneNumber, verificationCode);
+      // Pass userId for rate limiting tracking
+      smsSent = await sendVerificationCode(user.phoneNumber, verificationCode, `user_${userId}`);
       logger.info(`SMS resend result: ${smsSent ? 'success' : 'failed'}`);
     } catch (smsError) {
       logger.error('Error sending SMS during resend verification', { 

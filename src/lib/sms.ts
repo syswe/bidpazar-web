@@ -1,13 +1,103 @@
 import crypto from 'crypto';
 
+// Simple in-memory cache for rate limiting
+type RateLimitEntry = {
+  lastSent: number; // Timestamp of last SMS
+  dailyCount: number; // Count of SMS sent today
+  countResetDate: string; // Date in YYYY-MM-DD format for resetting daily count
+};
+
+// Cache structure: { [userId or IP]: RateLimitEntry }
+const smsRateLimitCache: Record<string, RateLimitEntry> = {};
+
+// Rate limit configuration
+const SMS_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes cooldown
+const MAX_SMS_PER_DAY = 5; // Maximum 5 SMS per day per IP/user
+
 // Generate a 6-digit verification code
 export function generateVerificationCode(): string {
   return crypto.randomInt(100000, 999999).toString();
 }
 
+// Check if an SMS can be sent based on rate limits
+export function canSendSMS(userIdOrIp: string): { 
+  allowed: boolean; 
+  reason?: string; 
+  retryAfterMs?: number;
+  dailyRemaining?: number;
+} {
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Initialize or reset daily counter if it's a new day
+  if (!smsRateLimitCache[userIdOrIp] || smsRateLimitCache[userIdOrIp].countResetDate !== today) {
+    smsRateLimitCache[userIdOrIp] = {
+      lastSent: 0,
+      dailyCount: 0,
+      countResetDate: today
+    };
+  }
+  
+  const entry = smsRateLimitCache[userIdOrIp];
+  const now = Date.now();
+  
+  // Check cooldown period
+  if (now - entry.lastSent < SMS_COOLDOWN_MS) {
+    const retryAfterMs = SMS_COOLDOWN_MS - (now - entry.lastSent);
+    return { 
+      allowed: false, 
+      reason: 'cooldown', 
+      retryAfterMs,
+      dailyRemaining: MAX_SMS_PER_DAY - entry.dailyCount
+    };
+  }
+  
+  // Check daily limit
+  if (entry.dailyCount >= MAX_SMS_PER_DAY) {
+    return { 
+      allowed: false, 
+      reason: 'daily_limit',
+      dailyRemaining: 0
+    };
+  }
+  
+  return { 
+    allowed: true,
+    dailyRemaining: MAX_SMS_PER_DAY - entry.dailyCount - 1 // -1 for the one we're about to send
+  };
+}
+
+// Update rate limit cache after sending SMS
+function updateRateLimitCache(userIdOrIp: string): void {
+  const today = new Date().toISOString().split('T')[0];
+  
+  if (!smsRateLimitCache[userIdOrIp] || smsRateLimitCache[userIdOrIp].countResetDate !== today) {
+    smsRateLimitCache[userIdOrIp] = {
+      lastSent: Date.now(),
+      dailyCount: 1,
+      countResetDate: today
+    };
+  } else {
+    smsRateLimitCache[userIdOrIp].lastSent = Date.now();
+    smsRateLimitCache[userIdOrIp].dailyCount += 1;
+  }
+}
+
 // Send verification code via SMS
-export async function sendVerificationCode(phoneNumber: string, code: string): Promise<boolean> {
+export async function sendVerificationCode(
+  phoneNumber: string, 
+  code: string, 
+  userIdOrIp?: string
+): Promise<boolean> {
   try {
+    // Apply rate limiting if userIdOrIp is provided
+    if (userIdOrIp) {
+      const rateLimitCheck = canSendSMS(userIdOrIp);
+      if (!rateLimitCheck.allowed) {
+        console.warn(`[SMS] Rate limit hit for ${userIdOrIp}: ${rateLimitCheck.reason}`);
+        return false;
+      }
+    }
+
     // Get environment variables with defaults for safety
     const smsApiUrl = process.env.SMS_API_URL || 'https://smsgw.mutlucell.com/smsgw-ws/sndblkex';
     const smsUsername = process.env.SMS_USERNAME || 'bidpazar';
@@ -29,6 +119,10 @@ export async function sendVerificationCode(phoneNumber: string, code: string): P
     // Only use mock if SEND_MESSAGE is explicitly set to 'mock'
     if (sendMode === 'mock') {
       console.log(`[MOCK SMS] Verification code ${code} would be sent to ${phoneNumber}`);
+      // Update rate limit cache even for mock SMS
+      if (userIdOrIp) {
+        updateRateLimitCache(userIdOrIp);
+      }
       return true;
     }
 
@@ -77,6 +171,11 @@ export async function sendVerificationCode(phoneNumber: string, code: string): P
     // Parse response to check for success (Mutlucell returns XML with error codes)
     const isSuccess = !text.includes('ERR') && response.ok;
     console.log(`[SMS] SMS sending successful: ${isSuccess}`);
+
+    // Update rate limit cache if successful and userIdOrIp is provided
+    if (isSuccess && userIdOrIp) {
+      updateRateLimitCache(userIdOrIp);
+    }
 
     return isSuccess;
   } catch (error) {

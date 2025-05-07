@@ -511,6 +511,17 @@ export const verifyCode = async (
       throw new Error(data.message || "Verification failed");
     }
 
+    // Make sure we have valid data before storing
+    if (!data.token) {
+      console.error('Missing token in verification response', data);
+      throw new Error('Server returned an invalid response. Please try again.');
+    }
+
+    if (!data.user || !data.user.id) {
+      console.error('Missing or invalid user data in verification response', data);
+      throw new Error('Server returned invalid user data. Please try again.');
+    }
+
     // Store auth data in localStorage
     setAuth(data.token, data.user);
 

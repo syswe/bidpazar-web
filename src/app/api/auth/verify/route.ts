@@ -73,6 +73,7 @@ export async function POST(request: Request) {
     // Create response
     const response = NextResponse.json({
       message: 'Phone number verified successfully',
+      token: token,
       user: {
         id: updatedUser.id,
         email: updatedUser.email,
