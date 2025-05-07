@@ -388,6 +388,43 @@ export const getProductsByCategory = async (categoryId: string): Promise<Product
   });
 };
 
+// Add the missing product management functions
+export const createProduct = async (data: {
+  title: string;
+  description: string;
+  price: number;
+  categoryId: string;
+}): Promise<Product> => {
+  return fetcher<Product>("products", {
+    method: "POST",
+    body: data,
+    requireAuth: true,
+  });
+};
+
+export const updateProduct = async (
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    price?: number;
+    categoryId?: string;
+  }
+): Promise<Product> => {
+  return fetcher<Product>(`products/${id}`, {
+    method: "PUT",
+    body: data,
+    requireAuth: true,
+  });
+};
+
+export const deleteProduct = async (id: string): Promise<void> => {
+  return fetcher<void>(`products/${id}`, {
+    method: "DELETE",
+    requireAuth: true,
+  });
+};
+
 export interface WonAuction {
   id: string;
   auctionId: string;
