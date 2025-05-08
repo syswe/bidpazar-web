@@ -29,9 +29,6 @@ export default function TestPage() {
             <p className="text-sm text-gray-600">
               Audio: Opus codec with echo cancellation enabled
             </p>
-            <p className="text-sm text-gray-600 mt-2">
-              Fallback: HLS for browsers with limited WebRTC support
-            </p>
           </div>
         </div>
         <div className="bg-white p-3 rounded shadow mt-4">

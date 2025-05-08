@@ -28,7 +28,7 @@ export async function GET() {
       socketUrl: process.env.SOCKET_URL || hostname.replace(/^http/, 'ws'),
       appUrl: process.env.APP_URL || hostname,
       webrtcServer: process.env.WEBRTC_SERVER || hostname,
-      wsUrl: process.env.WS_URL || '/api/rtc/socket'
+      wsUrl: process.env.WS_URL || '/socket.io'
     };
     
     // Add TURN/STUN credentials if available 
@@ -69,7 +69,7 @@ export async function GET() {
         : 'ws://localhost:3000',
       appUrl: 'http://localhost:3000',
       webrtcServer: 'http://localhost:3000',
-      wsUrl: '/api/rtc/socket',
+      wsUrl: '/socket.io',
       stunServerUrl: 'stun:stun.l.google.com:19302'
     };
     

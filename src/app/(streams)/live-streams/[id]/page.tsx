@@ -1,6 +1,7 @@
+// src/app/(streams)/live-streams/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { getAuth } from "@/lib/frontend-auth";
@@ -191,7 +192,7 @@ const verticalStreamStyles = `
     bottom: 4rem;
     left: 0;
     width: 75%;
-    max-height: 35%;
+    max-height: 25%;
     overflow-y: auto;
     z-index: 15;
     padding: 0 1rem;
@@ -200,9 +201,9 @@ const verticalStreamStyles = `
 
   .product-container {
     position: absolute;
-    bottom: calc(35% + 5rem);
+    bottom: calc(25% + 5rem);
     left: 0;
-    width: 100%;
+    width: 75%;
     z-index: 16;
     padding: 0 1rem;
     pointer-events: auto;
@@ -239,7 +240,8 @@ const fixOverlapStyles = `
   
   /* Override the device selector position in WebRTCStreamManager to place it below the LIVE indicator */
   .video-container .absolute.top-4.right-4.z-10 {
-    top: 6rem !important; /* Increased from top-4 to position well below LIVE indicator */
+    top: 8rem !important; /* Increased from 6rem to position further below LIVE indicator */
+    right: 1rem !important; /* Keep it aligned with the right edge */
     z-index: 25 !important; /* Ensure it's below the stream header but above other elements */
   }
   
@@ -251,6 +253,116 @@ const fixOverlapStyles = `
   /* Hide the device selector for non-streamers */
   .hide-for-viewers {
     display: none !important;
+  }
+`;
+
+// Modify the broadcastControlStyles to fix positioning issues
+const broadcastControlStyles = `
+  /* Create a container for product bid and controls in a row */
+  .product-and-controls-row {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    z-index: 50; /* Increased z-index to ensure visibility */
+    pointer-events: all !important; /* Force pointer events to be enabled */
+  }
+
+  /* Make product container fixed width on the left */
+  .product-container {
+    position: relative;
+    width: 75%;
+    padding: 0 0.5rem 0 1rem;
+    pointer-events: auto;
+  }
+
+  /* Style the chat container to take up 100% width */
+  .chat-container {
+    position: absolute;
+    bottom: 4rem;
+    left: 0;
+    width: 100%;
+    max-height: 30%;
+    overflow-y: auto;
+    z-index: 15;
+    padding: 0 1rem;
+    pointer-events: auto;
+  }
+
+  /* Move the media settings panel to avoid overlap */
+  .video-container .absolute.top-4.right-4.z-10 {
+    top: 4rem !important;
+    right: 1rem !important;
+    z-index: 25 !important;
+  }
+
+  /* Broadcast controls positioning and styling */
+  .broadcast-controls-container {
+    position: relative !important; /* Force relative positioning */
+    width: 25%;
+    z-index: 40;  /* Increased from 30 to 40 */
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 100%;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    pointer-events: all !important; /* Force pointer events to be enabled */
+  }
+
+  /* Add glow effect to the broadcast buttons */
+  .broadcast-button {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+    min-width: 40px;
+    min-height: 40px;
+    z-index: 41;  /* Increased from 31 to 41 */
+    pointer-events: all !important;
+    cursor: pointer !important;
+  }
+
+  .broadcast-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+  }
+
+  .broadcast-button * {
+    pointer-events: all !important;
+  }
+
+  /* Start broadcast button styling */
+  .broadcast-button-start {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+  }
+  
+  /* End broadcast button styling */
+  .broadcast-button-end {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+  }
+
+  /* Make controls more visible on mobile */
+  @media (max-width: 768px) {
+    .product-container {
+      width: 65%;
+    }
+    
+    .broadcast-controls-container {
+      width: 35%;
+      padding: 0.5rem;
+    }
   }
 `;
 
@@ -289,6 +401,8 @@ export default function LiveStreamPage() {
   const [showBiddingInterface, setShowBiddingInterface] = useState<boolean>(false);
   const [activeProductBid, setActiveProductBid] = useState<ActiveBid | null>(null);
   const [showCreateProduct, setShowCreateProduct] = useState<boolean>(false);
+  const [isCameraOn, setIsCameraOn] = useState<boolean>(true);
+  const [isMicrophoneOn, setIsMicrophoneOn] = useState<boolean>(true);
 
   const logMessage = useCallback((message: string, level: 'info' | 'warn' | 'error' | 'debug' = 'info', data?: unknown) => {
     const timestamp = new Date().toISOString();
@@ -530,18 +644,11 @@ export default function LiveStreamPage() {
       
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
-        logMessage("Using auth token for active bid fetch", 'debug');
       } else {
-        logMessage("No auth token found for active bid fetch", 'warn');
       }
       
       // Construct the correct API URL - ensure no duplication of /api/
       const apiEndpoint = `/api/live-streams/${streamId}/active-bid`;
-      
-      logMessage("Making active bid API request", 'debug', {
-        url: apiEndpoint,
-        headers: Object.keys(headers)
-      });
       
       const response = await fetch(apiEndpoint, {
         headers,
@@ -558,7 +665,6 @@ export default function LiveStreamPage() {
       }
       
       const data = await response.json();
-      logMessage("Active bid data received", 'debug', data);
       
       if (data && data.isActive) {
         setActiveProductBid({
@@ -572,21 +678,22 @@ export default function LiveStreamPage() {
         setActiveProductBid(null);
       }
     } catch (error) {
-      console.error("Error fetching active bid:", error);
-      logMessage(`Error fetching active bid: ${error instanceof Error ? error.message : String(error)}`, 'error');
     }
-  }, [streamId, token, getCookie, logMessage, isConfigLoading]);
+  }, [streamId, token, getCookie, isConfigLoading]);
 
   // Add polling for active bids
   useEffect(() => {
     if (!isCurrentUserStreamer && streamDetails?.status === 'LIVE') {
       fetchActiveBid();
       
+      // Increased interval to 30 seconds to reduce API load
       const bidInterval = setInterval(() => {
         fetchActiveBid();
-      }, 5000); // Check every 5 seconds for new bids
+      }, 30000); // Changed from 15000 (15s) to 30000 (30s)
       
-      return () => clearInterval(bidInterval);
+      return () => {
+        clearInterval(bidInterval);
+      };
     }
   }, [fetchActiveBid, isCurrentUserStreamer, streamDetails?.status]);
 
@@ -595,19 +702,54 @@ export default function LiveStreamPage() {
     setShowCreateProduct(true);
   };
 
+  // Add this useMemo to stabilize WebRTCStreamManager props
+  const webRTCProps = useMemo(() => ({
+    streamId,
+    userId: userId || '',
+    username: username || '',
+    isStreamer: isCurrentUserStreamer,
+    isCameraOn,
+    isMicrophoneOn,
+    onParticipantCount: (count: number) => {
+      // You can add a function here to handle participant count updates
+      logMessage(`Stream participants: ${count}`, 'info');
+    }
+  }), [
+    streamId,
+    userId,
+    username,
+    isCurrentUserStreamer,
+    isCameraOn,
+    isMicrophoneOn,
+    logMessage
+  ]);
+
+  // Enhanced component mount logging
   useEffect(() => {
-    // Log component mount
     logMessage('LiveStreamPage component mounted', 'info', {
       streamId,
       userId: userId || 'not authenticated',
-      url: window.location.href
+      url: window.location.href,
+      browser: navigator.userAgent,
+      timestamp: new Date().toISOString()
     });
+    
+    // Add a performance mark for tracking
+    try {
+      performance.mark('livestream-page-mounted');
+    } catch (e) {
+      // Ignore if performance API not available
+    }
     
     fetchStreamDetails();
     
-    // Return cleanup function
+    // Return cleanup function with enhanced logging
     return () => {
-      logMessage('LiveStreamPage component unmounting', 'debug');
+      logMessage('LiveStreamPage component unmounting', 'info', {
+        streamId,
+        userId: userId || 'not authenticated',
+        mountDuration: performance.now() - (performance.getEntriesByName('livestream-page-mounted')[0]?.startTime || 0)
+      });
     };
   }, [fetchStreamDetails, logMessage, streamId, userId]);
 
@@ -805,6 +947,135 @@ export default function LiveStreamPage() {
     }
   };
 
+  const handleEndStream = async () => {
+    const startTime = performance.now();
+    logMessage('Streamer attempting to end the stream', 'info', {
+      streamId,
+      isStreamer,
+      currentStatus: currentStreamStatus
+    });
+
+    if (!streamId || !isStreamer) {
+      logMessage('End stream cancelled: Invalid streamId or user is not streamer', 'warn', {
+        streamId,
+        isStreamer,
+        userId,
+        creatorId: streamDetails?.creatorId
+      });
+      toast.error("Cannot end stream.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    // Use config if available, or fall back to default
+    const apiUrl = runtimeConfig?.apiUrl || '/api';
+    if (!runtimeConfig) {
+      logMessage("Using fallback API URL for end stream: " + apiUrl, 'warn');
+    }
+
+    try {
+      if (!token) {
+        logMessage("End stream failed: No auth token from context", "error", {
+          isAuthenticated: !!user,
+          hasToken: !!token
+        });
+        toast.error("Authentication required. Please login and try again.");
+        setIsLoading(false);
+        return;
+      }
+
+      performance.mark('stream-end-api-call-begin');
+
+      const endEndpoint = `/api/live-streams/${streamId}/end`;
+      logMessage('[LiveStreamPage] Calling end endpoint...', 'debug', {
+        url: endEndpoint,
+        method: 'POST',
+        hasToken: !!token
+      });
+
+      const response = await fetch(endEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      performance.mark('stream-end-api-call-end');
+      performance.measure('stream-end-api-call',
+                         'stream-end-api-call-begin',
+                         'stream-end-api-call-end');
+
+      const apiCallDuration = performance.getEntriesByName('stream-end-api-call')[0]?.duration || 0;
+
+      if (!response.ok) {
+        let errorMsg = `Error ending stream: ${response.status}`;
+        let errorBody = '';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await response.json();
+            errorBody = errorJson.error || errorJson.message || JSON.stringify(errorJson);
+          } else {
+            errorBody = await response.text();
+          }
+          errorMsg += ` - ${errorBody}`;
+        } catch (e) { /* Ignore parsing errors */ }
+
+        console.error(errorMsg);
+        logMessage(`End stream failed: ${errorMsg}`, 'error', {
+          status: response.status,
+          duration: `${apiCallDuration.toFixed(2)}ms`,
+          streamId,
+          responseType: response.headers.get('content-type')
+        });
+
+        toast.error(`Failed to end stream: ${errorBody || 'Unknown error'}`);
+        setIsLoading(false);
+        return;
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        logMessage('Received non-JSON response from end endpoint', 'error', {
+          contentType,
+          status: response.status,
+          preview: text.substring(0, 100) + (text.length > 100 ? '...' : '')
+        });
+        toast.error('Unexpected response format. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      logMessage('Stream ended successfully via API', 'info', {
+        ...data,
+        apiDuration: `${apiCallDuration.toFixed(2)}ms`,
+        totalDuration: `${(performance.now() - startTime).toFixed(2)}ms`
+      });
+
+      toast.success('Stream ended successfully!');
+
+      // Refresh stream details to get updated status
+      await fetchStreamDetails();
+      
+      // Optionally navigate away or update UI further
+
+    } catch (err: any) {
+      console.error('Error in handleEndStream:', err);
+      logMessage(`End stream process failed: ${err.message}`, 'error', {
+        error: err,
+        stack: err.stack,
+        duration: `${(performance.now() - startTime).toFixed(2)}ms`
+      });
+      toast.error('Failed to end stream. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
   const handleBackToHome = () => {
     logMessage('User navigating back to home', 'info');
     router.push('/live-streams');
@@ -917,20 +1188,32 @@ export default function LiveStreamPage() {
     );
   }
 
+  // Add these handler functions
+  const handleCameraToggle = () => {
+    setIsCameraOn(!isCameraOn);
+    logMessage(`User ${isCameraOn ? 'disabled' : 'enabled'} camera`, 'info');
+  };
+
+  const handleMicrophoneToggle = () => {
+    setIsMicrophoneOn(!isMicrophoneOn);
+    logMessage(`User ${isMicrophoneOn ? 'muted' : 'unmuted'} microphone`, 'info');
+  };
+
   return (
     <>
       <style jsx global>{verticalStreamStyles}</style>
       <style jsx global>{fixOverlapStyles}</style>
+      <style jsx global>{broadcastControlStyles}</style>
       <div className="vertical-stream-container">
         <div className="stream-content-wrapper">
           {/* Main video container */}
           <div className="video-container">
-            <WebRTCStreamManager
-              streamId={streamId}
-              userId={userId || ''}
-              username={username || ''}
-              isStreamer={isCurrentUserStreamer}
-            />
+            {shouldRenderWebRTC && canRenderWebRTC && (
+              <WebRTCStreamManager
+                key={`webrtc-stream-${streamId}`}
+                {...webRTCProps}
+              />
+            )}
             
             {/* Video overlay elements */}
             <div className="video-overlay">
@@ -945,13 +1228,6 @@ export default function LiveStreamPage() {
                       <span className="text-white font-medium">{streamDetails.user?.username || 'Unknown User'}</span>
                       <span className="text-white/80 text-sm">{streamDetails.title}</span>
                     </div>
-                  </div>
-                  {/* Status badge */}
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2 py-1 rounded-full bg-red-500 text-white text-xs flex items-center">
-                      <Radio className="h-3 w-3 mr-1 animate-pulse" />
-                      LIVE
-                    </span>
                   </div>
                 </div>
                 <button onClick={handleBackToHome} className="back-button">
@@ -971,53 +1247,70 @@ export default function LiveStreamPage() {
                   <Terminal className="h-5 w-5" />
                 </button>
               </div>
-              
-              {/* Product display for bidding - moved above chat */}
-              <div className="product-container">
-                {isCurrentUserStreamer ? (
-                  // Streamer view - always show product controls
-                  showCreateProduct ? (
-                    <CreateProductForm 
-                      streamId={streamId}
-                      onCancel={() => setShowCreateProduct(false)}
-                      onSuccess={() => {
-                        setShowCreateProduct(false);
-                        // Refresh active bids after creating a new product
-                        fetchActiveBid();
-                      }}
-                    />
+
+              {/* Product and controls positioned together */}
+              <div className="product-and-controls-row">
+                <div className="product-container">
+                  {isCurrentUserStreamer ? (
+                    // Streamer view - always show product controls
+                    showCreateProduct ? (
+                      <CreateProductForm 
+                        streamId={streamId}
+                        onCancel={() => setShowCreateProduct(false)}
+                        onSuccess={() => {
+                          setShowCreateProduct(false);
+                          // Refresh active bids after creating a new product
+                          fetchActiveBid();
+                        }}
+                      />
+                    ) : (
+                      <div className="flex flex-col space-y-2">
+                        <ProductDisplay 
+                          streamId={streamId} 
+                          className="pointer-events-auto"
+                          onBidClick={() => setShowBiddingInterface(true)}
+                        />
+                        <button 
+                          onClick={handleCreateProduct}
+                          className="bg-[var(--primary)] text-[var(--primary-foreground)] px-4 py-2 rounded-md text-sm font-medium"
+                        >
+                          Create New Product Bid
+                        </button>
+                      </div>
+                    )
                   ) : (
-                    <div className="flex flex-col space-y-2">
-                      <ProductDisplay 
-                        streamId={streamId} 
-                        className="pointer-events-auto"
-                        onBidClick={() => setShowBiddingInterface(true)}
-                      />
-                      <button 
-                        onClick={handleCreateProduct}
-                        className="bg-[var(--primary)] text-[var(--primary-foreground)] px-4 py-2 rounded-md text-sm font-medium"
-                      >
-                        Create New Product Bid
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  // Viewer view - only show product when there's an active bid
-                  activeProductBid?.isActive ? (
-                    <div className="relative">
-                      <ProductDisplay 
-                        streamId={streamId} 
-                        className="pointer-events-auto"
-                        onBidClick={() => setShowBiddingInterface(true)}
-                      />
-                      {activeProductBid.timeRemaining > 0 && (
-                        <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs flex items-center">
-                          <Timer className="h-3 w-3 mr-1" />
-                          {activeProductBid.timeRemaining}s
-                        </div>
-                      )}
-                    </div>
-                  ) : null
+                    // Viewer view - only show product when there's an active bid
+                    activeProductBid?.isActive ? (
+                      <div className="relative">
+                        <ProductDisplay 
+                          streamId={streamId} 
+                          className="pointer-events-auto"
+                          onBidClick={() => setShowBiddingInterface(true)}
+                        />
+                        {activeProductBid.timeRemaining > 0 && (
+                          <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs flex items-center">
+                            <Timer className="h-3 w-3 mr-1" />
+                            {activeProductBid.timeRemaining}s
+                          </div>
+                        )}
+                      </div>
+                    ) : null
+                  )}
+                </div>
+                
+                {isCurrentUserStreamer && (
+                  <StreamControls 
+                    streamId={streamId}
+                    isStreamer={isCurrentUserStreamer}
+                    streamStatus={currentStreamStatus}
+                    onStartStream={handleStartStream}
+                    onEndStream={handleEndStream}
+                    isLoading={isLoading}
+                    isCameraOn={isCameraOn}
+                    isMicrophoneOn={isMicrophoneOn}
+                    onCameraToggle={handleCameraToggle}
+                    onMicrophoneToggle={handleMicrophoneToggle}
+                  />
                 )}
               </div>
               
@@ -1034,7 +1327,7 @@ export default function LiveStreamPage() {
               {/* Stream footer - countdown timer etc. */}
               <div className="stream-footer">
                 {isCurrentUserStreamer ? (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mt-12">
                     <span className="text-white text-sm">Streamer controls</span>
                   </div>
                 ) : (

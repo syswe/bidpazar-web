@@ -134,12 +134,32 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-// Better error handling for process
+// Improved error handling for process
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
-  // Don\'t exit the process in production to maintain server uptime, unless it\'s a startup failure handled above.
+  if (logger) {
+    logger.error('Uncaught exception in server process:', {
+      name: err.name,
+      message: err.message,
+      stack: err.stack
+    });
+  }
+  // Don't exit the process in production to maintain server uptime, unless it's a startup failure handled above.
   if (process.env.NODE_ENV !== 'production') {
     process.exit(1);
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled promise rejection:', reason);
+  if (logger) {
+    logger.error('Unhandled promise rejection in server process:', {
+      reason: reason instanceof Error ? {
+        name: reason.name,
+        message: reason.message,
+        stack: reason.stack
+      } : reason
+    });
   }
 });
 
@@ -162,6 +182,17 @@ app.prepare().then(() => {
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error('Error handling request:', err);
+      if (logger) {
+        logger.error('Error handling HTTP request:', {
+          url: req.url,
+          method: req.method,
+          error: err instanceof Error ? {
+            name: err.name,
+            message: err.message,
+            stack: err.stack
+          } : String(err)
+        });
+      }
       if (!res.headersSent) {
         res.statusCode = 500;
         res.end('internal server error');
@@ -171,19 +202,63 @@ app.prepare().then(() => {
 
   // Initialize Socket.IO on the same server
   console.log('Initializing Socket.IO server...');
-  initializeSocketIOServer(httpServer);
-  console.log('Socket.IO server initialized on the HTTP server');
+  try {
+    initializeSocketIOServer(httpServer);
+    console.log('Socket.IO server initialized on the HTTP server');
+  } catch (err) {
+    console.error('Failed to initialize Socket.IO server:', err);
+    if (logger) {
+      logger.error('Failed to initialize Socket.IO server:', {
+        error: err instanceof Error ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        } : String(err)
+      });
+    }
+  }
 
-  // Start the server
+  // Start the server with enhanced error handling
   httpServer.listen(port, hostname, (err) => {
     if (err) {
       console.error('Failed to start server:', err);
+      if (logger) {
+        logger.error('Failed to start server:', {
+          error: err instanceof Error ? {
+            name: err.name,
+            message: err.message,
+            stack: err.stack
+          } : String(err)
+        });
+      }
       process.exit(1);
     }
     console.log(`> Server ready on http://${hostname}:${port}`);
     console.log(`> Socket.IO path: /socket.io/`);
   });
+
+  httpServer.on('error', (err) => {
+    console.error('HTTP server error:', err);
+    if (logger) {
+      logger.error('HTTP server error:', {
+        error: err instanceof Error ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        } : String(err)
+      });
+    }
+  });
 }).catch(err => {
   console.error('Error during Next.js app.prepare():', err);
+  if (logger) {
+    logger.error('Error during Next.js app preparation:', {
+      error: err instanceof Error ? {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      } : String(err)
+    });
+  }
   process.exit(1);
 }); 

@@ -14,6 +14,7 @@ interface CreateProductFormProps {
 
 interface ProductFormData {
   name: string;
+  description: string;
   startingBid: number;
 }
 
@@ -22,10 +23,11 @@ export default function CreateProductForm({ streamId, onCancel, onSuccess }: Cre
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
+    description: "",
     startingBid: 100
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -57,11 +59,9 @@ export default function CreateProductForm({ streamId, onCancel, onSuccess }: Cre
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          product: {
-            name: formData.name,
-            startingBid: formData.startingBid
-          },
-          duration: 60 // Fixed 60 seconds duration
+          name: formData.name,
+          description: formData.description,
+          price: formData.startingBid
         })
       });
 
@@ -115,6 +115,22 @@ export default function CreateProductForm({ streamId, onCancel, onSuccess }: Cre
             required
             className="w-full px-3 py-2 border border-[var(--border)] rounded-md"
             placeholder="Antika Saat"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium mb-1">
+            Ürün Açıklaması
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            required
+            className="w-full px-3 py-2 border border-[var(--border)] rounded-md"
+            placeholder="Ürün hakkında kısa açıklama..."
+            rows={2}
           />
         </div>
 

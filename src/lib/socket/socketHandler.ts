@@ -1,3 +1,4 @@
+// src/lib/socket/socketHandler.ts
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import * as mediasoup from 'mediasoup';
@@ -88,6 +89,18 @@ async function getOrCreateRoom(streamId: string): Promise<Room> {
   return room;
 }
 
+// Add enhanced error formatting helper
+const formatError = (error: any) => {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    };
+  }
+  return { message: String(error) };
+};
+
 // Main exported function for server.js
 export function initializeSocketIOServer(httpServer: ExtendedHttpServer): SocketIOServer {
   if (httpServer.io) {
@@ -155,13 +168,15 @@ export function initializeSocketIOServer(httpServer: ExtendedHttpServer): Socket
       }
     });
 
-    socket.on('createWebRtcTransport', async ({ producing, consuming }, callback) => {
+    // Listen for specific producer/consumer transport creation requests from client
+    const handleCreateTransport = async (callback: (params: any) => void) => {
         try {
             const transport = await room.router.createWebRtcTransport(mediasoupAppConfig.webRtcTransport);
             peer.transports.set(transport.id, transport);
             transport.on('dtlsstatechange', (dtlsState) => {
                 if (dtlsState === 'closed') transport.close();
             });
+            logger.info(`Created WebRTC transport ${transport.id} for peer ${socket.id}`);
             callback({
                 id: transport.id,
                 iceParameters: transport.iceParameters,
@@ -172,55 +187,164 @@ export function initializeSocketIOServer(httpServer: ExtendedHttpServer): Socket
         } catch (error) {
             callback({ error: (error as Error).message });
         }
+    };
+
+    // Specific handler for producer transport creation
+    socket.on('createProducerTransport', async (data, callback) => {
+      logger.debug(`Received createProducerTransport from ${socket.id}`);
+      await handleCreateTransport(callback);
     });
 
-    socket.on('connectTransport', async ({ transportId, dtlsParameters }, callback) => {
+    // Specific handler for consumer transport creation
+    socket.on('createConsumerTransport', async (data, callback) => {
+      logger.debug(`Received createConsumerTransport from ${socket.id}`);
+      await handleCreateTransport(callback);
+    });
+
+    // Add handleConnectTransport function before it's used
+    const handleConnectTransport = async (transportId: string, dtlsParameters: any, callback: (params: any) => void) => {
         const transport = peer.transports.get(transportId);
-        if (!transport) return callback({ error: `Transport ${transportId} not found` });
+        if (!transport) {
+            logger.error(`[MediaSoup] Connect transport failed: Transport ${transportId} not found for peer ${socket.id} in stream ${streamId}`);
+            return callback({ error: `Transport ${transportId} not found` });
+        }
         try {
             await transport.connect({ dtlsParameters });
+            logger.info(`[MediaSoup] Connected transport ${transportId} for peer ${socket.id} in stream ${streamId}`);
             callback({ connected: true });
         } catch (error) {
+            logger.error(`[MediaSoup] Connect transport failed for ${transportId}:`, formatError ? formatError(error) : error);
             callback({ error: (error as Error).message });
         }
+    };
+
+    // Specific handler for connecting producer transport
+    socket.on('connectProducerTransport', async ({ transportId, dtlsParameters }, callback) => {
+      logger.debug(`Received connectProducerTransport for ${transportId} from ${socket.id}`);
+      await handleConnectTransport(transportId, dtlsParameters, callback);
+    });
+
+    // Specific handler for connecting consumer transport
+    socket.on('connectConsumerTransport', async ({ transportId, dtlsParameters }, callback) => {
+      logger.debug(`Received connectConsumerTransport for ${transportId} from ${socket.id}`);
+      await handleConnectTransport(transportId, dtlsParameters, callback);
     });
 
     socket.on('produce', async ({ transportId, kind, rtpParameters, appData }, callback) => {
       const transport = peer.transports.get(transportId);
-      if (!transport) return callback({ error: `Transport ${transportId} not found` });
+      if (!transport) {
+        logger.error(`[MediaSoup] Produce failed: Transport ${transportId} not found for peer ${socket.id}`);
+        return callback({ error: `Transport ${transportId} not found` });
+      }
+      
       try {
-        const producer = await transport.produce({ kind, rtpParameters, appData: { ...appData, peerId: socket.id, userId, username } });
+        const producer = await transport.produce({ 
+          kind, 
+          rtpParameters, 
+          appData: { ...appData, peerId: socket.id, userId, username } 
+        });
+        
         peer.producers.set(producer.id, producer);
-        socket.to(streamId).emit('newProducer', { producerId: producer.id, peerId: socket.id, kind, userId, username });
+        logger.info(`[MediaSoup] Producer created successfully`, {
+          producerId: producer.id,
+          peerId: socket.id,
+          kind,
+          userId, 
+          username
+        });
+        
+        socket.to(streamId).emit('newProducer', { 
+          producerId: producer.id, 
+          peerId: socket.id, 
+          kind, 
+          userId, 
+          username 
+        });
+        
         callback({ id: producer.id });
       } catch (error) {
+        logger.error(`[MediaSoup] Failed to produce media for peer ${socket.id}`, {
+          error: formatError(error),
+          kind,
+          transportId
+        });
         callback({ error: (error as Error).message });
       }
     });
 
+    // Enhance the consumer handler with better logging
     socket.on('consume', async ({ transportId, producerId, rtpCapabilities }, callback) => {
         const transport = peer.transports.get(transportId);
-         if (!transport) return callback({ error: `Transport ${transportId} not found` });
+        if (!transport) {
+            logger.error(`[MediaSoup] Consume failed: Transport ${transportId} not found for peer ${socket.id} in stream ${streamId}`);
+            return callback({ error: `Transport ${transportId} not found` });
+        }
         
         let originalProducer: MediasoupTypes.Producer | undefined;
-        room.peers.forEach(p => {
-            if (p.producers.has(producerId)) originalProducer = p.producers.get(producerId);
+        let producerPeerId: string | undefined;
+        
+        room.peers.forEach((p, peerId) => {
+            if (p.producers.has(producerId)) {
+                originalProducer = p.producers.get(producerId);
+                producerPeerId = peerId;
+            }
         });
 
-        if (!originalProducer || !room.router.canConsume({ producerId, rtpCapabilities })) {
+        if (!originalProducer) {
+            logger.error(`[MediaSoup] Consume failed: Producer ${producerId} not found for stream ${streamId}`);
+            return callback({ error: `Cannot consume producer ${producerId}` });
+        }
+
+        if (!room.router.canConsume({ producerId, rtpCapabilities })) {
+            logger.error(`[MediaSoup] Cannot consume producer: incompatible RTP capabilities`, { 
+                streamId,
+                producerId,
+                consumerPeerId: socket.id,
+                producerPeerId
+            });
             return callback({ error: `Cannot consume producer ${producerId}` });
         }
 
         try {
-            const consumer = await transport.consume({
-                producerId, rtpCapabilities, paused: originalProducer.kind === 'video',
+            logger.info(`[MediaSoup] Creating consumer for peer ${socket.id}`, {
+                streamId,
+                producerId,
+                kind: originalProducer.kind,
+                producerPeerId
             });
+            
+            const consumer = await transport.consume({
+                producerId,
+                rtpCapabilities,
+                paused: originalProducer.kind === 'video',
+            });
+            
             peer.consumers.set(consumer.id, consumer);
-            if (consumer.kind === 'video') await consumer.resume();
+            
+            if (consumer.kind === 'video') {
+                await consumer.resume();
+                logger.info(`[MediaSoup] Video consumer resumed for peer ${socket.id}`);
+            }
+            
+            logger.info(`[MediaSoup] Consumer created successfully`, {
+                consumerId: consumer.id,
+                producerId: consumer.producerId,
+                kind: consumer.kind,
+                paused: consumer.paused
+            });
+            
             callback({
-                id: consumer.id, producerId: consumer.producerId, kind: consumer.kind, rtpParameters: consumer.rtpParameters,
+                id: consumer.id,
+                producerId: consumer.producerId,
+                kind: consumer.kind,
+                rtpParameters: consumer.rtpParameters,
             });
         } catch (error) {
+            logger.error(`[MediaSoup] Failed to create consumer for peer ${socket.id}`, {
+                error: formatError(error),
+                streamId,
+                producerId
+            });
             callback({ error: (error as Error).message });
         }
     });
@@ -251,7 +375,7 @@ export function initializeSocketIOServer(httpServer: ExtendedHttpServer): Socket
         socket.leave(data.streamId);
     });
     
-    // Disconnect Handler
+    // Add server error emitter for critical issues
     socket.on('disconnect', (reason) => {
       logger.info(`[Socket.IO] Client disconnected: ${socket.id}, reason: ${reason}`);
       peer.transports.forEach(transport => transport.close());
@@ -263,6 +387,11 @@ export function initializeSocketIOServer(httpServer: ExtendedHttpServer): Socket
       }
       socket.to(streamId).emit('peerClosed', { peerId: socket.id });
     });
+  });
+
+  // Add global error handler for socket.io server
+  io.engine.on('connection_error', (err) => {
+    logger.error(`[Socket.IO] Connection error:`, formatError(err));
   });
 
   httpServer.io = io;

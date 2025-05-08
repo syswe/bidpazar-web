@@ -51,16 +51,6 @@ import { mockMediaDevices, mockDevices } from '../tests/mocks/mediasoup-client';
 // Mock mediasoup-client
 jest.mock('mediasoup-client', () => mediasoupClientMock);
 
-// Mock Hls.js
-jest.mock('hls.js', () => ({
-  isSupported: jest.fn().mockReturnValue(true),
-  Events: {
-    MEDIA_ATTACHED: 'hlsMediaAttached',
-    MANIFEST_PARSED: 'hlsManifestParsed',
-    ERROR: 'hlsError',
-  },
-}));
-
 // Mock navigator.mediaDevices
 Object.defineProperty(global.navigator, 'mediaDevices', {
   value: {

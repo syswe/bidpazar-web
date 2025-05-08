@@ -185,16 +185,8 @@ For detailed technical setup, configuration, and troubleshooting:
 
 If WebRTC streaming is causing significant implementation challenges, consider these alternatives:
 
-1. **HLS Streaming** (HTTP Live Streaming):
-   - Higher latency (5-30 seconds) but more reliable and scalable
-   - Easier to implement and maintain
-   - Better compatibility with CDNs and caching
-   - Well-suited for one-to-many broadcasting scenarios
-
-2. **Third-Party Streaming Services**:
+1. **Third-Party Streaming Services**:
    - Agora.io - Managed WebRTC service with simplified API
-   - Twilio Live - Managed live streaming platform
-   - Amazon IVS - Interactive Video Service with low latency
 
 ## Security Considerations
 

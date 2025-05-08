@@ -197,15 +197,6 @@ Instead of integrating MediaSoup with your Next.js app:
 2. Keep your Next.js app focused on the UI and business logic
 3. Communicate between them via HTTP APIs
 
-### 3. Replace with HLS/DASH for One-to-Many Streaming
-
-If your use case is primarily one broadcaster to many viewers:
-
-- Replace WebRTC with HLS or DASH streaming
-- Much simpler to implement and scale
-- Higher latency (5-30 seconds) but more reliable for large audiences
-- Can use services like AWS MediaLive/MediaPackage or Mux.com
-
 ## Troubleshooting 
 
 For detailed troubleshooting steps, see [WEBRTC-TROUBLESHOOTING.md](./WEBRTC-TROUBLESHOOTING.md).

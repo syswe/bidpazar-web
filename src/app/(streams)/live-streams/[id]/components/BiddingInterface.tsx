@@ -76,7 +76,13 @@ export default function BiddingInterface({
         const response = await fetch(`/api/live-streams/${streamId}/product`);
 
         if (!response.ok) {
-          throw new Error('Failed to fetch product');
+          if (response.status === 404) {
+            setError("No active product for this stream");
+          } else {
+            throw new Error('Failed to fetch product');
+          }
+          setLoading(false);
+          return;
         }
 
         const data = await response.json();

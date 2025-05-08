@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import axios, { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/AuthProvider';
-import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2 } from 'lucide-react';
+import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2, Play, Pause } from 'lucide-react';
 import { getAuth } from "@/lib/frontend-auth";
 import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
 
@@ -16,8 +16,8 @@ interface StreamDetails {
 }
 
 interface StreamControlsProps {
-  streamId: string;
-  streamStatus: 'SCHEDULED' | 'LIVE' | 'ENDED';
+  streamId?: string;
+  streamStatus: 'SCHEDULED' | 'LIVE' | 'PAUSED' | 'ENDED' | null;
   onCameraToggle?: () => void;
   onMicrophoneToggle?: () => void;
   onSwitchCamera?: () => void;
@@ -25,6 +25,10 @@ interface StreamControlsProps {
   isMicrophoneOn?: boolean;
   viewerCount?: number;
   onEndStream?: () => void;
+  onStartStream?: () => void;
+  onPauseStream?: () => void;
+  isStreamer: boolean;
+  isLoading?: boolean;
 }
 
 const StreamControls = ({
@@ -36,12 +40,17 @@ const StreamControls = ({
   isCameraOn = true,
   isMicrophoneOn = true,
   viewerCount = 0,
-  onEndStream
+  onEndStream,
+  onStartStream,
+  onPauseStream,
+  isStreamer,
+  isLoading
 }: StreamControlsProps) => {
   const { user } = useAuth();
   const { token } = getAuth();
   const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
   const [detailedStreamInfo, setDetailedStreamInfo] = useState<StreamDetails | null>(null);
 
   // Debug log
@@ -53,13 +62,14 @@ const StreamControls = ({
       isMicrophoneOn,
       viewerCount,
       hasToken: !!token,
-      userId: user?.id
+      userId: user?.id,
+      isStreamer
     });
 
     return () => {
       console.debug('[StreamControls] Component unmounting');
     };
-  }, [streamId, streamStatus, isCameraOn, isMicrophoneOn, viewerCount, token, user]);
+  }, [streamId, streamStatus, isCameraOn, isMicrophoneOn, viewerCount, token, user, isStreamer]);
 
   // Fetch detailed stream information
   useEffect(() => {
@@ -93,6 +103,11 @@ const StreamControls = ({
   }, [streamId, token, runtimeConfig, isConfigLoading]);
 
   const handleStartStream = async () => {
+    if (onStartStream) {
+      onStartStream();
+      return;
+    }
+
     if (isConfigLoading || !runtimeConfig) {
       toast.error("Configuration not loaded. Cannot start stream.");
       return;
@@ -131,7 +146,57 @@ const StreamControls = ({
     }
   };
 
+  const handlePauseStream = async () => {
+    if (onPauseStream) {
+      onPauseStream();
+      return;
+    }
+
+    if (isConfigLoading || !runtimeConfig) {
+      toast.error("Configuration not loaded. Cannot pause stream.");
+      return;
+    }
+    const backendApiUrl = runtimeConfig.apiUrl;
+
+    try {
+      setIsPausing(true);
+      console.debug("[StreamControls] Pausing stream:", {
+        streamId,
+        endpoint: `${backendApiUrl}/live-streams/${streamId}/pause`,
+        hasToken: !!token
+      });
+
+      const response = await axios.post(
+        `${backendApiUrl}/live-streams/${streamId}/pause`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      console.debug("[StreamControls] Stream pause response:", response.data);
+      toast.success('Stream paused successfully');
+      
+      // Refresh the stream status without full page reload
+      setDetailedStreamInfo(prev => prev ? {...prev, status: 'PAUSED'} : null);
+    } catch (error: unknown) {
+      console.error('[StreamControls] Error pausing stream:', error);
+      const axiosError = error as AxiosError<{ message: string }>;
+      const errorMessage = axiosError.response?.data?.message || 'Failed to pause stream';
+      toast.error(errorMessage);
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
   const handleEndStream = async () => {
+    if (onEndStream) {
+      onEndStream();
+      return;
+    }
+
     if (isConfigLoading || !runtimeConfig) {
       toast.error("Configuration not loaded. Cannot end stream.");
       return;
@@ -158,12 +223,6 @@ const StreamControls = ({
 
       console.debug("[StreamControls] Stream end response:", response.data);
       toast.success('Stream ended successfully');
-
-      // Call the onEndStream callback if provided
-      if (onEndStream) {
-        console.debug("[StreamControls] Calling onEndStream callback");
-        onEndStream();
-      }
 
       // Reload the page to refresh the stream status
       window.location.reload();
@@ -198,102 +257,67 @@ const StreamControls = ({
     }
   };
 
+  // Only show the broadcast controls if the user is a streamer
+  if (!isStreamer) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+    <div className="broadcast-controls-container relative z-30">
+      <div className="text-white text-xs font-medium mb-1 uppercase tracking-wider text-center">
+        Yayın Kontrolleri
+      </div>
+      
       {/* Main stream control buttons */}
-      <div className="flex flex-col md:flex-row gap-2">
-        {streamStatus === 'SCHEDULED' && (
+      {streamStatus === 'SCHEDULED' && (
+        <div className="flex flex-col items-center">
           <Button
             onClick={handleStartStream}
-            size="sm"
-            disabled={isProcessing}
-            className="bg-green-600 hover:bg-green-700 text-white flex items-center"
+            disabled={isProcessing || isLoading}
+            className="broadcast-button broadcast-button-start text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg"
           >
-            {isProcessing ? (
-              <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+            {isProcessing || isLoading ? (
+              <RefreshCcw className="h-4 w-4 animate-spin" />
             ) : (
-              <Camera className="h-4 w-4 mr-2" />
-            )}
-            Start Stream
-          </Button>
-        )}
-
-        {streamStatus === 'LIVE' && (
-          <Button
-            onClick={handleEndStream}
-            size="sm"
-            disabled={isProcessing}
-            className="bg-red-600 hover:bg-red-700 text-white flex items-center"
-          >
-            {isProcessing ? (
-              <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Square className="h-4 w-4 mr-2" />
-            )}
-            End Stream
-          </Button>
-        )}
-      </div>
-
-      {/* Media control buttons */}
-      {streamStatus === 'LIVE' && (
-        <div className="flex gap-1">
-          <Button
-            onClick={onCameraToggle}
-            size="sm"
-            variant="outline"
-            className="flex items-center"
-            title={isCameraOn ? "Turn off camera" : "Turn on camera"}
-          >
-            {isCameraOn ? (
-              <Camera className="h-4 w-4" />
-            ) : (
-              <CameraOff className="h-4 w-4" />
+              <Play className="h-4 w-4 ml-0.5" />
             )}
           </Button>
-
-          <Button
-            onClick={onMicrophoneToggle}
-            size="sm"
-            variant="outline"
-            className="flex items-center"
-            title={isMicrophoneOn ? "Mute microphone" : "Unmute microphone"}
-          >
-            {isMicrophoneOn ? (
-              <Mic className="h-4 w-4" />
-            ) : (
-              <MicOff className="h-4 w-4" />
-            )}
-          </Button>
-
-          <Button
-            onClick={onSwitchCamera}
-            size="sm"
-            variant="outline"
-            className="flex items-center"
-            title="Switch camera"
-          >
-            <RefreshCcw className="h-4 w-4" />
-          </Button>
-
-          <Button
-            onClick={handleShareStream}
-            size="sm"
-            variant="outline"
-            className="flex items-center"
-            title="Share stream"
-          >
-            <Share2 className="h-4 w-4" />
-          </Button>
+          <span className="text-white text-xs mt-1">YAYINI BAŞLAT</span>
         </div>
       )}
 
-      {/* Stream info display */}
       {streamStatus === 'LIVE' && (
-        <div className="flex items-center ml-2 text-sm">
-          <div className="flex items-center bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded">
-            <User className="h-3 w-3 mr-1" />
-            <span>{viewerCount}</span>
+        <div className="flex gap-4 justify-center">
+          {/* Pause Stream Button */}
+          <div className="flex flex-col items-center">
+            <Button
+              onClick={handlePauseStream}
+              disabled={isPausing || isLoading}
+              className="broadcast-button broadcast-button-pause text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-yellow-600 hover:bg-yellow-700"
+            >
+              {isPausing ? (
+                <RefreshCcw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Pause className="h-4 w-4" />
+              )}
+            </Button>
+            <span className="text-white text-xs mt-1">DURAKLAT</span>
+          </div>
+          
+          {/* End Stream Button */}
+          <div className="flex flex-col items-center">
+            <Button
+              onClick={handleEndStream}
+              disabled={isProcessing || isLoading}
+              className="broadcast-button broadcast-button-end text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-red-600 hover:bg-red-700"
+            >
+              {isProcessing ? (
+                <RefreshCcw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+            </Button>
+            <span className="text-white text-xs mt-1">SONLANDIR</span>
           </div>
         </div>
       )}

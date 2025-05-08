@@ -153,8 +153,7 @@ The migration will transform the current Next.js frontend into a full-stack appl
    - ✅ `src/lib/sms.ts` for SMS verification
    - ✅ `src/lib/frontend-auth.ts` for frontend auth state
    - ✅ `src/lib/device.service.ts` for device management
-   - ✅ `src/lib/hls.service.ts` for HLS streaming
-
+   
 ### 5. WebSocket and WebRTC Migration (✅ Completed)
 
 1. ✅ WebSocket setup:

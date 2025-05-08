@@ -5,13 +5,13 @@ import { ArrowUp, DollarSign, Clock, AlertCircle, Loader2, Info, Tag } from "luc
 
 interface Product {
   id: string;
-  liveStreamId: string;
-  title: string;
-  name?: string;
+  streamId: string;
+  name: string;
   description: string;
   imageUrl?: string;
   currentBid?: number;
-  startingBid: number;
+  startingPrice: number;
+  productId?: string;
   countdownEnd?: string;
 }
 
@@ -56,7 +56,13 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
         const response = await fetch(`/api/live-streams/${streamId}/product`);
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch product (${response.status})`);
+          if (response.status === 404) {
+            setError("No active product for this stream");
+          } else {
+            throw new Error(`Failed to fetch product (${response.status})`);
+          }
+          setLoading(false);
+          return;
         }
 
         const data = await response.json();
@@ -94,6 +100,18 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
   }
 
   if (error) {
+    // Check if error message is about no active product
+    if (error.includes("No active product")) {
+      return (
+        <div className={`p-3 bg-background/90 backdrop-blur-sm border border-border rounded-lg ${className}`}>
+          <div className="flex items-center justify-center py-4 text-muted-foreground text-sm">
+            <Info className="w-4 h-4 mr-2" />
+            <span>No active product for this auction</span>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className={`p-3 bg-background/90 backdrop-blur-sm border border-border rounded-lg ${className}`}>
         <div className="flex items-start text-red-500 text-sm">
@@ -105,10 +123,17 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
   }
 
   if (!product) {
-    return null;
+    return (
+      <div className={`p-3 bg-background/90 backdrop-blur-sm border border-border rounded-lg ${className}`}>
+        <div className="flex items-center justify-center py-4 text-muted-foreground text-sm">
+          <Info className="w-4 h-4 mr-2" />
+          <span>No active product</span>
+        </div>
+      </div>
+    );
   }
 
-  const productName = product.title || product.name || "Product";
+  const productName = product.name || "Product";
 
   return (
     <div className={`bg-background/90 backdrop-blur-sm border border-border rounded-lg overflow-hidden transition-all duration-300 ${className}`}>
@@ -137,7 +162,7 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
           </div>
           <span className="font-bold text-accent text-sm">
             <DollarSign className="w-3 h-3 inline mr-0.5" />
-            {product.currentBid || product.startingBid}
+            {product.currentBid || product.startingPrice}
           </span>
         </div>
       </div>

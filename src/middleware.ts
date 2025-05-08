@@ -29,9 +29,6 @@ export async function middleware(request: NextRequest) {
     path === '/api/config' ||
     // Allow the main live-streams API endpoint
     path === '/api/live-streams' ||
-    // Allow WebSocket connections
-    path.startsWith('/api/rtc/socket') ||
-    path.includes('/api/rtc/socket/chat/') ||
     // Allow Socket.IO connections
     path.startsWith('/socket.io/') ||
     // Allow read-only stream API endpoints
@@ -149,7 +146,6 @@ export async function middleware(request: NextRequest) {
   if (
     request.method === 'GET' &&
     (
-      request.nextUrl.pathname.startsWith('/api/rtc/socket') ||
       request.nextUrl.pathname.startsWith('/socket.io')
     ) &&
     (request.headers.get('upgrade') === 'websocket' ||

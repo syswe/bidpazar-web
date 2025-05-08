@@ -21,7 +21,7 @@ const defaultConfig: RuntimeConfig = {
   socketUrl: typeof window !== 'undefined' ? `ws://${window.location.host}` : 'ws://localhost:3000',
   appUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
   webrtcServer: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
-  wsUrl: '/api/rtc/socket',
+  wsUrl: '/socket.io',
   stunServerUrl: 'stun:stun.l.google.com:19302'
 };
 
