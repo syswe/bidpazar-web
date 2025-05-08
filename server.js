@@ -249,6 +249,66 @@ app.prepare().then(() => {
       });
     }
   });
+  
+  // Add graceful shutdown handling
+  const gracefulShutdown = (signal) => {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    if (logger) {
+      logger.info(`Server shutdown initiated by ${signal}`);
+    }
+    
+    // First stop accepting new connections
+    httpServer.close(() => {
+      console.log('HTTP server closed');
+      
+      try {
+        // Give Socket.IO time to clean up existing connections
+        console.log('Closing remaining socket connections...');
+        if (httpServer.io) {
+          const activeSockets = httpServer.io.sockets.sockets.size;
+          console.log(`Closing ${activeSockets} active socket connections...`);
+          
+          httpServer.io.close();
+          console.log('Socket.IO server closed');
+        }
+        
+        // Try to close MediaSoup worker gracefully
+        if (global.mediasoupWorker && typeof global.mediasoupWorker.close === 'function') {
+          console.log('Closing MediaSoup worker...');
+          global.mediasoupWorker.close();
+          console.log('MediaSoup worker closed');
+        }
+        
+        console.log('Shutdown complete, exiting process');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error during shutdown:', err);
+        if (logger) {
+          logger.error('Error during shutdown:', { 
+            error: err instanceof Error ? {
+              name: err.name,
+              message: err.message,
+              stack: err.stack
+            } : String(err)
+          });
+        }
+        process.exit(1);
+      }
+    });
+    
+    // Force exit if graceful shutdown takes too long
+    setTimeout(() => {
+      console.error('Forced shutdown after timeout');
+      if (logger) {
+        logger.error('Forced shutdown after timeout');
+      }
+      process.exit(1);
+    }, 10000);
+  };
+  
+  // Register shutdown handlers
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }).catch(err => {
   console.error('Error during Next.js app.prepare():', err);
   if (logger) {

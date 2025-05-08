@@ -469,6 +469,10 @@ export default function LiveStreamPage() {
     }
   }, []);
 
+  const handleParticipantCount = useCallback((count: number) => {
+    logMessage(`Stream participants: ${count}`, 'info');
+  }, [logMessage]);
+
   // Add system information diagnostics
   const collectSystemDiagnostics = useCallback(() => {
     // Use runtime config values if available
@@ -702,64 +706,46 @@ export default function LiveStreamPage() {
     setShowCreateProduct(true);
   };
 
-  // Add this useMemo to stabilize WebRTCStreamManager props
-  const webRTCProps = useMemo(() => ({
-    streamId,
-    userId: userId || '',
-    username: username || '',
-    isStreamer: isCurrentUserStreamer,
-    isCameraOn,
-    isMicrophoneOn,
-    onParticipantCount: (count: number) => {
-      // You can add a function here to handle participant count updates
-      logMessage(`Stream participants: ${count}`, 'info');
-    }
-  }), [
-    streamId,
-    userId,
-    username,
-    isCurrentUserStreamer,
-    isCameraOn,
-    isMicrophoneOn,
-    logMessage
-  ]);
-
   // Enhanced component mount logging
   useEffect(() => {
-    logMessage('LiveStreamPage component mounted', 'info', {
+    logMessage('LiveStreamPage component mounted or user/auth state changed', 'info', {
       streamId,
-      userId: userId || 'not authenticated',
+      userId: user?.id || 'not authenticated',
+      isAuthenticated: !!user,
+      hasToken: !!token, // token from getAuth()
       url: window.location.href,
-      browser: navigator.userAgent,
       timestamp: new Date().toISOString()
     });
-    
-    // Add a performance mark for tracking
-    try {
-      performance.mark('livestream-page-mounted');
-    } catch (e) {
-      // Ignore if performance API not available
+
+    if (user && token) { // Ensure both user object and token are present
+      fetchStreamDetails();
+    } else if (!isLoading) { // Only set error if not in an initial loading state for other reasons
+      logMessage('User not authenticated, cannot fetch stream details.', 'warn', { userId, hasToken: !!token });
+      setError("Authentication required to view this stream. Please log in.");
+      // Optionally, you could clear streamDetails if user logs out while viewing
+      // setStreamDetails(null);
     }
-    
-    fetchStreamDetails();
-    
-    // Return cleanup function with enhanced logging
+
+    // Performance mark for tracking mount/auth change
+    try {
+      performance.mark('livestream-page-auth-check');
+    } catch (e) { /* Ignore */ }
+
     return () => {
-      logMessage('LiveStreamPage component unmounting', 'info', {
+      logMessage('LiveStreamPage auth/mount effect cleanup', 'info', {
         streamId,
-        userId: userId || 'not authenticated',
-        mountDuration: performance.now() - (performance.getEntriesByName('livestream-page-mounted')[0]?.startTime || 0)
+        userId: user?.id || 'not authenticated',
+        durationSinceMark: performance.now() - (performance.getEntriesByName('livestream-page-auth-check')[0]?.startTime || 0)
       });
     };
-  }, [fetchStreamDetails, logMessage, streamId, userId]);
+  }, [user, token, fetchStreamDetails, logMessage, streamId]); // Removed isLoading
 
   // Derive stream status and permissions
   const currentStreamStatus = streamDetails?.status ?? null;
   const isStreamer = !!userId && !!streamDetails && streamDetails.creatorId === userId;
-  // Remove user authentication requirement for viewers
-  const shouldRenderWebRTC = !isLoading && !!streamDetails && !!streamId;
-  const canRenderWebRTC = shouldRenderWebRTC && (currentStreamStatus === 'LIVE' || (isStreamer && currentStreamStatus === 'SCHEDULED'));
-
+  // Simpler condition: Render once we have the essential IDs and streamer status determined
+  const canRenderStreamManager = !isLoading && !!streamDetails && !!streamId && userId !== undefined && username !== undefined;
+  
   useEffect(() => {
     // Use runtime config values if available for logging
     const runtimeEnv = runtimeConfig ? {
@@ -780,8 +766,8 @@ export default function LiveStreamPage() {
       streamId,
       derivedStatus: currentStreamStatus,
       derivedIsStreamer: isStreamer,
-      shouldRenderBase: shouldRenderWebRTC,
-      canRenderFinal: canRenderWebRTC,
+      shouldRenderBase: canRenderStreamManager,
+      canRenderFinal: canRenderStreamManager,
       env: runtimeEnv, // Log runtime config
       browser: {
         userAgent: navigator.userAgent,
@@ -794,7 +780,7 @@ export default function LiveStreamPage() {
         } : 'not available'
       }
     });
-  }, [isLoading, streamDetails, userId, username, streamId, currentStreamStatus, isStreamer, shouldRenderWebRTC, canRenderWebRTC, logMessage, runtimeConfig]);
+  }, [isLoading, streamDetails, userId, username, streamId, currentStreamStatus, isStreamer, canRenderStreamManager, logMessage, runtimeConfig]);
 
   const handleStartStream = async () => {
     const startTime = performance.now();
@@ -1081,6 +1067,11 @@ export default function LiveStreamPage() {
     router.push('/live-streams');
   };
 
+  const handleReconnect = () => {
+    logMessage('User manually reconnecting to stream', 'info');
+    window.location.reload();
+  };
+
   const handleLike = () => {
     if (!isLiked) {
       setLikeCount(prev => prev + 1);
@@ -1089,6 +1080,13 @@ export default function LiveStreamPage() {
     }
     setIsLiked(!isLiked);
     logMessage(`User ${isLiked ? 'unliked' : 'liked'} the stream`, 'info');
+  };
+
+  const handleConnectionError = (error: { type: string; message: string; canReconnect: boolean }) => {
+    logMessage(`Connection error: ${error.message}`, 'warn', error);
+    if (error.type === 'duplicate_session') {
+      setError(`Connection error: ${error.message}. Please reconnect to try again.`);
+    }
   };
 
   const toggleMute = () => {
@@ -1208,11 +1206,22 @@ export default function LiveStreamPage() {
         <div className="stream-content-wrapper">
           {/* Main video container */}
           <div className="video-container">
-            {shouldRenderWebRTC && canRenderWebRTC && (
+            {canRenderStreamManager ? (
               <WebRTCStreamManager
                 key={`webrtc-stream-${streamId}`}
-                {...webRTCProps}
+                streamId={streamId}
+                userId={userId}
+                username={username}
+                isStreamer={isCurrentUserStreamer}
+                isCameraOn={isCameraOn}
+                isMicrophoneOn={isMicrophoneOn}
+                onParticipantCount={handleParticipantCount}
+                onConnectionError={handleConnectionError}
               />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-black">
+                <Loader2 className="h-8 w-8 animate-spin text-white" />
+              </div>
             )}
             
             {/* Video overlay elements */}
@@ -1247,6 +1256,21 @@ export default function LiveStreamPage() {
                   <Terminal className="h-5 w-5" />
                 </button>
               </div>
+              
+              {/* Reconnection button for duplicate connection errors */}
+              {error && error.includes('duplicate session') && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-black/80 p-5 rounded-lg text-center">
+                  <TriangleAlert className="h-10 w-10 mx-auto mb-3 text-red-500" />
+                  <p className="text-white mb-4">{error}</p>
+                  <button 
+                    onClick={handleReconnect}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                  >
+                    <RotateCw className="h-4 w-4 mr-2 inline-block" />
+                    Reconnect
+                  </button>
+                </div>
+              )}
 
               {/* Product and controls positioned together */}
               <div className="product-and-controls-row">

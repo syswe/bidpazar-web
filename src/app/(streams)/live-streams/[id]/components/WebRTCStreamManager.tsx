@@ -332,8 +332,14 @@ interface WebRTCStreamManagerProps {
   isCameraOn?: boolean;
   isMicrophoneOn?: boolean;
   onParticipantCount?: (count: number) => void;
+  onConnectionError?: (error: { type: string; message: string; canReconnect: boolean }) => void;
   className?: string;
 }
+
+// Add sessionId to track unique sessions
+const generateSessionId = () => {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+};
 
 // ===================== MAIN COMPONENT =====================
 export default function WebRTCStreamManager({
@@ -344,6 +350,7 @@ export default function WebRTCStreamManager({
   isCameraOn: externalCameraOn,
   isMicrophoneOn: externalMicrophoneOn,
   onParticipantCount,
+  onConnectionError,
   className,
 }: WebRTCStreamManagerProps) {
   const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
@@ -357,6 +364,11 @@ export default function WebRTCStreamManager({
   const anonymousId = useRef<string>(uuidv4()).current;
   const effectiveUserId = userId || `anon-${anonymousId}`;
   const effectiveUsername = username || `viewer-${anonymousId.slice(0, 8)}`;
+  
+  // Add a unique session ID to prevent duplicate connections
+  const sessionId = useRef<string>(generateSessionId()).current;
+  const isComponentMounted = useRef<boolean>(false);
+  const hasActiveConnection = useRef<boolean>(false);
   
   // =========== COMPONENT STATE ===========
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
@@ -394,6 +406,7 @@ export default function WebRTCStreamManager({
   const mountedRef = useRef<boolean>(false);
   const didInitialSetupRef = useRef<boolean>(false);
   const connectInProgressRef = useRef<boolean>(false);
+  const mediaSetupAttemptRef = useRef<number>(0); // Moved mediaSetupAttempt here
   
   // Maximum connection attempts before giving up
   const MAX_CONNECTION_ATTEMPTS = 10;
@@ -421,7 +434,13 @@ export default function WebRTCStreamManager({
       return;
     }
 
-    logTrace('connectToSignalingServer called', { currentStatus: connectionStatus });
+    // Check if this component instance already has an active connection
+    if (hasActiveConnection.current) {
+      logWarn('Connection attempt aborted: This component instance already has an active connection');
+      return;
+    }
+
+    logTrace('connectToSignalingServer called', { currentStatus: connectionStatus, sessionId });
     connectInProgressRef.current = true;
     setConnectionStatus('connecting');
 
@@ -443,7 +462,8 @@ export default function WebRTCStreamManager({
       configSocketUrl: runtimeConfig?.socketUrl,
       envSocketUrl: process.env.NEXT_PUBLIC_SOCKET_URL,
       locationOrigin: window.location.origin,
-      wsUrl
+      wsUrl,
+      sessionId
     });
     
     if (!socketUrl) {
@@ -489,7 +509,8 @@ export default function WebRTCStreamManager({
       logInfo('Connecting to signaling server', { 
         url: fullSocketUrl,
         userId: effectiveUserId,
-        streamId
+        streamId,
+        sessionId
       });
       
       // Add direct WebSocket test to diagnose connectivity
@@ -507,12 +528,13 @@ export default function WebRTCStreamManager({
           streamId,
           userId: effectiveUserId,
           username: effectiveUsername,
-          isStreamer: isStreamer ? 1 : 0
+          isStreamer: isStreamer ? 1 : 0,
+          sessionId // Add session ID to query to help server identify duplicate connections
         },
         transports: ['websocket', 'polling'], // Prefer websocket first
         autoConnect: true,
         reconnection: true,
-        reconnectionAttempts: 15, // Increase attempts
+        reconnectionAttempts: 5, // Reduced from 15 to prevent excessive reconnection attempts
         reconnectionDelay: 1000,
         reconnectionDelayMax: 8000, // Increase max delay
         timeout: 15000 // Increase timeout for slower connections
@@ -531,21 +553,33 @@ export default function WebRTCStreamManager({
         logInfo('Socket connected', {
           socketId: socket.id,
           streamId,
-          userId: effectiveUserId
+          userId: effectiveUserId,
+          sessionId
         });
         
+        // Mark this component as having an active connection
+        hasActiveConnection.current = true;
         connectInProgressRef.current = false;
         setConnectionStatus('connected');
         setError(null);
         connectionAttemptsRef.current = 0; // Reset attempts on successful connection
         
         // Request router capabilities after successful connection
-        socket.emit('getRouterRtpCapabilities', { streamId }, (response: any) => {
+        socket.emit('getRouterRtpCapabilities', { streamId, sessionId }, (response: any) => {
           if (!mountedRef.current) return;
           
           if (response.error) {
             logError('Failed to get router capabilities', { error: response.error });
             setError(`Failed to initialize media: ${response.error}`);
+            return;
+          }
+          
+          if (response.duplicateConnection) {
+            logWarn('Server detected duplicate connection, this connection will be closed', { 
+              existingSocketId: response.existingSocketId 
+            });
+            socket.disconnect();
+            setError('Another active connection for this stream exists. Please reload the page if this is unexpected.');
             return;
           }
           
@@ -579,11 +613,19 @@ export default function WebRTCStreamManager({
           return;
         }
         
-        logWarn('Socket disconnected', { reason, currentSocketId: socket.id });
+        logWarn('Socket disconnected', { reason, currentSocketId: socket.id, sessionId });
         connectInProgressRef.current = false;
+        hasActiveConnection.current = false; // Reset active connection flag
         setConnectionStatus('disconnected');
         
-        if (mountedRef.current && connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
+        // Only attempt reconnection for certain disconnect reasons
+        const shouldReconnect = 
+          reason === 'io server disconnect' || 
+          reason === 'transport close' || 
+          reason === 'transport error' ||
+          reason === 'ping timeout';
+        
+        if (mountedRef.current && shouldReconnect && connectionAttemptsRef.current < MAX_CONNECTION_ATTEMPTS) {
           connectionAttemptsRef.current += 1;
           const nextAttemptDelay = RETRY_DELAYS[Math.min(connectionAttemptsRef.current -1, RETRY_DELAYS.length - 1)];
           logInfo(`Scheduling reconnection attempt ${connectionAttemptsRef.current}/${MAX_CONNECTION_ATTEMPTS} in ${nextAttemptDelay}ms due to disconnect`, { reason });
@@ -598,7 +640,45 @@ export default function WebRTCStreamManager({
         } else if (connectionAttemptsRef.current >= MAX_CONNECTION_ATTEMPTS) {
           logError('Maximum reconnection attempts reached after disconnect');
           setError('Failed to connect after multiple attempts. Please refresh the page.');
+        } else if (!shouldReconnect) {
+          // Intentional disconnection - no reconnect needed
+          logInfo('Intentional client disconnection, not attempting to reconnect', { reason });
         }
+      });
+      
+      // Handle duplicate connection detection from server
+      socket.on('duplicateConnection', (data) => {
+        logWarn('Server detected duplicate connection', { 
+          socketId: socket.id,
+          existingSocketId: data.existingSocketId
+        });
+        
+        // Set error immediately to inform user
+        setError('Connection issue detected: Another connection to this stream exists');
+        
+        // Force disconnect and reset state 
+        socket.disconnect();
+        
+        // Reset connection flags to allow for retry
+        connectionAttemptsRef.current = 0;
+        hasActiveConnection.current = false;
+        connectInProgressRef.current = false;
+        
+        // Notify user with clear instructions after a short delay
+        setTimeout(() => {
+          if (mountedRef.current) {
+            setError('Connection closed due to duplicate session. Click the "Reconnect" button below to try again.');
+            
+            // Signal to parent component that reconnection UI should be shown
+            if (onConnectionError) {
+              onConnectionError({
+                type: 'duplicate_session',
+                message: 'Duplicate session detected',
+                canReconnect: true
+              });
+            }
+          }
+        }, 1000);
       });
       
       // Add catch-all error handler
@@ -607,7 +687,7 @@ export default function WebRTCStreamManager({
         
         logError('Socket connection error', formatError(err), effectiveUserId, streamId);
         connectInProgressRef.current = false;
-        setError('Connection error occurred. Please check your network.');
+        setError('Connection error occurred. Please check your network and reload the page.');
       });
       
       // Add explicit handler for server errors
@@ -615,7 +695,36 @@ export default function WebRTCStreamManager({
         if (!mountedRef.current) return;
         
         logError('Server error received', { message }, effectiveUserId, streamId);
-        setError(`Server error: ${message}`);
+        setError(`Server error: ${message}. Please reload the page.`);
+      });
+      
+      // Add handler for forceDisconnect message from server
+      socket.on('forceDisconnect', (data) => {
+        if (!mountedRef.current) return;
+        
+        logWarn('Received force disconnect from server', { 
+          message: data.message, 
+          socketId: socket.id 
+        });
+        
+        // Set a user-friendly error message
+        setError(data.message || 'This connection was closed because you connected from another session.');
+        
+        // Set a flag to prevent excessive reconnection attempts for forced disconnections
+        hasActiveConnection.current = false;
+        connectInProgressRef.current = false;
+        
+        // Clean up any existing media tracks
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        
+        // Don't set immediate disconnect - let user see the message
+        setTimeout(() => {
+          if (socket && socket.connected && mountedRef.current) {
+            socket.disconnect();
+          }
+        }, 3000);
       });
       
       // Set up MediaSoup message handlers
@@ -630,7 +739,8 @@ export default function WebRTCStreamManager({
             // Request to create a producer transport
             socket.emit('createProducerTransport', { 
               forceTcp: false,
-              rtpCapabilities: device.rtpCapabilities
+              rtpCapabilities: device.rtpCapabilities,
+              sessionId // Include session ID with all requests
             });
             
             // For streamers, capture local media
@@ -639,7 +749,8 @@ export default function WebRTCStreamManager({
             // Request to create a consumer transport for viewers
             socket.emit('createConsumerTransport', { 
               forceTcp: false,
-              rtpCapabilities: device.rtpCapabilities
+              rtpCapabilities: device.rtpCapabilities,
+              sessionId // Include session ID with all requests
             });
           }
         }
@@ -678,6 +789,47 @@ export default function WebRTCStreamManager({
           onParticipantCount?.(stats.participants);
         }
       });
+
+      socket.on('newProducer', async (data) => {
+        const { producerId, kind } = data;
+        logInfo('New producer available', { producerId, kind });
+        
+        if (!transportRef.current.consumer || !deviceRef.current) {
+          logWarn('Cannot consume: consumer transport or device not ready', {
+            hasConsumerTransport: !!transportRef.current.consumer,
+            hasDevice: !!deviceRef.current
+          });
+          return;
+        }
+        
+        // Request to consume this producer
+        try {
+          if (!socketRef.current || !socketRef.current.connected) {
+            logWarn('Cannot consume: socket not connected');
+            return;
+          }
+          
+          // Wait a short delay to ensure server-side is ready for the consume request
+          setTimeout(() => {
+            if (!socketRef.current?.connected || !transportRef.current.consumer) return;
+            
+            socketRef.current.emit('consume', {
+              transportId: transportRef.current.consumer.id,
+              producerId,
+              rtpCapabilities: deviceRef.current?.rtpCapabilities
+            }, (response: { error?: string; [key: string]: any }) => {
+              if (response.error) {
+                logError('Failed to consume producer', { error: response.error }, effectiveUserId, streamId);
+                setError(`Failed to consume stream: ${response.error}`);
+                return;
+              }
+              handleConsume(response);
+            });
+          }, 500);
+        } catch (err) {
+          logError('Error in newProducer handler', formatError(err), effectiveUserId, streamId);
+        }
+      });
       
       return socket;
     } catch (err) {
@@ -691,7 +843,15 @@ export default function WebRTCStreamManager({
       setError('Failed to connect to streaming server');
       setConnectionStatus('disconnected');
     }
-  }, [streamId, effectiveUserId, effectiveUsername, isStreamer, runtimeConfig, isConfigLoading, connectionStatus, onParticipantCount]);
+  }, [
+    streamId, 
+    effectiveUserId, 
+    effectiveUsername, 
+    isStreamer, 
+    runtimeConfig, 
+    isConfigLoading, 
+    onParticipantCount
+  ]);
   
   /**
    * Test direct WebSocket connectivity (without Socket.IO)
@@ -1093,10 +1253,41 @@ export default function WebRTCStreamManager({
               transportId: transport.id
             });
             
-            socketRef.current.emit('consume', {
-              streamId,
-              transportId: transport.id,
-              rtpCapabilities: deviceRef.current.rtpCapabilities
+            // Define types for the producers response
+            interface Producer {
+              producerId: string;
+              kind: string;
+              peerId: string;
+            }
+            
+            socketRef.current.emit('getProducers', { streamId }, (producers: Producer[]) => {
+              if (Array.isArray(producers) && producers.length > 0) {
+                logInfo(`Received ${producers.length} producers to consume`, {
+                  producerIds: producers.map(p => p.producerId)
+                });
+                
+                // Request to consume each producer
+                producers.forEach((producer) => {
+                  if (socketRef.current?.connected && transportRef.current.consumer && deviceRef.current) {
+                    socketRef.current.emit('consume', {
+                      transportId: transportRef.current.consumer.id,
+                      producerId: producer.producerId,
+                      rtpCapabilities: deviceRef.current.rtpCapabilities
+                    }, (response: { error?: string; consumerId?: string; producerId?: string; kind?: string; rtpParameters?: any }) => {
+                      if (response.error) {
+                        logError('Failed to consume producer', {
+                          error: response.error,
+                          producerId: producer.producerId
+                        });
+                        return;
+                      }
+                      handleConsume(response);
+                    });
+                  }
+                });
+              } else {
+                logInfo('No producers available to consume yet');
+              }
             });
           }
         } else if (state === 'failed') {
@@ -1264,7 +1455,7 @@ export default function WebRTCStreamManager({
       setError('Failed to publish media stream. Please check your device permissions.');
       return false;
     }
-  }, []);
+  }, [setStreamReady, setError]); // Added setStreamReady and setError as they are used from component state
   
   /**
    * Handle consuming a remote producer
@@ -1452,6 +1643,13 @@ export default function WebRTCStreamManager({
         localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
       }
+
+      // Track local media setup attempts to prevent excessive retries
+      // const mediaSetupAttempt = useRef(0); // Removed from here
+      if (mediaSetupAttemptRef.current > 3) { // Use the ref from component scope
+        throw new Error("Failed to set up media devices after multiple attempts");
+      }
+      mediaSetupAttemptRef.current++; // Increment the ref from component scope
       
       // Detect platform for optimal constraints
       const isFirefox = navigator.userAgent.includes('Firefox');
@@ -1502,13 +1700,55 @@ export default function WebRTCStreamManager({
       } catch (err) {
         logger.warn('Failed to get media with full constraints, falling back to basic constraints', formatError(err));
         
-        // Fall back to more basic constraints
-        const fallbackConstraints: MediaStreamConstraints = {
-          video: selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true,
-          audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true
-        };
-        
-        stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        // Provide specific error messages based on the error type
+        if ((err as any)?.name === 'NotAllowedError') {
+          logWarn('Camera/microphone access denied by user or system', formatError(err));
+          
+          // Try video-only as a fallback if audio might be the issue
+          try {
+            logInfo('Attempting video-only as fallback');
+            stream = await navigator.mediaDevices.getUserMedia({ 
+              video: selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true,
+              audio: false
+            });
+            setError('Microphone access denied. Streaming without audio.');
+          } catch (videoOnlyErr) {
+            // Try audio-only as a last resort
+            try {
+              logInfo('Attempting audio-only as last resort fallback');
+              stream = await navigator.mediaDevices.getUserMedia({ 
+                video: false,
+                audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true 
+              });
+              setError('Camera access denied. Streaming with audio only.');
+            } catch (audioOnlyErr) {
+              throw new Error('Both camera and microphone access denied. Cannot stream without media.');
+            }
+          }
+        } else if ((err as any)?.name === 'NotFoundError') {
+          throw new Error('Camera or microphone not found. Please check your device connections.');
+        } else if ((err as any)?.name === 'NotReadableError' || (err as any)?.name === 'AbortError') {
+          throw new Error('Could not access your camera/microphone. They may be in use by another application.');
+        } else if ((err as any)?.name === 'OverconstrainedError') {
+          // Fallback to basic constraints without specific requirements
+          logWarn('Device constraints not satisfied, falling back to basic constraints');
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: true 
+          });
+        } else {
+          // Fall back to more basic constraints for other errors
+          const fallbackConstraints: MediaStreamConstraints = {
+            video: selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true,
+            audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true
+          };
+          
+          stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        }
+      }
+      
+      if (!stream) {
+        throw new Error('Failed to obtain media stream after fallbacks');
       }
       
       logger.info('Local media stream obtained', {
@@ -1519,6 +1759,23 @@ export default function WebRTCStreamManager({
       });
       
       localStreamRef.current = stream;
+      
+      // Apply initial settings based on props
+      if (typeof externalCameraOn !== 'undefined' && !externalCameraOn) {
+        const videoTracks = stream.getVideoTracks();
+        videoTracks.forEach(track => {
+          track.enabled = false;
+        });
+        setIsVideoHidden(true);
+      }
+      
+      if (typeof externalMicrophoneOn !== 'undefined' && !externalMicrophoneOn) {
+        const audioTracks = stream.getAudioTracks();
+        audioTracks.forEach(track => {
+          track.enabled = false;
+        });
+        setIsMuted(true);
+      }
       
       // Display the local stream in the video element
       if (videoRef.current) {
@@ -1547,18 +1804,35 @@ export default function WebRTCStreamManager({
       
       // Provide more specific error message
       if ((err as any)?.name === 'NotAllowedError') {
-        setError('Camera/microphone access denied. Please check your browser permissions.');
+        setError('Camera/microphone access denied. Please check your browser permissions and click the camera icon in the address bar.');
       } else if ((err as any)?.name === 'NotFoundError') {
         setError('Camera or microphone not found. Please check your device connections.');
       } else if ((err as any)?.name === 'NotReadableError') {
         setError('Could not access your camera/microphone. They may be in use by another application.');
+      } else if ((err as Error)?.message) {
+        setError((err as Error).message);
       } else {
         setError('Failed to access camera or microphone. Please check your permissions.');
       }
       
       return null;
     }
-  }, [isStreamer, selectedVideoDevice, selectedAudioDevice, produceLocalMedia]);
+  }, [
+    isStreamer, 
+    selectedVideoDevice, 
+    selectedAudioDevice, 
+    produceLocalMedia, 
+    externalCameraOn, 
+    externalMicrophoneOn,
+    effectiveUserId, // Added
+    streamId,        // Added
+    setError,        // Added
+    setStreamReady,  // Added
+    setIsVideoHidden,// Added
+    setIsMuted       // Added
+    // Assuming logError, formatError, logger, logInfo, logWarn are stable and defined outside or memoized
+    // Refs (localStreamRef, videoRef, transportRef) are stable by nature
+  ]);
   
   // =========== MEDIA CONTROLS ===========
   /**
@@ -1604,21 +1878,60 @@ export default function WebRTCStreamManager({
   // Initialize component
   useEffect(() => {
     mountedRef.current = true;
-    logInfo('Component mounted or crucial props changed', { streamId, userId, isStreamer });
+    isComponentMounted.current = true;
+    
+    logInfo('Component mounted or crucial props changed', { 
+      streamId, 
+      userId, 
+      isStreamer,
+      sessionId // Log session ID for troubleshooting
+    });
+    
     getBrowserDiagnostics();
 
+    // Use a debounce mechanism to prevent multiple connection attempts in rapid succession
+    let connectionDebounceTimer: NodeJS.Timeout | null = null;
+    const mountTimestamp = Date.now();
+
     const attemptConnection = () => {
-        connectionAttemptsRef.current = 0; // Reset attempts for a fresh connection sequence
-        connectToSignalingServer();
+        // Reset connection state on fresh mount
+        connectionAttemptsRef.current = 0;
+        
+        // Don't establish a new connection if one was active recently (within last 3 seconds)
+        // This prevents connection thrashing when component remounts frequently
+        if (hasActiveConnection.current) {
+            logWarn('Connection attempt debounced: This component instance recently had an active connection', {
+                mountTimestamp,
+                streamId,
+                userId
+            });
+            return;
+        }
+        
+        // Check if we should connect based on component state
+        if (isComponentMounted.current && mountedRef.current && !connectInProgressRef.current) {
+            // Add a small delay before connecting to avoid rapid connection attempts
+            connectionDebounceTimer = setTimeout(() => {
+                if (mountedRef.current) {
+                    logInfo('Initiating connection after debounce delay', {
+                        streamId,
+                        userId,
+                        isStreamer,
+                        sessionId
+                    });
+                    connectToSignalingServer();
+                    didInitialSetupRef.current = true;
+                }
+            }, 500); // 500ms debounce
+        }
     };
 
     if (isStreamer) {
         preConnectionTest().then(testResult => {
             if (testResult.success) {
-                logInfo('Pre-connection test successful, connecting to signaling server');
+                logInfo('Pre-connection test successful, preparing to connect to signaling server');
                 if (!isConfigLoading && runtimeConfig) {
                     attemptConnection();
-                    didInitialSetupRef.current = true;
                 }
             } else {
                 logError('Pre-connection test failed', { 
@@ -1629,9 +1942,8 @@ export default function WebRTCStreamManager({
         });
     } else {
         if (!isConfigLoading && runtimeConfig) {
-            logInfo('Viewer: connecting to signaling server');
+            logInfo('Viewer: preparing to connect to signaling server');
             attemptConnection();
-            didInitialSetupRef.current = true;
         }
     }
     
@@ -1658,13 +1970,20 @@ export default function WebRTCStreamManager({
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Cleanup function
+    // Cleanup function with enhanced connection state handling
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       
       mountedRef.current = false;
+      isComponentMounted.current = false;
+      
       logInfo('Component unmounting, cleaning up resources');
+      
+      // Clear debounce timer if exists
+      if (connectionDebounceTimer) {
+        clearTimeout(connectionDebounceTimer);
+      }
       
       // Clear all pending timeouts
       timeoutsRef.current.forEach(clearTimeout);
@@ -1698,6 +2017,8 @@ export default function WebRTCStreamManager({
       connectInProgressRef.current = false;
       connectionAttemptsRef.current = 0;
       didInitialSetupRef.current = false;
+      // Keep hasActiveConnection true for a brief period to prevent immediate reconnect if remounted quickly
+      // It will be reset by the next component instance after the debounce period
       producersRef.current = { video: null, audio: null };
       consumersRef.current = { video: null, audio: null };
     };
@@ -1834,6 +2155,7 @@ export default function WebRTCStreamManager({
         const timeoutId = setTimeout(() => {
           if (mountedRef.current) {
             logger.info('Recapturing media with new device selection');
+            // Restore the call to the main captureLocalMedia function
             captureLocalMedia();
           }
         }, 100);
@@ -1847,6 +2169,7 @@ export default function WebRTCStreamManager({
         didInitialSetupRef.current = true;
       }
     }
+  // Add captureLocalMedia back to the dependency array
   }, [selectedAudioDevice, selectedVideoDevice, connectionStatus, isStreamer, captureLocalMedia]);
   
   // Add comprehensive system diagnostics
@@ -2148,10 +2471,28 @@ export default function WebRTCStreamManager({
         logError('MediaSoup device support test failed', formatError(err), effectiveUserId, streamId);
       }
       
+      // Add session information to diagnosis
+      const sessionInfo = {
+        sessionId,
+        hasActiveConnection: hasActiveConnection.current,
+        connectionAttempts: connectionAttemptsRef.current,
+        isStreamer,
+        isComponentMounted: isComponentMounted.current
+      };
+      
       // Check for issues in order of likelihood
       
-      // 1. MediaSoup device support
-      if (mediasoupDeviceSupport !== 'supported') {
+      // 1. Check for duplicate connections
+      if (error && error.includes('Another connection for this stream already exists')) {
+        diagnosis = `Duplicate connection detected. Session ID: ${sessionId}`;
+        possibleSolutions = [
+          'Close other tabs or windows with this stream open',
+          'Reload this page',
+          'Try in a private/incognito window'
+        ];
+      }
+      // 2. MediaSoup device support
+      else if (mediasoupDeviceSupport !== 'supported') {
         diagnosis = `WebRTC not fully supported by your browser (${mediasoupDeviceSupport}).`;
         possibleSolutions = [
           'Update your browser to the latest version',
@@ -2159,7 +2500,7 @@ export default function WebRTCStreamManager({
           'Disable browser extensions that might block WebRTC'
         ];
       }
-      // 2. Check network connectivity
+      // 3. Check network connectivity
       else if (!navigator.onLine) {
         diagnosis = 'Network connection is offline.';
         possibleSolutions = [
@@ -2167,7 +2508,7 @@ export default function WebRTCStreamManager({
           'Connect to a different network if available'
         ];
       }
-      // 3. Check server connectivity
+      // 4. Check server connectivity
       else if (!connectivityResults.socketServer.success) {
         diagnosis = 'Cannot connect to streaming server.';
         possibleSolutions = [
@@ -2176,7 +2517,7 @@ export default function WebRTCStreamManager({
           'Try a different network connection if possible'
         ];
       }
-      // 4. Check STUN/TURN connectivity (NAT traversal issues)
+      // 5. Check STUN/TURN connectivity (NAT traversal issues)
       else if (!connectivityResults.stunServer.success && !connectivityResults.turnServer.success) {
         diagnosis = 'NAT traversal failure: Cannot establish media connection through firewalls.';
         possibleSolutions = [
@@ -2185,7 +2526,7 @@ export default function WebRTCStreamManager({
           'Contact your network administrator to allow WebRTC traffic'
         ];
       }
-      // 5. Check browser compatibility
+      // 6. Check browser compatibility
       else if (!window.RTCPeerConnection || !navigator.mediaDevices) {
         diagnosis = 'Your browser does not fully support WebRTC technology.';
         possibleSolutions = [
@@ -2194,7 +2535,7 @@ export default function WebRTCStreamManager({
           'If using private browsing mode, try regular browsing mode'
         ];
       }
-      // 6. Check if the stream is ready
+      // 7. Check if the stream is ready
       else if (!streamReady && connectionStatus === 'connected') {
         diagnosis = 'Connected to signaling server but no media stream received.';
         possibleSolutions = [
@@ -2203,7 +2544,7 @@ export default function WebRTCStreamManager({
           'Try refreshing the page'
         ];
       }
-      // 7. Check for media autoplay issues
+      // 8. Check for media autoplay issues
       else if (streamReady && videoRef.current && videoRef.current.paused) {
         diagnosis = 'Media stream received but playback is paused (likely autoplay policy).';
         possibleSolutions = [
@@ -2212,9 +2553,18 @@ export default function WebRTCStreamManager({
           'Try unmuting the stream'
         ];
       }
-      // 8. General connection issues
+      // 9. Check for component mounting issues
+      else if (!isComponentMounted.current) {
+        diagnosis = 'Component mounting issue detected.';
+        possibleSolutions = [
+          'Try refreshing the page',
+          'Clear browser cache and reload',
+          'Check for errors in browser console'
+        ];
+      }
+      // 10. General connection issues
       else if (connectionStatus !== 'connected') {
-        diagnosis = `Connection status: ${connectionStatus}.`;
+        diagnosis = `Connection status: ${connectionStatus}. Session ID: ${sessionId}`;
         possibleSolutions = [
           'Try refreshing the page',
           'Check your internet connection stability',
@@ -2226,7 +2576,8 @@ export default function WebRTCStreamManager({
         diagnosis, 
         possibleSolutions, 
         mediasoupDeviceSupport,
-        connectivityResults
+        connectivityResults,
+        sessionInfo
       });
       
       return { 
@@ -2234,17 +2585,19 @@ export default function WebRTCStreamManager({
         possibleSolutions, 
         connectivityResults,
         mediasoupDeviceSupport,
-        browserInfo
+        browserInfo,
+        sessionInfo
       };
     } catch (error) {
       logError('Error diagnosing streaming issue', formatError(error), effectiveUserId, streamId);
       return { 
         diagnosis: 'Error during diagnosis process.', 
         possibleSolutions: ['Try refreshing the page', 'Check browser console for errors'],
-        error: (error as Error).message 
+        error: (error as Error).message,
+        sessionId
       };
     }
-  }, [connectionStatus, streamReady, testNetworkConnectivity, effectiveUserId, streamId, getBrowserDiagnostics]);
+  }, [connectionStatus, streamReady, testNetworkConnectivity, effectiveUserId, streamId, getBrowserDiagnostics, error, isStreamer, sessionId]);
   
   // Function to show diagnostics to the user
   const showStreamingDiagnostics = useCallback(async () => {
