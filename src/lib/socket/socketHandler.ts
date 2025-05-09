@@ -39,8 +39,8 @@ const mediasoupAppConfig = {
     initialAvailableOutgoingBitrate: 1000000,
   },
   worker: {
-    rtcMinPort: 10000,
-    rtcMaxPort: 10100,
+    rtcMinPort: parseInt(process.env.MEDIASOUP_MIN_PORT || "40000"),
+    rtcMaxPort: parseInt(process.env.MEDIASOUP_MAX_PORT || "40100"),
     logLevel: "warn" as MediasoupTypes.WorkerLogLevel,
     logTags: [
       "info",
