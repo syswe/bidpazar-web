@@ -1,6 +1,6 @@
 import { User } from "./user";
 
-export type LiveStreamStatus = "SCHEDULED" | "LIVE" | "ENDED";
+export type LiveStreamStatus = "SCHEDULED" | "LIVE" | "PAUSED" | "ENDED";
 
 export interface AuctionListing {
   id: string;

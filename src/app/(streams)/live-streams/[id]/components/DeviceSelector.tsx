@@ -1,257 +1,362 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { Mic, Video, RefreshCw, Info, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState, useRef } from "react";
+import { Check, RefreshCw, VideoIcon, Mic, Volume2 } from "lucide-react";
 
 interface DeviceSelectorProps {
-  onDeviceChange: (type: 'audio' | 'video', deviceId: string) => void;
-  initialAudioDeviceId?: string;
+  onDeviceChange: (type: "audio" | "video", deviceId: string) => void;
   initialVideoDeviceId?: string;
+  initialAudioDeviceId?: string;
 }
 
 export default function DeviceSelector({
   onDeviceChange,
+  initialVideoDeviceId,
   initialAudioDeviceId,
-  initialVideoDeviceId
 }: DeviceSelectorProps) {
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedAudioDevice, setSelectedAudioDevice] = useState<string | undefined>(initialAudioDeviceId);
-  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string | undefined>(initialVideoDeviceId);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showMacOSWarning, setShowMacOSWarning] = useState(false);
-  const [hasVirtualCamera, setHasVirtualCamera] = useState(false);
-  const [deviceError, setDeviceError] = useState<string | null>(null);
-  const [permissionRequested, setPermissionRequested] = useState(false);
-  
-  // Detect operating system
-  const isMacOS = /Mac OS/.test(navigator.userAgent);
-  const isWindows = /Windows/.test(navigator.userAgent);
-  const isLinux = /Linux/.test(navigator.userAgent) || /X11/.test(navigator.userAgent);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<string | undefined>(
+    initialVideoDeviceId
+  );
+  const [selectedAudio, setSelectedAudio] = useState<string | undefined>(
+    initialAudioDeviceId
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [testVideoStream, setTestVideoStream] = useState<MediaStream | null>(
+    null
+  );
+  const [testAudioStream, setTestAudioStream] = useState<MediaStream | null>(
+    null
+  );
+  const [showTestVideo, setShowTestVideo] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Enumerate available media devices
-  const enumerateDevices = async () => {
+  // Add a useRef for the video element
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Get available devices
+  const getDevices = async () => {
     try {
-      setDeviceError(null);
-      
-      // Request permissions first to get accurate device labels
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        setPermissionRequested(true);
-      } catch (permissionErr) {
-        console.log('Permission request issue:', permissionErr);
-        
-        if ((permissionErr as any)?.name === 'NotAllowedError') {
-          setDeviceError('Camera/microphone access denied. Please check your browser permissions.');
-        } else if ((permissionErr as any)?.name === 'NotFoundError') {
-          setDeviceError('No camera or microphone found. Please connect a device and try again.');
-        } else {
-          console.log('Proceeding with limited device info');
-        }
-      }
-      
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      
-      const audioInputs = devices.filter(device => device.kind === 'audioinput');
-      const videoInputs = devices.filter(device => device.kind === 'videoinput');
-      
-      console.log('Devices detected:', {
-        audio: audioInputs.map(d => d.label || 'Unlabeled device'),
-        video: videoInputs.map(d => d.label || 'Unlabeled device'),
-        os: { isMacOS, isWindows, isLinux }
-      });
-      
-      // Check for virtual cameras on different platforms
-      const virtualCameraPatterns = [
-        /virtual/i, /obs/i, /capture/i, /cam link/i, /webcamoid/i, 
-        /droidcam/i, /epoccam/i, /snap/i, /v4l2loopback/i
-      ];
-      
-      const hasVirtualCam = videoInputs.some(device => 
-        virtualCameraPatterns.some(pattern => pattern.test(device.label))
-      );
-      setHasVirtualCamera(hasVirtualCam);
-      
-      // Set platform-specific warnings
-      setShowMacOSWarning(isMacOS && !hasVirtualCam);
-      
-      setAudioDevices(audioInputs);
-      setVideoDevices(videoInputs);
+      setIsLoading(true);
+      setError(null);
 
-      // If no audio device is selected, select the first available one
-      if (!selectedAudioDevice && audioInputs.length > 0) {
-        setSelectedAudioDevice(audioInputs[0].deviceId);
-        onDeviceChange('audio', audioInputs[0].deviceId);
-      } else if (audioInputs.length === 0 && !deviceError) {
-        setDeviceError('No microphone detected. Please connect a microphone to stream.');
+      // First request permissions
+      await navigator.mediaDevices
+        .getUserMedia({ video: true, audio: true })
+        .catch((err) => {
+          console.warn("Permission request had an error, but continuing", err);
+          // Continue anyway to see what devices we can access
+        });
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+
+      const videos = devices.filter((device) => device.kind === "videoinput");
+      const audios = devices.filter((device) => device.kind === "audioinput");
+
+      setVideoDevices(videos);
+      setAudioDevices(audios);
+
+      // If no device is selected yet and we have devices available, select the first one
+      if (!selectedVideo && videos.length > 0) {
+        setSelectedVideo(videos[0].deviceId);
+        onDeviceChange("video", videos[0].deviceId);
       }
-      
-      // If no video device is selected, look for the best option
-      if (!selectedVideoDevice && videoInputs.length > 0) {
-        // First, try to find any virtual camera
-        const virtualCamera = videoInputs.find(device => 
-          virtualCameraPatterns.some(pattern => pattern.test(device.label))
-        );
-        
-        // Next, try to find an external camera (usually better quality)
-        const externalCamera = virtualCamera || videoInputs.find(device => 
-          !device.label.toLowerCase().includes('built-in') && 
-          !device.label.toLowerCase().includes('internal')
-        );
-        
-        // Fall back to the first camera if no better option found
-        const deviceToSelect = externalCamera || videoInputs[0];
-        setSelectedVideoDevice(deviceToSelect.deviceId);
-        onDeviceChange('video', deviceToSelect.deviceId);
-      } else if (videoInputs.length === 0 && !deviceError) {
-        setDeviceError('No camera detected. Please connect a camera to stream.');
+
+      if (!selectedAudio && audios.length > 0) {
+        setSelectedAudio(audios[0].deviceId);
+        onDeviceChange("audio", audios[0].deviceId);
       }
-    } catch (error) {
-      console.error('Error enumerating devices:', error);
-      setDeviceError('Failed to detect media devices. Please check your browser settings.');
+    } catch (err) {
+      console.error("Error getting devices:", err);
+      setError("Failed to access media devices. Please check permissions.");
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // Initialize device list
+  // Test video device
+  const testVideoDevice = async () => {
+    try {
+      // Stop any existing test stream
+      if (testVideoStream) {
+        testVideoStream.getTracks().forEach((track) => track.stop());
+      }
+
+      // Start a new test stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: selectedVideo ? { deviceId: { exact: selectedVideo } } : true,
+        audio: false,
+      });
+
+      setTestVideoStream(stream);
+      setShowTestVideo(true);
+      setError(null);
+    } catch (err) {
+      console.error("Error testing video device:", err);
+      setError(`Video device error: ${(err as Error).message}`);
+      setShowTestVideo(false);
+      setTestVideoStream(null);
+    }
+  };
+
+  // Test audio device with level meter
+  const testAudioDevice = async () => {
+    try {
+      // Stop any existing test stream
+      if (testAudioStream) {
+        testAudioStream.getTracks().forEach((track) => track.stop());
+      }
+
+      // Start a new test stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: selectedAudio ? { deviceId: { exact: selectedAudio } } : true,
+      });
+
+      setTestAudioStream(stream);
+
+      // Create audio context for level meter
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      // Update audio level at regular intervals
+      const updateLevel = () => {
+        if (!testAudioStream) return;
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+        setAudioLevel(average);
+
+        requestAnimationFrame(updateLevel);
+      };
+
+      updateLevel();
+      setError(null);
+    } catch (err) {
+      console.error("Error testing audio device:", err);
+      setError(`Audio device error: ${(err as Error).message}`);
+      setTestAudioStream(null);
+      setAudioLevel(0);
+    }
+  };
+
+  // Stop test streams
+  const stopTests = () => {
+    if (testVideoStream) {
+      testVideoStream.getTracks().forEach((track) => track.stop());
+      setTestVideoStream(null);
+      setShowTestVideo(false);
+    }
+
+    if (testAudioStream) {
+      testAudioStream.getTracks().forEach((track) => track.stop());
+      setTestAudioStream(null);
+      setAudioLevel(0);
+    }
+  };
+
+  // Refresh device list
+  const refreshDevices = () => {
+    setRefreshing(true);
+    stopTests();
+    getDevices();
+  };
+
+  // Handle device selection
+  const handleVideoChange = (deviceId: string) => {
+    setSelectedVideo(deviceId);
+    onDeviceChange("video", deviceId);
+    // Stop any ongoing tests
+    stopTests();
+  };
+
+  const handleAudioChange = (deviceId: string) => {
+    setSelectedAudio(deviceId);
+    onDeviceChange("audio", deviceId);
+    // Stop any ongoing tests
+    stopTests();
+  };
+
+  // Add a useEffect to set the srcObject when the stream changes
   useEffect(() => {
-    enumerateDevices();
-    
-    // Listen for device changes
-    navigator.mediaDevices.addEventListener('devicechange', enumerateDevices);
-    
+    if (videoRef.current && testVideoStream) {
+      videoRef.current.srcObject = testVideoStream;
+    }
+  }, [testVideoStream]);
+
+  // Load devices on mount
+  useEffect(() => {
+    getDevices();
+
+    // Navigator.mediaDevices.ondevicechange event
+    const handleDeviceChange = () => {
+      console.log("Media devices changed, refreshing list");
+      refreshDevices();
+    };
+
+    // Add event listener for device changes
+    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+
+    // Cleanup
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', enumerateDevices);
+      stopTests();
+      navigator.mediaDevices.removeEventListener(
+        "devicechange",
+        handleDeviceChange
+      );
     };
   }, []);
 
-  // Handle audio device change
-  const handleAudioDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const deviceId = e.target.value;
-    setSelectedAudioDevice(deviceId);
-    onDeviceChange('audio', deviceId);
-  };
-
-  // Handle video device change
-  const handleVideoDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const deviceId = e.target.value;
-    setSelectedVideoDevice(deviceId);
-    onDeviceChange('video', deviceId);
-  };
-
-  // Handle refresh button click
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await enumerateDevices();
-    setTimeout(() => setIsRefreshing(false), 500); // Visual feedback
-  };
-
   return (
-    <div className="p-3 space-y-4 text-sm">
-      <h3 className="font-semibold text-primary">Media Settings</h3>
-      
-      {/* Device Error Message */}
-      {deviceError && (
-        <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-red-50 text-red-800 rounded-md border border-red-200">
-          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <p>{deviceError}</p>
+    <div className="p-4 space-y-4">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="font-medium text-sm">Media Settings</h3>
+        <button
+          onClick={refreshDevices}
+          className={`text-xs p-1 rounded-md bg-muted/50 hover:bg-muted ${
+            refreshing ? "animate-spin" : ""
+          }`}
+          disabled={refreshing}
+        >
+          <RefreshCw size={16} />
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-destructive text-xs p-2 bg-destructive/10 rounded-md mb-2">
+          {error}
         </div>
       )}
-      
-      {/* Audio device selection */}
+
+      {/* Video device selector */}
       <div className="space-y-2">
-        <label className="flex items-center gap-2 font-medium">
-          <Mic className="w-4 h-4" />
-          Microphone
-        </label>
-        <select
-          className="w-full p-2 rounded-md bg-muted/50 border border-border text-xs"
-          value={selectedAudioDevice}
-          onChange={handleAudioDeviceChange}
-          disabled={audioDevices.length === 0}
-        >
-          {audioDevices.length === 0 && (
-            <option value="">No microphones found</option>
+        <label className="flex items-center justify-between text-xs font-medium">
+          <span className="flex items-center">
+            <VideoIcon size={14} className="mr-1" /> Camera
+          </span>
+          {showTestVideo ? (
+            <button
+              onClick={() => {
+                stopTests();
+                setShowTestVideo(false);
+              }}
+              className="text-xs px-2 py-1 bg-destructive/20 rounded hover:bg-destructive/30"
+            >
+              Stop Test
+            </button>
+          ) : (
+            <button
+              onClick={testVideoDevice}
+              className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 rounded"
+              disabled={!selectedVideo || isLoading}
+            >
+              Test
+            </button>
           )}
-          {audioDevices.map(device => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || `Microphone ${device.deviceId.substring(0, 5)}...`}
-            </option>
-          ))}
-        </select>
-      </div>
-      
-      {/* Video device selection */}
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 font-medium">
-          <Video className="w-4 h-4" />
-          Camera
         </label>
+
+        {showTestVideo && testVideoStream && (
+          <div className="relative h-24 bg-black rounded-md overflow-hidden mb-2">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
         <select
-          className="w-full p-2 rounded-md bg-muted/50 border border-border text-xs"
-          value={selectedVideoDevice}
-          onChange={handleVideoDeviceChange}
-          disabled={videoDevices.length === 0}
+          value={selectedVideo || ""}
+          onChange={(e) => handleVideoChange(e.target.value)}
+          className="w-full p-1.5 text-xs rounded-md bg-muted/50 border border-muted"
+          disabled={isLoading}
         >
           {videoDevices.length === 0 && (
-            <option value="">No cameras found</option>
+            <option value="">No cameras detected</option>
           )}
-          {videoDevices.map(device => (
+          {videoDevices.map((device) => (
             <option key={device.deviceId} value={device.deviceId}>
               {device.label || `Camera ${device.deviceId.substring(0, 5)}...`}
             </option>
           ))}
         </select>
-        
-        {/* macOS Virtual Camera Notice */}
-        {showMacOSWarning && (
-          <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>For best streaming quality on macOS, we recommend installing OBS Virtual Camera. <a href="https://obsproject.com/download" target="_blank" rel="noopener noreferrer" className="underline">Download OBS</a></p>
-          </div>
-        )}
-        
-        {/* Linux Virtual Camera Notice */}
-        {isLinux && !hasVirtualCamera && (
-          <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>For Linux users, we recommend using OBS with v4l2loopback for virtual camera. <a href="https://obsproject.com/wiki/install-instructions#linux" target="_blank" rel="noopener noreferrer" className="underline">Learn more</a></p>
-          </div>
-        )}
-        
-        {/* Windows Virtual Camera Notice */}
-        {isWindows && !hasVirtualCamera && (
-          <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200">
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>For best streaming quality, we recommend using OBS Virtual Camera on Windows. <a href="https://obsproject.com/download" target="_blank" rel="noopener noreferrer" className="underline">Download OBS</a></p>
-          </div>
-        )}
-        
-        {/* Virtual Camera Found Notice */}
-        {hasVirtualCamera && (
-          <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-green-50 text-green-800 rounded-md border border-green-200">
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>Virtual camera detected! This is great for broadcasting with professional effects.</p>
-          </div>
-        )}
-        
-        {/* Permissions Warning */}
-        {!permissionRequested && (
-          <div className="mt-2 text-xs flex items-start gap-2 p-2 bg-blue-50 text-blue-800 rounded-md border border-blue-200">
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>You need to allow camera and microphone access to stream. Click "Refresh Devices" to request permissions.</p>
-          </div>
-        )}
       </div>
-      
-      {/* Refresh button */}
-      <button
-        onClick={handleRefresh}
-        className="w-full flex items-center justify-center gap-2 p-2 bg-primary/10 hover:bg-primary/20 rounded-md text-primary transition-colors"
-        disabled={isRefreshing}
-      >
-        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        Refresh Devices
-      </button>
+
+      {/* Audio device selector */}
+      <div className="space-y-2">
+        <label className="flex items-center justify-between text-xs font-medium">
+          <span className="flex items-center">
+            <Mic size={14} className="mr-1" /> Microphone
+          </span>
+          {testAudioStream ? (
+            <button
+              onClick={() => {
+                stopTests();
+              }}
+              className="text-xs px-2 py-1 bg-destructive/20 rounded hover:bg-destructive/30"
+            >
+              Stop Test
+            </button>
+          ) : (
+            <button
+              onClick={testAudioDevice}
+              className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 rounded"
+              disabled={!selectedAudio || isLoading}
+            >
+              Test
+            </button>
+          )}
+        </label>
+
+        {testAudioStream && (
+          <div className="h-4 bg-muted/50 rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full bg-primary"
+              style={{ width: `${Math.min(audioLevel, 100)}%` }}
+            ></div>
+          </div>
+        )}
+
+        <select
+          value={selectedAudio || ""}
+          onChange={(e) => handleAudioChange(e.target.value)}
+          className="w-full p-1.5 text-xs rounded-md bg-muted/50 border border-muted"
+          disabled={isLoading}
+        >
+          {audioDevices.length === 0 && (
+            <option value="">No microphones detected</option>
+          )}
+          {audioDevices.map((device) => (
+            <option key={device.deviceId} value={device.deviceId}>
+              {device.label ||
+                `Microphone ${device.deviceId.substring(0, 5)}...`}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="pt-2 text-xs text-muted-foreground">
+        <p>
+          If you're having issues, try closing other applications that might be
+          using your camera or microphone.
+        </p>
+      </div>
     </div>
   );
-} 
+}

@@ -1,11 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import axios, { AxiosError } from 'axios';
-import { toast } from 'sonner';
-import { useAuth } from '@/components/AuthProvider';
-import { Camera, CameraOff, RefreshCcw, Square, Mic, MicOff, User, Share2, Play, Pause } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import axios, { AxiosError } from "axios";
+import { toast } from "sonner";
+import { useAuth } from "@/components/AuthProvider";
+import {
+  Camera,
+  CameraOff,
+  RefreshCcw,
+  Square,
+  Mic,
+  MicOff,
+  User,
+  Share2,
+  Play,
+  Pause,
+} from "lucide-react";
 import { getAuth } from "@/lib/frontend-auth";
-import { useRuntimeConfig } from '@/context/RuntimeConfigContext';
+import { useRuntimeConfig } from "@/context/RuntimeConfigContext";
 
 interface StreamDetails {
   id: string;
@@ -17,7 +28,7 @@ interface StreamDetails {
 
 interface StreamControlsProps {
   streamId?: string;
-  streamStatus: 'SCHEDULED' | 'LIVE' | 'PAUSED' | 'ENDED' | null;
+  streamStatus: "SCHEDULED" | "LIVE" | "PAUSED" | "ENDED" | null;
   onCameraToggle?: () => void;
   onMicrophoneToggle?: () => void;
   onSwitchCamera?: () => void;
@@ -44,18 +55,20 @@ const StreamControls = ({
   onStartStream,
   onPauseStream,
   isStreamer,
-  isLoading
+  isLoading,
 }: StreamControlsProps) => {
   const { user } = useAuth();
   const { token } = getAuth();
-  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig();
+  const { config: runtimeConfig, isLoading: isConfigLoading } =
+    useRuntimeConfig();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPausing, setIsPausing] = useState(false);
-  const [detailedStreamInfo, setDetailedStreamInfo] = useState<StreamDetails | null>(null);
+  const [detailedStreamInfo, setDetailedStreamInfo] =
+    useState<StreamDetails | null>(null);
 
   // Debug log
   useEffect(() => {
-    console.debug('[StreamControls] Mounted with props:', {
+    console.debug("[StreamControls] Mounted with props:", {
       streamId,
       streamStatus,
       isCameraOn,
@@ -63,39 +76,56 @@ const StreamControls = ({
       viewerCount,
       hasToken: !!token,
       userId: user?.id,
-      isStreamer
+      isStreamer,
     });
 
     return () => {
-      console.debug('[StreamControls] Component unmounting');
+      console.debug("[StreamControls] Component unmounting");
     };
-  }, [streamId, streamStatus, isCameraOn, isMicrophoneOn, viewerCount, token, user, isStreamer]);
+  }, [
+    streamId,
+    streamStatus,
+    isCameraOn,
+    isMicrophoneOn,
+    viewerCount,
+    token,
+    user,
+    isStreamer,
+  ]);
 
   // Fetch detailed stream information
   useEffect(() => {
     const fetchStreamDetails = async () => {
       if (!streamId || !token || isConfigLoading || !runtimeConfig) {
-        console.debug('[StreamControls] Cannot fetch details: Missing required info or config.');
+        console.debug(
+          "[StreamControls] Cannot fetch details: Missing required info or config."
+        );
         return;
       }
       const backendApiUrl = runtimeConfig.apiUrl;
 
-      console.debug('[StreamControls] Fetching stream details for stream:', streamId);
+      console.debug(
+        "[StreamControls] Fetching stream details for stream:",
+        streamId
+      );
 
       try {
         const response = await axios.get(
           `${backendApiUrl}/live-streams/${streamId}`,
           {
             headers: {
-              Authorization: `Bearer ${token}`
-            }
+              Authorization: `Bearer ${token}`,
+            },
           }
         );
 
-        console.debug('[StreamControls] Stream details received:', response.data);
+        console.debug(
+          "[StreamControls] Stream details received:",
+          response.data
+        );
         setDetailedStreamInfo(response.data);
       } catch (error) {
-        console.error('[StreamControls] Error fetching stream details:', error);
+        console.error("[StreamControls] Error fetching stream details:", error);
       }
     };
 
@@ -103,10 +133,20 @@ const StreamControls = ({
   }, [streamId, token, runtimeConfig, isConfigLoading]);
 
   const handleStartStream = async () => {
+    console.debug(
+      "[StreamControls] Start button clicked - streamStatus:",
+      streamStatus
+    );
+
     if (onStartStream) {
+      console.debug("[StreamControls] Using passed onStartStream callback");
       onStartStream();
       return;
     }
+
+    console.debug(
+      "[StreamControls] Using internal start stream implementation"
+    );
 
     if (isConfigLoading || !runtimeConfig) {
       toast.error("Configuration not loaded. Cannot start stream.");
@@ -119,7 +159,7 @@ const StreamControls = ({
       console.debug("[StreamControls] Starting stream:", {
         streamId,
         endpoint: `${backendApiUrl}/live-streams/${streamId}/start`,
-        hasToken: !!token
+        hasToken: !!token,
       });
 
       const response = await axios.post(
@@ -127,19 +167,20 @@ const StreamControls = ({
         {},
         {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
       console.debug("[StreamControls] Stream start response:", response.data);
-      toast.success('Stream started successfully');
+      toast.success("Stream started successfully");
       // Reload the page to refresh the stream status
       window.location.reload();
     } catch (error: unknown) {
-      console.error('[StreamControls] Error starting stream:', error);
+      console.error("[StreamControls] Error starting stream:", error);
       const axiosError = error as AxiosError<{ message: string }>;
-      const errorMessage = axiosError.response?.data?.message || 'Failed to start stream';
+      const errorMessage =
+        axiosError.response?.data?.message || "Failed to start stream";
       toast.error(errorMessage);
     } finally {
       setIsProcessing(false);
@@ -156,35 +197,37 @@ const StreamControls = ({
       toast.error("Configuration not loaded. Cannot pause stream.");
       return;
     }
-    const backendApiUrl = runtimeConfig.apiUrl;
 
     try {
       setIsPausing(true);
       console.debug("[StreamControls] Pausing stream:", {
         streamId,
-        endpoint: `${backendApiUrl}/live-streams/${streamId}/pause`,
-        hasToken: !!token
+        endpoint: `/api/live-streams/${streamId}/pause`,
+        hasToken: !!token,
       });
 
       const response = await axios.post(
-        `${backendApiUrl}/live-streams/${streamId}/pause`,
+        `/api/live-streams/${streamId}/pause`,
         {},
         {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
       console.debug("[StreamControls] Stream pause response:", response.data);
-      toast.success('Stream paused successfully');
-      
+      toast.success("Stream paused successfully");
+
       // Refresh the stream status without full page reload
-      setDetailedStreamInfo(prev => prev ? {...prev, status: 'PAUSED'} : null);
+      setDetailedStreamInfo((prev) =>
+        prev ? { ...prev, status: "PAUSED" } : null
+      );
     } catch (error: unknown) {
-      console.error('[StreamControls] Error pausing stream:', error);
+      console.error("[StreamControls] Error pausing stream:", error);
       const axiosError = error as AxiosError<{ message: string }>;
-      const errorMessage = axiosError.response?.data?.message || 'Failed to pause stream';
+      const errorMessage =
+        axiosError.response?.data?.message || "Failed to pause stream";
       toast.error(errorMessage);
     } finally {
       setIsPausing(false);
@@ -201,35 +244,35 @@ const StreamControls = ({
       toast.error("Configuration not loaded. Cannot end stream.");
       return;
     }
-    const backendApiUrl = runtimeConfig.apiUrl;
 
     try {
       setIsProcessing(true);
       console.debug("[StreamControls] Ending stream:", {
         streamId,
-        endpoint: `${backendApiUrl}/live-streams/${streamId}/end`,
-        hasToken: !!token
+        endpoint: `/api/live-streams/${streamId}/end`,
+        hasToken: !!token,
       });
 
       const response = await axios.post(
-        `${backendApiUrl}/live-streams/${streamId}/end`,
+        `/api/live-streams/${streamId}/end`,
         {},
         {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
       console.debug("[StreamControls] Stream end response:", response.data);
-      toast.success('Stream ended successfully');
+      toast.success("Stream ended successfully");
 
       // Reload the page to refresh the stream status
       window.location.reload();
     } catch (error: unknown) {
-      console.error('[StreamControls] Error ending stream:', error);
+      console.error("[StreamControls] Error ending stream:", error);
       const axiosError = error as AxiosError<{ message: string }>;
-      const errorMessage = axiosError.response?.data?.message || 'Failed to end stream';
+      const errorMessage =
+        axiosError.response?.data?.message || "Failed to end stream";
       toast.error(errorMessage);
     } finally {
       setIsProcessing(false);
@@ -243,17 +286,17 @@ const StreamControls = ({
       const url = window.location.href;
       if (navigator.share) {
         navigator.share({
-          title: `Live Stream - ${detailedStreamInfo?.title || 'Join Now'}`,
-          text: 'Check out this live stream!',
+          title: `Live Stream - ${detailedStreamInfo?.title || "Join Now"}`,
+          text: "Check out this live stream!",
           url: url,
         });
       } else {
         navigator.clipboard.writeText(url);
-        toast.success('Stream link copied to clipboard');
+        toast.success("Stream link copied to clipboard");
       }
     } catch (error) {
-      console.error('[StreamControls] Error sharing stream:', error);
-      toast.error('Failed to share stream link');
+      console.error("[StreamControls] Error sharing stream:", error);
+      toast.error("Failed to share stream link");
     }
   };
 
@@ -262,19 +305,25 @@ const StreamControls = ({
     return null;
   }
 
+  console.debug("[StreamControls] Rendering with streamStatus:", streamStatus);
+
   return (
-    <div className="broadcast-controls-container relative z-30">
+    <div className="broadcast-controls-container relative z-50">
       <div className="text-white text-xs font-medium mb-1 uppercase tracking-wider text-center">
         Yayın Kontrolleri
       </div>
-      
+
       {/* Main stream control buttons */}
-      {streamStatus === 'SCHEDULED' && (
-        <div className="flex flex-col items-center">
+      {streamStatus === "SCHEDULED" && (
+        <div className="flex flex-col items-center z-50">
           <Button
-            onClick={handleStartStream}
+            onClick={(e) => {
+              console.debug("[StreamControls] Start button clicked", e);
+              handleStartStream();
+            }}
             disabled={isProcessing || isLoading}
-            className="broadcast-button broadcast-button-start text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg"
+            className="broadcast-button broadcast-button-start text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg pointer-events-auto cursor-pointer !z-50"
+            style={{ position: "relative", pointerEvents: "auto", zIndex: 999 }}
           >
             {isProcessing || isLoading ? (
               <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -286,14 +335,19 @@ const StreamControls = ({
         </div>
       )}
 
-      {streamStatus === 'LIVE' && (
+      {streamStatus === "LIVE" && (
         <div className="flex gap-4 justify-center">
           {/* Pause Stream Button */}
           <div className="flex flex-col items-center">
             <Button
               onClick={handlePauseStream}
               disabled={isPausing || isLoading}
-              className="broadcast-button broadcast-button-pause text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-yellow-600 hover:bg-yellow-700"
+              className="broadcast-button broadcast-button-pause text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-yellow-600 hover:bg-yellow-700 pointer-events-auto"
+              style={{
+                position: "relative",
+                pointerEvents: "auto",
+                zIndex: 999,
+              }}
             >
               {isPausing ? (
                 <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -303,13 +357,18 @@ const StreamControls = ({
             </Button>
             <span className="text-white text-xs mt-1">DURAKLAT</span>
           </div>
-          
+
           {/* End Stream Button */}
           <div className="flex flex-col items-center">
             <Button
               onClick={handleEndStream}
               disabled={isProcessing || isLoading}
-              className="broadcast-button broadcast-button-end text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-red-600 hover:bg-red-700"
+              className="broadcast-button broadcast-button-end text-white flex items-center justify-center rounded-full h-10 w-10 shadow-lg bg-red-600 hover:bg-red-700 pointer-events-auto"
+              style={{
+                position: "relative",
+                pointerEvents: "auto",
+                zIndex: 999,
+              }}
             >
               {isProcessing ? (
                 <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -325,4 +384,4 @@ const StreamControls = ({
   );
 };
 
-export default StreamControls; 
+export default StreamControls;

@@ -1,13 +1,14 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { z } from 'zod';
-import { cookies } from 'next/headers';
-import { logger } from '@/lib/logger';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { z } from "zod";
+import { cookies } from "next/headers";
+import { logger } from "@/lib/logger";
+import { APP_VERSION } from "@/lib/auth";
 
 const loginSchema = z.object({
-  emailOrUsername: z.string().min(1, 'Email or username is required'),
+  emailOrUsername: z.string().min(1, "Email or username is required"),
   password: z.string().min(6),
 });
 
@@ -19,12 +20,14 @@ export async function POST(request: Request) {
   } catch {
     body = undefined;
   }
-  logger.info('API POST /api/auth/login', { headers, body });
+  logger.info("API POST /api/auth/login", { headers, body });
   try {
     const validatedData = loginSchema.parse(body);
 
     // Determine if input is email or username
-    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(validatedData.emailOrUsername);
+    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(
+      validatedData.emailOrUsername
+    );
     const user = await prisma.user.findUnique({
       where: isEmail
         ? { email: validatedData.emailOrUsername }
@@ -33,7 +36,7 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: "Invalid email or password" },
         { status: 401 }
       );
     }
@@ -46,7 +49,7 @@ export async function POST(request: Request) {
 
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: "Invalid email or password" },
         { status: 401 }
       );
     }
@@ -58,14 +61,15 @@ export async function POST(request: Request) {
         email: user.email,
         username: user.username,
         isAdmin: user.isAdmin ?? false,
+        appVersion: APP_VERSION,
       },
       process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
 
     // Create response
     const response = NextResponse.json({
-      message: 'Login successful',
+      message: "Login successful",
       token: token,
       user: {
         id: user.id,
@@ -80,28 +84,38 @@ export async function POST(request: Request) {
       },
     });
 
-    // Set cookie
-    response.cookies.set('token', token, {
+    // Set both token and authToken cookies for compatibility
+    response.cookies.set("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
+      path: "/",
     });
 
+    // Set authToken cookie (used by middleware)
+    response.cookies.set("authToken", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    });
+
+    logger.info("Login successful, tokens set in cookies", { userId: user.id });
     return response;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      logger.warn('Invalid input data in login', error);
+      logger.warn("Invalid input data in login", error);
       return NextResponse.json(
-        { error: 'Invalid input data', details: error.errors },
+        { error: "Invalid input data", details: error.errors },
         { status: 400 }
       );
     }
-    logger.error('Login error', error);
+    logger.error("Login error", error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
-} 
+}

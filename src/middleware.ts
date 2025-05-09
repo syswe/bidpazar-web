@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 // Use the Edge-compatible verification function
-import { verifyAuthSession } from './lib/auth'; 
+import { verifyAuthSession } from "./lib/auth";
 
 // Remove the explicit runtime export to default back to Edge
 // export const runtime = 'nodejs';
@@ -10,166 +10,125 @@ export async function middleware(request: NextRequest) {
   // Get the pathname of the request (e.g. /, /protected)
   const path = request.nextUrl.pathname;
   // Revert log message as runtime is now Edge by default
-  console.log(`[Middleware] Processing request for path: ${path} (Runtime: Edge)`); 
+  console.log(
+    `[Middleware] Processing request for path: ${path} (Runtime: Edge)`
+  );
 
   // Define public paths that don't require authentication
-  const isPublicPath = 
-    path === '/login' || 
-    path === '/register' || 
-    path === '/sign-in' ||  // Keep this for backward compatibility
-    path === '/sign-up' ||  // Keep this for backward compatibility
-    path === '/' ||  // Allow home page for everyone
-    path.startsWith('/products') ||  // Allow product pages for everyone
-    path.startsWith('/api/products') ||  // Allow product API routes for everyone
-    path.startsWith('/api/product-auctions') ||  // Allow product auction API routes for everyone
-    path.startsWith('/streams') ||  // Allow stream viewing for everyone
-    path.startsWith('/api/auth/') || // Allow all auth API routes
-    path.startsWith('/live-streams') || // Allow live stream viewing for everyone
-    // Add /api/config to public paths
-    path === '/api/config' ||
-    // Allow the main live-streams API endpoint
-    path === '/api/live-streams' ||
-    // Allow Socket.IO connections
-    path.startsWith('/socket.io/') ||
-    // Allow read-only stream API endpoints
-    path.startsWith('/api/live-streams/') && request.method === 'GET' ||
-    // Allow create-listing endpoint
-    path.includes('/create-listing') ||
-    path.includes('/active-listing') ||
-    path.includes('/active-bid');
+  const isPublicPath =
+    path === "/" ||
+    path === "/sign-in" ||
+    path === "/sign-up" ||
+    path === "/auth/login" ||
+    path === "/auth/signup" ||
+    path === "/login" ||
+    path === "/register" ||
+    path === "/auth/reset-password" ||
+    path.startsWith("/auth/reset-password/") ||
+    path.startsWith("/auth/verify/") ||
+    path.startsWith("/api/auth/") || // ALL auth API routes are public
+    path === "/api/products" || // Allow public access to products
+    path === "/api/config" || // Allow public access to config
+    path === "/api/live-streams" || // Allow public access to live streams list
+    path.startsWith("/api/health") || // Health checks should be public
+    path.startsWith("/public/") ||
+    path.startsWith("/_next/") ||
+    path.startsWith("/favicon") ||
+    path.includes("/images/") ||
+    path.includes(".png") ||
+    path.includes(".jpg") ||
+    path.includes(".svg") ||
+    path.includes(".ico") ||
+    path.startsWith("/api/public/") ||
+    (path.startsWith("/api/live-streams/") &&
+      (path.endsWith("/public") || path.includes("/public/")));
 
-  // API endpoints that require authentication (writing data)
-  const requiresAuth = 
-    (path.startsWith('/api/live-streams') && path.includes('/chat') && request.method === 'POST') || // Posting chat messages requires auth
-    (path.startsWith('/api/live-streams') && path.includes('/active-bid') && request.method === 'POST') || // Placing bids requires auth
-    (path.startsWith('/api/live-streams') && path.includes('/product') && request.method === 'POST') || // Creating products requires auth
-    (path.startsWith('/api/live-streams') && path.endsWith('/start') && request.method === 'POST'); // Starting stream requires auth
+  // Special check for WebSocket and Socket.IO requests
+  // Excluded from middleware processing to prevent connection issues
+  const isSocketPath =
+    path.includes("/socket.io") ||
+    path.startsWith("/api/socket") ||
+    path.startsWith("/sockets/") ||
+    path.includes("/__nextjs_original-stack-frame") ||
+    path.includes("/ws") ||
+    path.includes("/favicon.ico") ||
+    path.startsWith("/_next/");
 
-  console.log(`[Middleware] Is public path: ${isPublicPath}, Requires Auth: ${requiresAuth}`);
+  const isWebSocketRequest =
+    request.headers.get("upgrade")?.toLowerCase() === "websocket";
 
-  // Check if it's an admin path that needs special handling
-  const isAdminPath = path.startsWith('/admin');
-  
-  // Get the token from the cookies
-  const token = request.cookies.get('token')?.value || '';
-  
-  // Also check for token in Authorization header (Bearer token)
-  const authHeader = request.headers.get('Authorization');
-  const authToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-  const effectiveToken = authToken || token;
-  
-  console.log(`[Middleware] Token present: ${!!effectiveToken}`);
-
-  // Verify the session token using the Edge-compatible function
-  const payload = effectiveToken ? await verifyAuthSession(effectiveToken) : null;
-  const isAuthenticated = !!payload;
-  console.log(`[Middleware] Is authenticated (based on token verification): ${isAuthenticated}`);
-  
-  // Check admin status for admin routes
-  const isAdmin = payload?.isAdmin === true;
-  
-  // Special handling for admin routes
-  if (isAdminPath) {
-    console.log(`[Middleware] Admin path detected: ${path}, user isAdmin: ${isAdmin}`);
-    
-    if (!isAuthenticated) {
-      console.log(`[Middleware] Admin path - User not authenticated, redirecting to login`);
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', path);
-      return NextResponse.redirect(loginUrl);
-    }
-    
-    if (isAuthenticated && !isAdmin) {
-      console.log(`[Middleware] Admin path - User authenticated but not admin, redirecting to dashboard`);
-      const dashboardUrl = new URL('/dashboard', request.url);
-      return NextResponse.redirect(dashboardUrl);
-    }
-    
-    // Allow admin user to access admin path
-    console.log(`[Middleware] Admin path - User is admin, allowing access`);
+  // Log socket requests for debugging
+  if (isSocketPath || isWebSocketRequest) {
+    console.log(
+      `[Middleware] Skipping middleware for Socket/WebSocket path: ${path}`
+    );
+    console.log(
+      `[Middleware] Headers: Upgrade=${request.headers.get(
+        "upgrade"
+      )}, Connection=${request.headers.get("connection")}`
+    );
     return NextResponse.next();
   }
 
-  // 1. Redirect authenticated users away from login/register pages
-  if ((path === '/login' || path === '/register' || path === '/sign-in' || path === '/sign-up') && isAuthenticated) {
-    const redirectUrl = new URL('/', request.url);
-    console.log(`[Middleware] Redirecting authenticated user from ${path} to ${redirectUrl}`);
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  // 2. Handle protected paths and API endpoints that require auth
-  if ((!isPublicPath || requiresAuth) && !isAuthenticated) {
-    // For API routes that require auth, return 401 Unauthorized
-    if (path.startsWith('/api/')) {
-      console.log(`[Middleware] Protected API route (${path}) and user not authenticated, returning 401`);
-      
-      // Specifically check if this is a GET request to /api/live-streams/:id
-      const isLiveStreamDetailsRequest = 
-        path.match(/^\/api\/live-streams\/[^\/]+$/) && request.method === 'GET';
-      
-      if (isLiveStreamDetailsRequest) {
-        // Allow GET request to /api/live-streams/:id even without auth
-        console.log(`[Middleware] Allowing unauthenticated access to stream details: ${path}`);
-        return NextResponse.next();
-      }
-      
-      return new NextResponse(
-        JSON.stringify({ 
-          error: 'Unauthorized', 
-          message: 'Authentication required for this action'
-        }),
-        { 
-          status: 401,
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-          } 
-        }
-      );
-    }
-    
-    // For page routes, redirect to login
-    console.log(`[Middleware] Protected path (${path}) and user not authenticated, redirecting to login`);
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', path);
-    const response = NextResponse.redirect(loginUrl);
-    // Clear potentially invalid cookie if present but verification failed
-    if (token) { 
-      response.cookies.set('token', '', { path: '/', maxAge: 0 });
-    }
-    return response;
-  }
-
-  // Check if this is a WebSocket upgrade request for our socket endpoint public
-  if (
-    request.method === 'GET' &&
-    (
-      request.nextUrl.pathname.startsWith('/socket.io')
-    ) &&
-    (request.headers.get('upgrade') === 'websocket' ||
-     request.headers.get('connection')?.includes('Upgrade'))
-  ) {
-    // Let the WebSocket handler in the route.ts handle the upgrade
+  // For public paths, allow access
+  if (isPublicPath) {
+    console.log(`[Middleware] Public path: ${path}, allowing access`);
     return NextResponse.next();
   }
 
-  // If none of the above conditions met, allow the request to proceed
-  // Add specific log for root path
-  if (path === '/') {
-    console.log(`[Middleware] Allowing request for root path: /`);
+  // For non-public paths, verify auth session
+  try {
+    // Get token from cookies or Authorization header
+    const sessionToken =
+      request.cookies.get("authToken")?.value ||
+      request.headers.get("Authorization")?.replace("Bearer ", "") ||
+      "";
+
+    if (!sessionToken) {
+      console.log(`[Middleware] No auth token found, redirecting to login`);
+      // Update to redirect to /login directly
+      const url = new URL("/login", request.url);
+      url.searchParams.set("callbackUrl", encodeURI(request.url));
+      return NextResponse.redirect(url);
+    }
+
+    const payload = await verifyAuthSession(sessionToken);
+
+    if (!payload || !payload.userId) {
+      console.log(`[Middleware] Invalid auth session, redirecting to login`);
+      // Update to redirect to /login directly
+      const url = new URL("/login", request.url);
+      url.searchParams.set("callbackUrl", encodeURI(request.url));
+      return NextResponse.redirect(url);
+    }
+
+    // Valid session, do something with user if needed
+    console.log(
+      `[Middleware] Valid auth session for user ID: ${payload.userId}, allowing access to: ${path}`
+    );
+    return NextResponse.next();
+  } catch (error) {
+    console.error("[Middleware] Error verifying auth session:", error);
+    // Update to redirect to /login directly
+    return NextResponse.redirect(new URL("/login", request.url));
   }
-  console.log(`[Middleware] Request allowed for path: ${path}`);
-  return NextResponse.next();
 }
 
-// Configure the paths that should be protected
+// Use a more comprehensive config for the matcher to handle all the complex cases
 export const config = {
   matcher: [
-    // Match all routes except static files and _next internal paths
-    '/((?!api/auth/logout|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-    // Explicitly include specific API routes if needed beyond the general exclusion
-    '/api/((?!auth/|products/|product-auctions/).)*', // Protect all API routes except /api/auth/*, /api/products/*, and /api/product-auctions/*
+    /*
+     * Match all request paths except those starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - socket.io paths (WebSocket)
+     * - API routes that handle their own auth
+     */
+    {
+      source:
+        "/((?!_next/static|_next/image|socket\\.io|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets).*)",
+      missing: [{ type: "header", key: "upgrade", value: "websocket" }],
+    },
   ],
-}; 
+};

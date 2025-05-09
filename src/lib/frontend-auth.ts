@@ -25,8 +25,11 @@ export interface AuthResponse {
 
 import { env } from "./env";
 
+// Define app version - this should match the server APP_VERSION
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0";
+
 // Define the base path for auth API routes, consistent with api.ts
-const AUTH_API_BASE = '/api/auth'; 
+const AUTH_API_BASE = "/api/auth";
 
 // Remove direct dependency on env.API_URL for client-side flexibility
 // console.log("Auth service initialized. API Base:", AUTH_API_BASE);
@@ -38,8 +41,10 @@ export const setAuth = (token: string, user: User): void => {
   if (typeof window !== "undefined") {
     // Store in localStorage for client-side access
     localStorage.setItem("auth", JSON.stringify({ token, user }));
-    console.log(`Auth set for user: ${user.username} (token length: ${token.length})`);
-    
+    console.log(
+      `Auth set for user: ${user.username} (token length: ${token.length})`
+    );
+
     // Ensure token is available in cookies too (for API requests)
     // This is a backup for cases where the server might not have set it
     document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24 * 7}`; // 7 days
@@ -54,11 +59,11 @@ export const getAuth = (): { token: string | null; user: User | null } => {
     try {
       // First check localStorage
       const authData = localStorage.getItem("auth");
-      
+
       if (authData) {
         try {
           const parsed = JSON.parse(authData);
-          
+
           // Validate the parsed data structure
           if (parsed && parsed.token && parsed.user && parsed.user.id) {
             return { token: parsed.token, user: parsed.user };
@@ -69,12 +74,14 @@ export const getAuth = (): { token: string | null; user: User | null } => {
           localStorage.removeItem("auth");
         }
       }
-      
+
       // Fallback: Check for token in cookies if localStorage failed
-      const tokenFromCookie = getCookieValue('token');
+      const tokenFromCookie = getCookieValue("token");
       if (tokenFromCookie) {
         // We have a token but no user data, try to get user data from API
-        console.log("Found token in cookie but not in localStorage, will attempt to validate");
+        console.log(
+          "Found token in cookie but not in localStorage, will attempt to validate"
+        );
         // The AuthProvider will handle fetching user info via validateToken
         return { token: tokenFromCookie, user: null };
       }
@@ -82,7 +89,7 @@ export const getAuth = (): { token: string | null; user: User | null } => {
       console.error("Error accessing authentication storage:", e);
     }
   }
-  
+
   return { token: null, user: null };
 };
 
@@ -93,12 +100,12 @@ export const getToken = (): string | null => {
   // First try localStorage
   const { token } = getAuth();
   if (token) return token;
-  
+
   // Fallback to cookies
   if (typeof window !== "undefined") {
-    return getCookieValue('token');
+    return getCookieValue("token");
   }
-  
+
   return null;
 };
 
@@ -106,12 +113,12 @@ export const getToken = (): string | null => {
  * Helper to get a cookie value by name
  */
 function getCookieValue(name: string): string | null {
-  if (typeof document === 'undefined') return null;
-  
-  const cookies = document.cookie.split(';');
+  if (typeof document === "undefined") return null;
+
+  const cookies = document.cookie.split(";");
   for (let i = 0; i < cookies.length; i++) {
     const cookie = cookies[i].trim();
-    if (cookie.startsWith(name + '=')) {
+    if (cookie.startsWith(name + "=")) {
       return cookie.substring(name.length + 1);
     }
   }
@@ -157,50 +164,61 @@ const REFRESH_COOLDOWN = 10000; // 10 seconds between refresh attempts
 
 export const refreshToken = async (): Promise<boolean> => {
   const currentToken = getToken();
-  
+
   if (!currentToken) {
     console.warn("No token to refresh");
     return false;
   }
-  
+
   // Check if we've refreshed recently and prevent too many refreshes
   const now = Date.now();
   if (now - lastRefreshTime < REFRESH_COOLDOWN) {
-    console.log(`Token refresh on cooldown. Last refresh was ${(now - lastRefreshTime)/1000}s ago.`);
+    console.log(
+      `Token refresh on cooldown. Last refresh was ${
+        (now - lastRefreshTime) / 1000
+      }s ago.`
+    );
     return false;
   }
-  
+
   try {
     console.log("Attempting to refresh token...");
     lastRefreshTime = now; // Update timestamp before the request
-    
-    const response = await fetch(`${AUTH_API_BASE}/refresh-token`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${currentToken}`,
-        "Content-Type": "application/json",
-      },
-      credentials: 'include',
-    });
-    
+
+    const response = await fetch(
+      `${AUTH_API_BASE}/refresh-token?appVersion=${APP_VERSION}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      }
+    );
+
     if (!response.ok) {
       console.error(`Token refresh failed with status: ${response.status}`);
-      if (response.status === 401 || response.status === 403) {
+      // Check for version mismatch (status 412 = Precondition Failed)
+      if (response.status === 412) {
+        console.warn("App version changed, removing auth data");
+        removeAuth();
+      } else if (response.status === 401 || response.status === 403) {
         // Token is invalid or expired and cannot be refreshed
         removeAuth();
       }
       return false;
     }
-    
+
     const data = await response.json();
     console.log("Token refreshed successfully");
-    
+
     // Update stored token
     const currentAuth = getAuth();
     if (currentAuth.user) {
       setAuth(data.token, data.user || currentAuth.user);
     }
-    
+
     return true;
   } catch (error) {
     console.error("Failed to refresh token:", error);
@@ -213,11 +231,11 @@ export const refreshToken = async (): Promise<boolean> => {
  */
 export const withAuthHeader = (options: RequestInit = {}): RequestInit => {
   const token = getToken();
-  
+
   if (!token) {
     return options;
   }
-  
+
   return {
     ...options,
     headers: {
@@ -238,13 +256,16 @@ export const register = async (
   phoneNumber?: string
 ): Promise<AuthResponse> => {
   try {
-    console.log(`Sending registration request to ${AUTH_API_BASE}/register with data:`, {
-      email,
-      username,
-      password: '********',
-      name,
-      phoneNumber
-    });
+    console.log(
+      `Sending registration request to ${AUTH_API_BASE}/register with data:`,
+      {
+        email,
+        username,
+        password: "********",
+        name,
+        phoneNumber,
+      }
+    );
 
     const response = await fetch(`${AUTH_API_BASE}/register`, {
       method: "POST",
@@ -252,34 +273,41 @@ export const register = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ email, password, username, name, phoneNumber }),
-      credentials: 'include',
+      credentials: "include",
     });
 
     const data = await response.json();
-    console.log('Registration response status:', response.status, 'data:', data);
+    console.log(
+      "Registration response status:",
+      response.status,
+      "data:",
+      data
+    );
 
     if (!response.ok) {
       // Check if there are detailed validation errors
       if (data.details && Array.isArray(data.details)) {
         // Create a more detailed error message from Zod validation errors
-        const errorFields = data.details.map((err: any) => {
-          const field = err.path.join('.');
-          const message = err.message;
-          
-          // Create more user-friendly field names
-          let fieldName = field;
-          if (field === 'email') fieldName = 'E-posta';
-          if (field === 'username') fieldName = 'Kullanıcı adı';
-          if (field === 'password') fieldName = 'Şifre';
-          if (field === 'name') fieldName = 'Ad Soyad';
-          if (field === 'phoneNumber') fieldName = 'Telefon numarası';
-          
-          return `${fieldName}: ${message}`;
-        }).join(', ');
-        
+        const errorFields = data.details
+          .map((err: any) => {
+            const field = err.path.join(".");
+            const message = err.message;
+
+            // Create more user-friendly field names
+            let fieldName = field;
+            if (field === "email") fieldName = "E-posta";
+            if (field === "username") fieldName = "Kullanıcı adı";
+            if (field === "password") fieldName = "Şifre";
+            if (field === "name") fieldName = "Ad Soyad";
+            if (field === "phoneNumber") fieldName = "Telefon numarası";
+
+            return `${fieldName}: ${message}`;
+          })
+          .join(", ");
+
         throw new Error(`Validation error: ${errorFields}`);
       }
-      
+
       throw new Error(data.error || data.message || "Registration failed");
     }
 
@@ -309,7 +337,7 @@ export const login = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ emailOrUsername, password }),
-      credentials: 'include',
+      credentials: "include",
     });
 
     const data = await response.json();
@@ -342,17 +370,17 @@ export const logout = async (): Promise<void> => {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-      credentials: 'include',
-    }).catch(error => {
+      credentials: "include",
+    }).catch((error) => {
       console.error("Logout API call failed:", error);
     });
   }
   // Always remove local auth data
   removeAuth();
-  if (typeof window !== 'undefined') {
-    await fetch('/api/auth/logout', { 
-      method: 'POST',
-      credentials: 'include',
+  if (typeof window !== "undefined") {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
     });
   }
 };
@@ -366,7 +394,9 @@ let lastValidationTime = 0;
 const VALIDATION_COOLDOWN = 300; // Reduced cooldown when checking admin routes (300ms instead of 1000ms)
 let adminRouteChecking = false; // Flag to identify when validating for admin routes
 
-export const validateToken = async (forceCheck = false): Promise<User | null> => {
+export const validateToken = async (
+  forceCheck = false
+): Promise<User | null> => {
   const token = getToken();
 
   if (!token) {
@@ -375,9 +405,13 @@ export const validateToken = async (forceCheck = false): Promise<User | null> =>
   }
 
   // Check if we're on an admin route and allow higher validation frequency
-  const isAdminRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+  const isAdminRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/admin");
   if (isAdminRoute && !adminRouteChecking) {
-    console.log("[validateToken] Admin route detected, allowing fast validation");
+    console.log(
+      "[validateToken] Admin route detected, allowing fast validation"
+    );
     adminRouteChecking = true;
   }
 
@@ -385,48 +419,80 @@ export const validateToken = async (forceCheck = false): Promise<User | null> =>
 
   // Prevent too frequent validation requests, but allow bypassing for admin routes or forced check
   const now = Date.now();
-  const effectiveCooldown = adminRouteChecking || forceCheck ? VALIDATION_COOLDOWN : 1000;
+  const effectiveCooldown =
+    adminRouteChecking || forceCheck ? VALIDATION_COOLDOWN : 1000;
   if (now - lastValidationTime < effectiveCooldown && !forceCheck) {
-    console.log(`[validateToken] Token validation on cooldown. Last validation was ${(now - lastValidationTime)/1000}s ago.`);
-    console.log(`[validateToken] Using ${adminRouteChecking ? 'reduced' : 'standard'} cooldown: ${effectiveCooldown}ms`);
-    
+    console.log(
+      `[validateToken] Token validation on cooldown. Last validation was ${
+        (now - lastValidationTime) / 1000
+      }s ago.`
+    );
+    console.log(
+      `[validateToken] Using ${
+        adminRouteChecking ? "reduced" : "standard"
+      } cooldown: ${effectiveCooldown}ms`
+    );
+
     // Return the last cached user data instead of making a new request
     const cachedUser = getUser();
-    console.log(`[validateToken] Returning cached user: ${cachedUser ? cachedUser.username : 'none'}`);
+    console.log(
+      `[validateToken] Returning cached user: ${
+        cachedUser ? cachedUser.username : "none"
+      }`
+    );
     return cachedUser;
   }
 
   try {
     // Add a timestamp to prevent caching
     const timestamp = new Date().getTime();
-    console.log(`[validateToken] Validating token with backend (admin route: ${adminRouteChecking ? 'yes' : 'no'}, force: ${forceCheck ? 'yes' : 'no'})`);
+    console.log(
+      `[validateToken] Validating token with backend (admin route: ${
+        adminRouteChecking ? "yes" : "no"
+      }, force: ${forceCheck ? "yes" : "no"})`
+    );
     lastValidationTime = now; // Update timestamp before the request
-    
-    const response = await fetch(`${AUTH_API_BASE}/validate?_=${timestamp}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      },
-      credentials: 'include',
-    });
+
+    const response = await fetch(
+      `${AUTH_API_BASE}/validate?_=${timestamp}&appVersion=${APP_VERSION}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+        credentials: "include",
+      }
+    );
 
     if (!response.ok) {
-      console.error(`[validateToken] Token validation failed with status: ${response.status}`);
+      console.error(
+        `[validateToken] Token validation failed with status: ${response.status}`
+      );
+
+      // Check for version mismatch (status 412 = Precondition Failed)
+      if (response.status === 412) {
+        console.warn("[validateToken] App version changed, removing auth data");
+        removeAuth();
+        return null;
+      }
+
       // If specifically unauthorized (401) or forbidden (403), try refresh
       if (response.status === 401 || response.status === 403) {
         console.warn("[validateToken] Token invalid, attempting refresh");
         const refreshed = await refreshToken();
         if (refreshed) {
-          console.log("[validateToken] Token refreshed, trying validation again");
+          console.log(
+            "[validateToken] Token refreshed, trying validation again"
+          );
           // Try validation again with new token
           adminRouteChecking = false; // Reset flag to prevent double-detection
           return validateToken(true); // Force check after refresh
         }
-        
+
         console.warn("[validateToken] Token refresh failed, removing auth");
         removeAuth();
       }
@@ -435,33 +501,39 @@ export const validateToken = async (forceCheck = false): Promise<User | null> =>
 
     const data = await response.json();
     console.log("[validateToken] Token validated successfully, response:", {
-      user: data.user ? { 
-        id: data.user.id, 
-        username: data.user.username,
-        isAdmin: data.user.isAdmin 
-      } : null,
+      user: data.user
+        ? {
+            id: data.user.id,
+            username: data.user.username,
+            isAdmin: data.user.isAdmin,
+          }
+        : null,
     });
-    
+
     // Update user data and token in case they changed
     if (data.user && data.token) {
-      console.log("[validateToken] Updating stored auth data with validation response", {
-        tokenLength: data.token.length,
-        userId: data.user.id,
-        username: data.user.username
-      });
-      
+      console.log(
+        "[validateToken] Updating stored auth data with validation response",
+        {
+          tokenLength: data.token.length,
+          userId: data.user.id,
+          username: data.user.username,
+        }
+      );
+
       // Update both localStorage and cookies
       setAuth(data.token, data.user);
-    }
-    else if (data.user) {
+    } else if (data.user) {
       // Update just the user data if no new token provided
       const currentAuth = getAuth();
       if (currentAuth.token) {
-        console.log("[validateToken] Updating only user data (no new token provided)");
+        console.log(
+          "[validateToken] Updating only user data (no new token provided)"
+        );
         setAuth(currentAuth.token, data.user);
       }
     }
-    
+
     // Reset admin route flag after successful validation
     if (adminRouteChecking) {
       setTimeout(() => {
@@ -469,14 +541,16 @@ export const validateToken = async (forceCheck = false): Promise<User | null> =>
         adminRouteChecking = false;
       }, 1000);
     }
-    
+
     return data.user;
   } catch (error: unknown) {
     console.error("[validateToken] Token validation error:", error);
-    
+
     // Don't try refresh immediately on general errors
     // This helps prevent cascading errors
-    console.warn("[validateToken] Authentication validation error, keeping current state");
+    console.warn(
+      "[validateToken] Authentication validation error, keeping current state"
+    );
     return getUser();
   }
 };
@@ -489,23 +563,31 @@ export const verifyCode = async (
   userId: string
 ): Promise<AuthResponse> => {
   try {
-    console.log(`Sending verification request to ${AUTH_API_BASE}/verify with data:`, {
-      code,
-      userId,
-      isRegistration: false
-    });
-    
+    console.log(
+      `Sending verification request to ${AUTH_API_BASE}/verify with data:`,
+      {
+        code,
+        userId,
+        isRegistration: false,
+      }
+    );
+
     const response = await fetch(`${AUTH_API_BASE}/verify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ code, userId, isRegistration: false }),
-      credentials: 'include',
+      credentials: "include",
     });
 
     const data = await response.json();
-    console.log('Verification response status:', response.status, 'data:', data);
+    console.log(
+      "Verification response status:",
+      response.status,
+      "data:",
+      data
+    );
 
     if (!response.ok) {
       throw new Error(data.message || "Verification failed");
@@ -513,13 +595,16 @@ export const verifyCode = async (
 
     // Make sure we have valid data before storing
     if (!data.token) {
-      console.error('Missing token in verification response', data);
-      throw new Error('Server returned an invalid response. Please try again.');
+      console.error("Missing token in verification response", data);
+      throw new Error("Server returned an invalid response. Please try again.");
     }
 
     if (!data.user || !data.user.id) {
-      console.error('Missing or invalid user data in verification response', data);
-      throw new Error('Server returned invalid user data. Please try again.');
+      console.error(
+        "Missing or invalid user data in verification response",
+        data
+      );
+      throw new Error("Server returned invalid user data. Please try again.");
     }
 
     // Store auth data in localStorage
@@ -539,11 +624,14 @@ export const resendVerificationCode = async (
   userId: string
 ): Promise<{ message: string; smsSent?: boolean }> => {
   try {
-    console.log(`Sending resend verification request to ${AUTH_API_BASE}/resend-verification with data:`, {
-      userId,
-      isRegistration: false
-    });
-    
+    console.log(
+      `Sending resend verification request to ${AUTH_API_BASE}/resend-verification with data:`,
+      {
+        userId,
+        isRegistration: false,
+      }
+    );
+
     const response = await fetch(`${AUTH_API_BASE}/resend-verification`, {
       method: "POST",
       headers: {
@@ -553,7 +641,12 @@ export const resendVerificationCode = async (
     });
 
     const data = await response.json();
-    console.log('Resend verification response status:', response.status, 'data:', data);
+    console.log(
+      "Resend verification response status:",
+      response.status,
+      "data:",
+      data
+    );
 
     if (!response.ok) {
       throw new Error(data.message || "Failed to resend verification code");
@@ -574,15 +667,15 @@ export const initializeAuth = async (): Promise<User | null> => {
   console.log("Initializing auth...");
   // First check if we have a stored token
   const token = getToken();
-  
+
   if (!token) {
     console.log("No token found during initialization");
     return null;
   }
-  
+
   console.log("Found token during initialization");
-  
+
   // Always validate the token with the backend during initialization
   console.log("Validating token during initialization");
   return validateToken();
-}; 
+};

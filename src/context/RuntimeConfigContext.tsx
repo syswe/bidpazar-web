@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 
 // Define the structure of the runtime configuration
 export interface RuntimeConfig {
@@ -17,12 +23,21 @@ export interface RuntimeConfig {
 
 // Default configuration with sensible fallbacks
 const defaultConfig: RuntimeConfig = {
-  apiUrl: '/api',
-  socketUrl: typeof window !== 'undefined' ? `ws://${window.location.host}` : 'ws://localhost:3000',
-  appUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
-  webrtcServer: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
-  wsUrl: '/socket.io',
-  stunServerUrl: 'stun:stun.l.google.com:19302'
+  apiUrl: "/api",
+  socketUrl:
+    typeof window !== "undefined"
+      ? `http://${window.location.host}` // Changed from ws:// to http:// for Socket.IO
+      : "http://localhost:3000",
+  appUrl:
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost:3000",
+  webrtcServer:
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost:3000",
+  wsUrl: "/socket.io",
+  stunServerUrl: "stun:stun.l.google.com:19302",
 };
 
 interface RuntimeConfigContextType {
@@ -40,7 +55,9 @@ const RuntimeConfigContext = createContext<RuntimeConfigContextType>({
   refreshConfig: async () => {}, // Empty function as placeholder
 });
 
-export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   // Initialize with default config immediately
   const [config, setConfig] = useState<RuntimeConfig>(defaultConfig);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,13 +69,18 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   const fetchConfig = async () => {
     // Don't fetch if already in progress or if we've fetched recently (within 5 seconds)
     const now = Date.now();
-    if (fetchInProgress || (now - lastFetchTime < 5000 && lastFetchTime !== 0)) {
-      console.log('[RuntimeConfig] Skipping fetch - already in progress or too recent');
+    if (
+      fetchInProgress ||
+      (now - lastFetchTime < 5000 && lastFetchTime !== 0)
+    ) {
+      console.log(
+        "[RuntimeConfig] Skipping fetch - already in progress or too recent"
+      );
       return;
     }
 
-    if (typeof window === 'undefined') {
-      console.log('[RuntimeConfig] Running on server, using default config');
+    if (typeof window === "undefined") {
+      console.log("[RuntimeConfig] Running on server, using default config");
       setIsLoading(false);
       return;
     }
@@ -66,118 +88,173 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     try {
       setFetchInProgress(true);
       setIsLoading(true);
-      
+
       // Log request attempt
-      console.log(`[RuntimeConfig] Fetching runtime configuration (attempt ${retryCount + 1})`);
-      
+      console.log(
+        `[RuntimeConfig] Fetching runtime configuration (attempt ${
+          retryCount + 1
+        })`
+      );
+
       // Use /api/config endpoint to get runtime configuration
-      const response = await fetch('/api/config', {
+      const response = await fetch("/api/config", {
         headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
+          Accept: "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
-        cache: 'no-store'
+        cache: "no-store",
       });
-      
+
       // Handle non-200 responses
       if (!response.ok) {
         // Try to get the error message from the response if possible
         let errorMessage = `Config API returned ${response.status}`;
         try {
           // Check content type to avoid parsing HTML as JSON
-          const contentType = response.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
             const errorData = await response.json();
             errorMessage = errorData.message || errorData.error || errorMessage;
           } else {
             // If not JSON, just get the text
             const errorText = await response.text();
             // Check if it's HTML (error page)
-            if (errorText.includes('<!DOCTYPE html>') || errorText.includes('<html>')) {
-              errorMessage = 'Received HTML instead of JSON. The server might be returning an error page.';
+            if (
+              errorText.includes("<!DOCTYPE html>") ||
+              errorText.includes("<html>")
+            ) {
+              errorMessage =
+                "Received HTML instead of JSON. The server might be returning an error page.";
             } else {
               errorMessage = errorText || errorMessage;
             }
           }
         } catch (parseError) {
-          console.error('[RuntimeConfig] Error parsing error response:', parseError);
+          console.error(
+            "[RuntimeConfig] Error parsing error response:",
+            parseError
+          );
         }
-        
+
         // If we get 401/403 errors, use default config and don't retry excessively
         if (response.status === 401 || response.status === 403) {
-          console.warn('[RuntimeConfig] Authentication error, using default config');
-          setError(new Error(`Authentication required for config: ${errorMessage}`));
+          console.warn(
+            "[RuntimeConfig] Authentication error, using default config"
+          );
+          setError(
+            new Error(`Authentication required for config: ${errorMessage}`)
+          );
           setIsLoading(false);
-          
+
           // If we've had multiple auth errors, stop retrying frequently
           if (retryCount >= 2) {
-            console.warn('[RuntimeConfig] Too many auth errors, limiting retries');
+            console.warn(
+              "[RuntimeConfig] Too many auth errors, limiting retries"
+            );
             // Only retry once per minute after multiple failures
-            setTimeout(() => setRetryCount(prev => prev + 1), 60000);
+            setTimeout(() => setRetryCount((prev) => prev + 1), 60000);
           } else {
-            setRetryCount(prev => prev + 1);
+            setRetryCount((prev) => prev + 1);
           }
-          
+
           setFetchInProgress(false);
           setLastFetchTime(Date.now());
           return;
         }
-        
+
         throw new Error(`Failed to fetch runtime config: ${errorMessage}`);
       }
-      
+
       // Check content type to avoid parsing non-JSON responses
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
-        throw new Error(`Invalid response format: Expected JSON, got "${contentType}". Response starts with: ${text.substring(0, 100)}...`);
+        throw new Error(
+          `Invalid response format: Expected JSON, got "${contentType}". Response starts with: ${text.substring(
+            0,
+            100
+          )}...`
+        );
       }
-      
+
       // Parse the JSON response
       const data = await response.json();
-      
+
       // Log the fetched config
-      console.log('[RuntimeConfig] Fetched runtime config:', data);
-      
+      console.log("[RuntimeConfig] Fetched runtime config:", data);
+
       // Merge with default config to ensure all properties exist
       const newConfig = { ...defaultConfig, ...data };
-      
-      // Validate URL fields to ensure they are properly formatted
-      if (newConfig.apiUrl && !newConfig.apiUrl.startsWith('http') && !newConfig.apiUrl.startsWith('/')) {
+
+      // Validate URL fields to ensure all properties exist
+      if (
+        newConfig.apiUrl &&
+        !newConfig.apiUrl.startsWith("http") &&
+        !newConfig.apiUrl.startsWith("/")
+      ) {
         newConfig.apiUrl = `/${newConfig.apiUrl}`;
       }
-      
-      // Ensure socket URL starts with ws:// or wss://
-      if (newConfig.socketUrl && !newConfig.socketUrl.startsWith('ws://') && !newConfig.socketUrl.startsWith('wss://')) {
-        newConfig.socketUrl = `ws://${newConfig.socketUrl}`;
+
+      // Ensure socket URL starts with http:// or https:// (NOT ws:// or wss://) for Socket.IO
+      if (newConfig.socketUrl) {
+        // First check if it's a WebSocket URL and convert it
+        if (newConfig.socketUrl.startsWith("ws://")) {
+          newConfig.socketUrl = newConfig.socketUrl.replace("ws://", "http://");
+          console.log(
+            "[RuntimeConfig] Converted WebSocket URL to HTTP for Socket.IO compatibility"
+          );
+        } else if (newConfig.socketUrl.startsWith("wss://")) {
+          newConfig.socketUrl = newConfig.socketUrl.replace(
+            "wss://",
+            "https://"
+          );
+          console.log(
+            "[RuntimeConfig] Converted Secure WebSocket URL to HTTPS for Socket.IO compatibility"
+          );
+        }
+        // Then ensure it has a protocol
+        else if (
+          !newConfig.socketUrl.startsWith("http://") &&
+          !newConfig.socketUrl.startsWith("https://")
+        ) {
+          newConfig.socketUrl = `http://${newConfig.socketUrl}`;
+          console.log("[RuntimeConfig] Added HTTP protocol to Socket.IO URL");
+        }
       }
-      
+
       // Ensure app URL starts with http:// or https://
-      if (newConfig.appUrl && !newConfig.appUrl.startsWith('http://') && !newConfig.appUrl.startsWith('https://')) {
+      if (
+        newConfig.appUrl &&
+        !newConfig.appUrl.startsWith("http://") &&
+        !newConfig.appUrl.startsWith("https://")
+      ) {
         newConfig.appUrl = `http://${newConfig.appUrl}`;
       }
-      
+
       // Ensure webRTC server URL starts with http:// or https://
-      if (newConfig.webrtcServer && !newConfig.webrtcServer.startsWith('http://') && !newConfig.webrtcServer.startsWith('https://')) {
+      if (
+        newConfig.webrtcServer &&
+        !newConfig.webrtcServer.startsWith("http://") &&
+        !newConfig.webrtcServer.startsWith("https://")
+      ) {
         newConfig.webrtcServer = `http://${newConfig.webrtcServer}`;
       }
-      
+
       // Set the validated configuration
       setConfig(newConfig);
       setIsLoading(false);
       setRetryCount(0); // Reset retry count on successful fetch
       setError(null);
-      
     } catch (error) {
-      console.error('[RuntimeConfig] Error fetching config:', error);
-      
+      console.error("[RuntimeConfig] Error fetching config:", error);
+
       // Set error state but keep using the default/current config
       setError(error instanceof Error ? error : new Error(String(error)));
       setIsLoading(false);
-      
+
       // Increment retry counter for next attempt, but limit maximum retries
       if (retryCount < 5) {
-        setRetryCount(prev => prev + 1);
+        setRetryCount((prev) => prev + 1);
       }
     } finally {
       setFetchInProgress(false);
@@ -191,18 +268,24 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ child
     if (retryCount === 0 && lastFetchTime === 0) {
       fetchConfig();
     }
-    
+
     // Set up retry with exponential backoff if needed
     if (retryCount > 0 && retryCount < 5) {
       // Exponential backoff: 2s, 4s, 8s, 16s, 32s max
-      const backoffDelay = Math.min(2000 * (2 ** (retryCount - 1)), 30000);
-      console.log(`[RuntimeConfig] Will retry fetch in ${backoffDelay}ms (attempt ${retryCount + 1})`);
-      
+      const backoffDelay = Math.min(2000 * 2 ** (retryCount - 1), 30000);
+      console.log(
+        `[RuntimeConfig] Will retry fetch in ${backoffDelay}ms (attempt ${
+          retryCount + 1
+        })`
+      );
+
       const retryTimer = setTimeout(fetchConfig, backoffDelay);
       return () => clearTimeout(retryTimer);
     } else if (retryCount >= 5) {
       // After 5 retries, back off significantly to avoid hammering the server
-      console.warn('[RuntimeConfig] Max retries reached, severely limiting further attempts');
+      console.warn(
+        "[RuntimeConfig] Max retries reached, severely limiting further attempts"
+      );
       const longRetryTimer = setTimeout(() => setRetryCount(1), 120000); // Reset to 1 after 2 minutes
       return () => clearTimeout(longRetryTimer);
     }
@@ -216,7 +299,9 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ child
   };
 
   return (
-    <RuntimeConfigContext.Provider value={{ config, isLoading, error, refreshConfig }}>
+    <RuntimeConfigContext.Provider
+      value={{ config, isLoading, error, refreshConfig }}
+    >
       {children}
     </RuntimeConfigContext.Provider>
   );
@@ -225,7 +310,9 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({ child
 export const useRuntimeConfig = () => {
   const context = useContext(RuntimeConfigContext);
   if (context === undefined) {
-    throw new Error('useRuntimeConfig must be used within a RuntimeConfigProvider');
+    throw new Error(
+      "useRuntimeConfig must be used within a RuntimeConfigProvider"
+    );
   }
   return context;
-}; 
+};

@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
-import jwt from 'jsonwebtoken';
-import { logger } from '@/lib/logger';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import jwt from "jsonwebtoken";
+import { logger } from "@/lib/logger";
+import { APP_VERSION } from "@/lib/auth";
 
 const verifySchema = z.object({
   userId: z.string(),
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   } catch {
     body = undefined;
   }
-  logger.info('API POST /api/auth/verify', { headers, body });
+  logger.info("API POST /api/auth/verify", { headers, body });
   try {
     const { userId, code } = verifySchema.parse(body);
 
@@ -27,16 +28,13 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // Check if already verified
     if (user.isVerified) {
       return NextResponse.json(
-        { error: 'User is already verified' },
+        { error: "User is already verified" },
         { status: 400 }
       );
     }
@@ -44,7 +42,7 @@ export async function POST(request: Request) {
     // Verify code
     if (user.verificationCode !== code) {
       return NextResponse.json(
-        { error: 'Invalid verification code' },
+        { error: "Invalid verification code" },
         { status: 401 }
       );
     }
@@ -60,19 +58,20 @@ export async function POST(request: Request) {
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        userId: updatedUser.id, 
+      {
+        userId: updatedUser.id,
         email: updatedUser.email,
         username: updatedUser.username,
-        isAdmin: updatedUser.isAdmin ?? false
+        isAdmin: updatedUser.isAdmin ?? false,
+        appVersion: APP_VERSION,
       },
       process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
 
     // Create response
     const response = NextResponse.json({
-      message: 'Phone number verified successfully',
+      message: "Phone number verified successfully",
       token: token,
       user: {
         id: updatedUser.id,
@@ -88,27 +87,27 @@ export async function POST(request: Request) {
     });
 
     // Set cookie
-    response.cookies.set('token', token, {
+    response.cookies.set("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
 
     return response;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      logger.warn('Invalid input data in verify', error);
+      logger.warn("Invalid input data in verify", error);
       return NextResponse.json(
-        { error: 'Invalid input data', details: error.errors },
+        { error: "Invalid input data", details: error.errors },
         { status: 400 }
       );
     }
-    logger.error('Verification error', error);
+    logger.error("Verification error", error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
-} 
+}

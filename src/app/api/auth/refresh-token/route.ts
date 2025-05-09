@@ -1,28 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
-import { prisma } from '@/lib/prisma';
-import { logger } from '@/lib/logger';
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from "next/server";
+import jwt from "jsonwebtoken";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { cookies } from "next/headers";
+import { getUserFromToken, verifyToken, APP_VERSION } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    logger.info('[API] POST /api/auth/refresh-token - Attempting to refresh token');
-    
+    logger.info(
+      "[API] POST /api/auth/refresh-token - Attempting to refresh token"
+    );
+
     // Extract token from request
-    let token = req.headers.get('authorization')?.split(' ')[1];
+    let token = req.headers.get("authorization")?.split(" ")[1];
     if (!token) {
       // Try to get token from cookies
-      token = req.cookies.get('token')?.value;
+      token = req.cookies.get("token")?.value;
     }
-    
+
     if (!token) {
-      logger.warn('[API] Refresh token failed - No token provided');
+      logger.warn("[API] Refresh token failed - No token provided");
       return NextResponse.json(
-        { message: 'No token provided' },
+        { message: "No token provided" },
         { status: 401 }
       );
     }
-    
+
     // Verify the token
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
         username: string;
         isAdmin: boolean;
       };
-      
+
       // Fetch the user to ensure they still exist
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
@@ -49,9 +52,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (!user) {
-        logger.warn('[API] Refresh token failed - User not found');
+        logger.warn("[API] Refresh token failed - User not found");
         return NextResponse.json(
-          { message: 'User not found' },
+          { message: "User not found" },
           { status: 404 }
         );
       }
@@ -63,41 +66,42 @@ export async function POST(req: NextRequest) {
           email: user.email,
           username: user.username,
           isAdmin: user.isAdmin ?? false,
+          appVersion: APP_VERSION,
         },
         process.env.JWT_SECRET!,
-        { expiresIn: '7d' }
+        { expiresIn: "7d" }
       );
 
       // Create response
       const response = NextResponse.json({
-        message: 'Token refreshed successfully',
+        message: "Token refreshed successfully",
         token: newToken,
         user: user,
       });
 
       // Set cookie
-      response.cookies.set('token', newToken, {
+      response.cookies.set("token", newToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
         maxAge: 60 * 60 * 24 * 7, // 7 days
-        path: '/',
+        path: "/",
       });
 
-      logger.info('[API] Token refreshed successfully for user:', user.username);
+      logger.info(
+        "[API] Token refreshed successfully for user:",
+        user.username
+      );
       return response;
     } catch (error) {
-      logger.error('[API] Token verification failed:', error);
-      return NextResponse.json(
-        { message: 'Invalid token' },
-        { status: 401 }
-      );
+      logger.error("[API] Token verification failed:", error);
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
     }
   } catch (error) {
-    logger.error('[API] Error refreshing token:', error);
+    logger.error("[API] Error refreshing token:", error);
     return NextResponse.json(
-      { message: 'Failed to refresh token' },
+      { message: "Failed to refresh token" },
       { status: 500 }
     );
   }
-} 
+}

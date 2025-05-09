@@ -18,6 +18,7 @@ datasource db {
 enum StreamStatus {
   SCHEDULED  // Planlandı
   LIVE       // Yayında
+  PAUSED     // Duraklatıldı
   ENDED      // Bitti
   CANCELLED  // İptal edildi
 }
@@ -140,7 +141,7 @@ model LiveStream {
   title         String
   description   String?
   thumbnailUrl  String?
-  status        String          @default("SCHEDULED") // Values: SCHEDULED, LIVE, ENDED, CANCELLED
+  status        String          @default("SCHEDULED") // Values: SCHEDULED, LIVE, PAUSED, ENDED, CANCELLED
   startTime     DateTime?
   endTime       DateTime?
   userId        String
