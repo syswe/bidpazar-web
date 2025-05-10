@@ -397,55 +397,37 @@ let adminRouteChecking = false; // Flag to identify when validating for admin ro
 export const validateToken = async (
   forceCheck = false
 ): Promise<User | null> => {
-  const token = getToken();
+  const now = Date.now();
+  const state = getAuth();
+  const token = state.token;
 
   if (!token) {
-    console.log("[validateToken] No token found in storage or cookies");
+    console.log("[validateToken] No token found in storage");
     return null;
   }
 
-  // Check if we're on an admin route and allow higher validation frequency
-  const isAdminRoute =
+  // Detect if we're validating from an admin route
+  if (
     typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/admin");
-  if (isAdminRoute && !adminRouteChecking) {
-    console.log(
-      "[validateToken] Admin route detected, allowing fast validation"
-    );
+    window.location.pathname?.includes("/admin")
+  ) {
     adminRouteChecking = true;
   }
 
-  console.log(`[validateToken] Token found, length: ${token.length}`);
-
-  // Prevent too frequent validation requests, but allow bypassing for admin routes or forced check
-  const now = Date.now();
-  const effectiveCooldown =
-    adminRouteChecking || forceCheck ? VALIDATION_COOLDOWN : 1000;
-  if (now - lastValidationTime < effectiveCooldown && !forceCheck) {
+  // Skip validation if we've checked recently (unless forced)
+  if (!forceCheck && lastValidationTime && now - lastValidationTime < 60000) {
     console.log(
-      `[validateToken] Token validation on cooldown. Last validation was ${
+      `[validateToken] Skipping validation - last check was ${
         (now - lastValidationTime) / 1000
-      }s ago.`
+      } seconds ago`
     );
-    console.log(
-      `[validateToken] Using ${
-        adminRouteChecking ? "reduced" : "standard"
-      } cooldown: ${effectiveCooldown}ms`
-    );
-
-    // Return the last cached user data instead of making a new request
-    const cachedUser = getUser();
-    console.log(
-      `[validateToken] Returning cached user: ${
-        cachedUser ? cachedUser.username : "none"
-      }`
-    );
-    return cachedUser;
+    return getUser(); // Return cached user
   }
 
+  // Add timestamp to prevent cached responses
+  const timestamp = now;
+
   try {
-    // Add a timestamp to prevent caching
-    const timestamp = new Date().getTime();
     console.log(
       `[validateToken] Validating token with backend (admin route: ${
         adminRouteChecking ? "yes" : "no"
@@ -478,6 +460,22 @@ export const validateToken = async (
         console.warn("[validateToken] App version changed, removing auth data");
         removeAuth();
         return null;
+      }
+
+      // Handle database connection issues (status 503 = Service Unavailable)
+      if (response.status === 503) {
+        try {
+          const errorData = await response.json();
+          if (errorData.code === "DB_UNAVAILABLE" && errorData.temporary) {
+            console.warn(
+              "[validateToken] Database unavailable (temporary error), keeping current auth state"
+            );
+            return getUser(); // Return cached user to allow continued app usage
+          }
+        } catch (e) {
+          // If response parsing fails, continue with normal error handling
+          console.error("[validateToken] Error parsing 503 response:", e);
+        }
       }
 
       // If specifically unauthorized (401) or forbidden (403), try refresh

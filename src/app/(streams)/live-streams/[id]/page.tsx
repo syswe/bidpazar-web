@@ -1257,25 +1257,43 @@ export default function LiveStreamPage() {
   };
 
   const handleConnectionError = (error: {
-    type: string;
+    type: string; // e.g., 'socket', 'device_load', 'transport_create', 'transport_connect'
     message: string;
-    canReconnect: boolean;
+    canReconnect?: boolean; // Optional: manager can suggest if reconnect is viable
+    details?: any; // Optional: additional context
   }) => {
-    logMessage(`Connection error: ${error.message}`, "warn", error);
-
-    // Set a user-friendly error message
-    setError(
-      `Connection error: ${error.message}. ${
-        error.canReconnect ? "Reconnecting automatically..." : ""
-      }`
+    logMessage(
+      `[LiveStreamPage] WebRTC Connection Error: ${error.type} - ${error.message}`,
+      "error",
+      { errorDetails: error.details, canReconnect: error.canReconnect }
     );
 
-    // For most errors, we try to auto-reconnect
+    const userFriendlyMessage = `Connection error (${error.type}): ${error.message}.`;
+    setError(userFriendlyMessage); // Update main error display
+    toast.error(userFriendlyMessage, { duration: 7000 }); // Show a toast
+
+    setConnectionState((prev) => ({
+      ...prev,
+      isConnected: false,
+      isReconnecting: error.canReconnect ?? false, // Use suggestion from manager
+      lastError: userFriendlyMessage,
+    }));
+
+    // Auto-reconnect if suggested and possible, or guide user
     if (error.canReconnect) {
-      // Auto-reconnect after a short delay
+      logMessage(
+        "[LiveStreamPage] Attempting auto-reconnect due to connection error...",
+        "warn"
+      );
       setTimeout(() => {
-        handleReconnect();
-      }, 2000);
+        handleReconnect(); // Your existing reconnect logic
+      }, 3000); // Delay before auto-reconnect
+    } else {
+      logMessage(
+        "[LiveStreamPage] Auto-reconnect not suggested for this error.",
+        "warn"
+      );
+      // Optionally, provide guidance to the user to manually reconnect or refresh.
     }
   };
 
@@ -1308,24 +1326,45 @@ export default function LiveStreamPage() {
 
   // Add a function to handle media errors
   const handleMediaError = useCallback(
-    (errorType: string, errorMessage: string) => {
-      logMessage(`Media error: ${errorType} - ${errorMessage}`, "error");
+    (errorType: string, errorMessage: string, details?: any) => {
+      logMessage(
+        `[LiveStreamPage] Media Error: ${errorType} - ${errorMessage}`,
+        "error",
+        { errorDetails: details }
+      );
 
-      // Set media error state
-      setMediaError(errorMessage);
+      setMediaError(errorMessage); // Update media error state for UI
+      toast.error(`Media issue (${errorType}): ${errorMessage}`, {
+        duration: 7000,
+      });
 
-      // For camera errors, we can still continue with audio only
-      if (errorType === "camera") {
-        setIsCameraOn(false);
-        toast.error("Camera access failed. Continuing with audio only.");
+      if (errorType === "permission_denied") {
+        // Specific guidance for permission issues
+        toast.error(
+          "Please ensure you have granted camera/microphone permissions in your browser settings.",
+          { duration: 10000 }
+        );
+      } else if (errorType === "device_not_found") {
+        toast.error("No camera/microphone found. Please check your devices.", {
+          duration: 10000,
+        });
       }
-      // For microphone errors, we may want to notify but can still allow viewing
-      else if (errorType === "microphone") {
-        setIsMicrophoneOn(false);
-        toast.error("Microphone access failed. You can still view the stream.");
+
+      // Update device on/off state if applicable (example)
+      if (
+        errorType === "camera_error" ||
+        (errorType === "device_not_found" && isCameraOn)
+      ) {
+        // setIsCameraOn(false); // Potentially turn off camera toggle if it errors
+      }
+      if (
+        errorType === "microphone_error" ||
+        (errorType === "device_not_found" && isMicrophoneOn)
+      ) {
+        // setIsMicrophoneOn(false); // Potentially turn off mic toggle
       }
     },
-    [logMessage]
+    [logMessage, isCameraOn, isMicrophoneOn] // Add dependencies if they affect logic inside
   );
 
   // Early return for loading state

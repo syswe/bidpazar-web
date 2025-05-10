@@ -1,11 +1,28 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useTheme } from './ThemeProvider';
-import { useAuth } from './AuthProvider';
-import { usePathname } from 'next/navigation';
-import { Home, ShoppingBag, Tv, LayoutDashboard, Menu, ChevronLeft, MoonStar, Sun, MessageCircle, Package, X, Bell, ShieldAlert, Users, Cat, Layers } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useTheme } from "./ThemeProvider";
+import { useAuth } from "./AuthProvider";
+import { usePathname } from "next/navigation";
+import {
+  Home,
+  ShoppingBag,
+  Tv,
+  LayoutDashboard,
+  Menu,
+  ChevronLeft,
+  MoonStar,
+  Sun,
+  MessageCircle,
+  Package,
+  X,
+  Bell,
+  ShieldAlert,
+  Users,
+  Cat,
+  Layers,
+} from "lucide-react";
 
 const Sidebar = () => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -19,15 +36,15 @@ const Sidebar = () => {
     const handleResize = () => {
       setIsExpanded(window.innerWidth >= 768);
     };
-    
+
     // Set initial state
     handleResize();
-    
+
     // Add event listener
-    window.addEventListener('resize', handleResize);
-    
+    window.addEventListener("resize", handleResize);
+
     // Clean up
-    return () => window.removeEventListener('resize', handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   // Close sidebar when navigating on mobile
@@ -41,40 +58,40 @@ const Sidebar = () => {
   useEffect(() => {
     if (isAuthenticated && user) {
       fetchNotifications();
-      
+
       // Set up polling for notifications every 30 seconds
       const intervalId = setInterval(fetchNotifications, 30000);
-      
+
       return () => clearInterval(intervalId);
     }
   }, [isAuthenticated, user]);
-  
+
   const fetchNotifications = async () => {
     try {
       // Get token from localStorage with safer parsing
-      let token = '';
-      const authData = localStorage.getItem('auth');
+      let token = "";
+      const authData = localStorage.getItem("auth");
       if (authData) {
         try {
           const parsed = JSON.parse(authData);
-          token = parsed.token || '';
+          token = parsed.token || "";
         } catch (e) {
-          console.error('Failed to parse auth data:', e);
+          console.error("Failed to parse auth data:", e);
         }
       }
 
-      const response = await fetch('/api/notifications', {
+      const response = await fetch("/api/notifications", {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setNotificationCount(data.unreadCount || 0);
       }
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+      console.error("Failed to fetch notifications:", error);
     }
   };
 
@@ -87,7 +104,7 @@ const Sidebar = () => {
       {/* Mobile overlay */}
       <div
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${
-          isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          isExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
         onClick={toggleSidebar}
       />
@@ -96,7 +113,7 @@ const Sidebar = () => {
       <button
         onClick={toggleSidebar}
         className={`fixed top-4 left-4 z-50 p-2 rounded-full bg-[var(--accent)] text-white shadow-lg md:hidden ${
-          isExpanded ? 'hidden' : 'flex'
+          isExpanded ? "hidden" : "flex"
         } items-center justify-center`}
         aria-label="Open Menu"
       >
@@ -110,18 +127,25 @@ const Sidebar = () => {
           bg-[var(--background)] border-r border-[var(--border)]
           transition-all duration-300 ease-in-out flex flex-col
           overflow-hidden premium-shadow
-          ${isExpanded 
-            ? 'w-[85vw] sm:w-72 md:w-64 translate-x-0' 
-            : 'w-16 -translate-x-full md:translate-x-0'
+          ${
+            isExpanded
+              ? "w-[85vw] sm:w-72 md:w-64 translate-x-0"
+              : "w-16 -translate-x-full md:translate-x-0"
           }
         `}
       >
         {/* Header */}
         <div className="h-16 flex items-center px-4 border-b border-[var(--border)] relative">
-          <div className={`flex items-center ${isExpanded ? 'w-full' : 'justify-center'}`}>
+          <div
+            className={`flex items-center ${
+              isExpanded ? "w-full" : "justify-center"
+            }`}
+          >
             {isExpanded ? (
               <Link href="/" className="text-xl font-bold text-[var(--accent)]">
-                <span className="bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--primary)]">Bidpazar</span>
+                <span className="bg-clip-text bg-gradient-to-r from-[var(--accent)] to-[var(--primary)]">
+                  Bidpazar
+                </span>
               </Link>
             ) : (
               <Link href="/" className="text-xl font-bold text-[var(--accent)]">
@@ -134,7 +158,7 @@ const Sidebar = () => {
           <button
             onClick={toggleSidebar}
             className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1.5 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] transition-all"
-            aria-label={isExpanded ? 'Daralt' : 'Genişlet'}
+            aria-label={isExpanded ? "Daralt" : "Genişlet"}
           >
             {isExpanded ? (
               <>
@@ -157,11 +181,17 @@ const Sidebar = () => {
         <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin">
           <ul className="space-y-2 mt-4">
             <li>
-              <Link href="/"
-                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                ${pathname === '/'
-                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+              <Link
+                href="/"
+                className={`flex items-center ${
+                  isExpanded ? "px-4" : "px-0 justify-center"
+                } py-2.5 rounded-lg transition-all
+                ${
+                  pathname === "/"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                }`}
+              >
                 {isExpanded ? (
                   <>
                     <Home className="h-5 w-5 mr-3" />
@@ -173,11 +203,17 @@ const Sidebar = () => {
               </Link>
             </li>
             <li>
-              <Link href="/products"
-                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                ${pathname.startsWith('/products')
-                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+              <Link
+                href="/products"
+                className={`flex items-center ${
+                  isExpanded ? "px-4" : "px-0 justify-center"
+                } py-2.5 rounded-lg transition-all
+                ${
+                  pathname.startsWith("/products")
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                }`}
+              >
                 {isExpanded ? (
                   <>
                     <ShoppingBag className="h-5 w-5 mr-3" />
@@ -189,11 +225,17 @@ const Sidebar = () => {
               </Link>
             </li>
             <li>
-              <Link href="/live-streams"
-                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                ${pathname.startsWith('/live-streams')
-                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+              <Link
+                href="/live-streams"
+                className={`flex items-center ${
+                  isExpanded ? "px-4" : "px-0 justify-center"
+                } py-2.5 rounded-lg transition-all
+                ${
+                  pathname.startsWith("/live-streams")
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                }`}
+              >
                 {isExpanded ? (
                   <>
                     <Tv className="h-5 w-5 mr-3" />
@@ -205,11 +247,17 @@ const Sidebar = () => {
               </Link>
             </li>
             <li>
-              <Link href="/packages"
-                className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                ${pathname.startsWith('/packages')
-                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                    : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+              <Link
+                href="/packages"
+                className={`flex items-center ${
+                  isExpanded ? "px-4" : "px-0 justify-center"
+                } py-2.5 rounded-lg transition-all
+                ${
+                  pathname.startsWith("/packages")
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                    : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                }`}
+              >
                 {isExpanded ? (
                   <>
                     <Package className="h-5 w-5 mr-3" />
@@ -223,11 +271,19 @@ const Sidebar = () => {
             {isAuthenticated && (
               <>
                 <li>
-                  <Link href="/dashboard"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname.startsWith('/dashboard') && !pathname.startsWith('/dashboard/messages') && !pathname.startsWith('/dashboard/notifications')
-                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/dashboard"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname.startsWith("/dashboard") &&
+                      !pathname.startsWith("/dashboard/messages") &&
+                      !pathname.startsWith("/dashboard/notifications")
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <LayoutDashboard className="h-5 w-5 mr-3" />
@@ -239,11 +295,17 @@ const Sidebar = () => {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dashboard/messages"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname.startsWith('/dashboard/messages')
-                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/dashboard/messages"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname.startsWith("/dashboard/messages")
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <MessageCircle className="h-5 w-5 mr-3" />
@@ -255,18 +317,24 @@ const Sidebar = () => {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dashboard/notifications"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all relative
-                    ${pathname.startsWith('/dashboard/notifications')
-                        ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/dashboard/notifications"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all relative
+                    ${
+                      pathname.startsWith("/dashboard/notifications")
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <Bell className="h-5 w-5 mr-3" />
                         <span>Bildirimler</span>
                         {notificationCount > 0 && (
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center h-5 min-w-5 px-1 rounded-full bg-[var(--accent)] text-white text-xs font-medium">
-                            {notificationCount > 99 ? '99+' : notificationCount}
+                            {notificationCount > 99 ? "99+" : notificationCount}
                           </span>
                         )}
                       </>
@@ -275,7 +343,7 @@ const Sidebar = () => {
                         <Bell className="h-5 w-5" />
                         {notificationCount > 0 && (
                           <span className="absolute -top-1 -right-1 flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-[var(--accent)] text-white text-xs font-medium">
-                            {notificationCount > 9 ? '9+' : notificationCount}
+                            {notificationCount > 9 ? "9+" : notificationCount}
                           </span>
                         )}
                       </div>
@@ -284,7 +352,7 @@ const Sidebar = () => {
                 </li>
               </>
             )}
-            
+
             {/* Admin Section - Only visible for admin users */}
             {isAuthenticated && user?.isAdmin && (
               <>
@@ -298,13 +366,19 @@ const Sidebar = () => {
                     <div className="border-t border-[var(--border)] my-2"></div>
                   )}
                 </li>
-                
+
                 <li>
-                  <Link href="/admin"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname === '/admin'
-                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/admin"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname === "/admin"
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <ShieldAlert className="h-5 w-5 mr-3" />
@@ -315,13 +389,19 @@ const Sidebar = () => {
                     )}
                   </Link>
                 </li>
-                
+
                 <li>
-                  <Link href="/admin/users"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname === '/admin/users'
-                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/admin/users"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname === "/admin/users"
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <Users className="h-5 w-5 mr-3" />
@@ -332,13 +412,19 @@ const Sidebar = () => {
                     )}
                   </Link>
                 </li>
-                
+
                 <li>
-                  <Link href="/admin/products"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname === '/admin/products'
-                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/admin/products"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname === "/admin/products"
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <Package className="h-5 w-5 mr-3" />
@@ -349,13 +435,19 @@ const Sidebar = () => {
                     )}
                   </Link>
                 </li>
-                
+
                 <li>
-                  <Link href="/admin/categories"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname === '/admin/categories'
-                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/admin/categories"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname === "/admin/categories"
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <Layers className="h-5 w-5 mr-3" />
@@ -366,13 +458,19 @@ const Sidebar = () => {
                     )}
                   </Link>
                 </li>
-                
+
                 <li>
-                  <Link href="/admin/streams"
-                    className={`flex items-center ${isExpanded ? 'px-4' : 'px-0 justify-center'} py-2.5 rounded-lg transition-all
-                    ${pathname === '/admin/streams'
-                        ? 'bg-[var(--accent)] text-[var(--accent-foreground)]'
-                        : 'hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]'}`}>
+                  <Link
+                    href="/admin/streams"
+                    className={`flex items-center ${
+                      isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                    ${
+                      pathname === "/admin/streams"
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                  >
                     {isExpanded ? (
                       <>
                         <Tv className="h-5 w-5 mr-3" />
@@ -393,20 +491,24 @@ const Sidebar = () => {
           <button
             onClick={toggleTheme}
             className="w-full flex items-center p-2 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] mb-4 transition-all"
-            aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+            aria-label={
+              theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+            }
           >
             {isExpanded ? (
               <>
-                {theme === 'light' ? (
+                {theme === "light" ? (
                   <MoonStar className="h-5 w-5" />
                 ) : (
                   <Sun className="h-5 w-5" />
                 )}
-                <span className="ml-3">{theme === 'light' ? 'Karanlık Mod' : 'Aydınlık Mod'}</span>
+                <span className="ml-3">
+                  {theme === "light" ? "Karanlık Mod" : "Aydınlık Mod"}
+                </span>
               </>
             ) : (
               <div className="w-full flex justify-center">
-                {theme === 'light' ? (
+                {theme === "light" ? (
                   <MoonStar className="h-5 w-5" />
                 ) : (
                   <Sun className="h-5 w-5" />
@@ -416,7 +518,11 @@ const Sidebar = () => {
           </button>
 
           {isAuthenticated && user ? (
-            <div className={`${isExpanded ? 'p-3' : 'p-2'} rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}>
+            <div
+              className={`${
+                isExpanded ? "p-3" : "p-2"
+              } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
+            >
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white text-sm font-medium shadow-md">
@@ -429,10 +535,16 @@ const Sidebar = () => {
                       {user.name || user.username}
                     </p>
                     <div className="flex mt-1 space-x-3">
-                      <Link href="/dashboard" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
+                      <Link
+                        href="/dashboard"
+                        className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity"
+                      >
                         Profil
                       </Link>
-                      <button onClick={logout} className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity">
+                      <button
+                        onClick={logout}
+                        className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity"
+                      >
                         Çıkış
                       </button>
                     </div>
@@ -441,7 +553,11 @@ const Sidebar = () => {
               </div>
             </div>
           ) : (
-            <div className={`${isExpanded ? 'p-3' : 'p-2'} rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}>
+            <div
+              className={`${
+                isExpanded ? "p-3" : "p-2"
+              } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
+            >
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white text-sm font-medium shadow-md">
@@ -454,10 +570,16 @@ const Sidebar = () => {
                       Misafir
                     </p>
                     <div className="flex mt-1 space-x-3">
-                      <Link href="/sign-in" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
+                      <Link
+                        href="/login"
+                        className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition-opacity"
+                      >
                         Giriş
                       </Link>
-                      <Link href="/sign-up" className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity">
+                      <Link
+                        href="/register"
+                        className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity"
+                      >
                         Kayıt
                       </Link>
                     </div>
@@ -472,4 +594,4 @@ const Sidebar = () => {
   );
 };
 
-export default Sidebar; 
+export default Sidebar;

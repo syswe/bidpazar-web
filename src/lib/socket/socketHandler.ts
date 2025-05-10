@@ -77,17 +77,20 @@ interface ChatMessage {
 const chatMessages: Record<string, ChatMessage[]> = {};
 const MAX_CHAT_HISTORY = 100; // Maximum number of messages to keep per stream
 
-interface Peer {
+// Update the Peer type to include rtpCapabilities
+type Peer = {
   socketId: string;
   userId: string;
   username: string;
   sessionId: string;
   isStreamer: boolean;
-  transports: Map<string, MediasoupTypes.WebRtcTransport>;
-  producers: Map<string, MediasoupTypes.Producer>;
-  consumers: Map<string, MediasoupTypes.Consumer>;
+  transports: Map<string, mediasoup.types.Transport>;
+  producers: Map<string, mediasoup.types.Producer>;
+  consumers: Map<string, mediasoup.types.Consumer>;
   lastActivity: number;
-}
+  rtpCapabilities?: mediasoup.types.RtpCapabilities;
+};
+
 interface Room {
   router: MediasoupTypes.Router;
   peers: Map<string, Peer>;
@@ -254,6 +257,75 @@ function findExistingUserConnection(
   return null;
 }
 
+// New function to remove existing peer connection
+function removeExistingPeer(room: Room, socketId: string) {
+  const peer = room.peers.get(socketId);
+  if (!peer) return false;
+
+  logger.info(
+    `[WebRTC] Removing existing peer ${socketId} to prevent duplicates`,
+    { userId: peer.userId, isStreamer: peer.isStreamer }
+  );
+
+  // Close all transports, producers and consumers
+  peer.transports.forEach((transport) => {
+    try {
+      transport.close();
+    } catch (err: any) {
+      logger.error(
+        `[WebRTC] Error closing transport during cleanup: ${err.message}`
+      );
+    }
+  });
+
+  peer.producers.forEach((producer) => {
+    try {
+      producer.close();
+    } catch (err: any) {
+      logger.error(
+        `[WebRTC] Error closing producer during cleanup: ${err.message}`
+      );
+    }
+  });
+
+  peer.consumers.forEach((consumer) => {
+    try {
+      consumer.close();
+    } catch (err: any) {
+      logger.error(
+        `[WebRTC] Error closing consumer during cleanup: ${err.message}`
+      );
+    }
+  });
+
+  // Remove peer from room
+  room.peers.delete(socketId);
+
+  // Remove any session mappings to this peer
+  for (const [sessionId, peerSocketId] of room.activeSessions.entries()) {
+    if (peerSocketId === socketId) {
+      room.activeSessions.delete(sessionId);
+      logger.debug(`[WebRTC] Removed session mapping for ${sessionId}`);
+    }
+  }
+
+  // Clean up any stale producers that might reference this peer
+  const producerIds = Array.from(room.peers.values())
+    .flatMap((p) => Array.from(p.producers.values()))
+    .map((producer) => producer.id);
+
+  // Log the cleanup status
+  logger.info(`[WebRTC] Peer cleanup complete for ${socketId}`, {
+    userId: peer.userId,
+    isStreamer: peer.isStreamer,
+    removedTransports: peer.transports.size,
+    removedProducers: peer.producers.size,
+    removedConsumers: peer.consumers.size,
+  });
+
+  return true;
+}
+
 // Add enhanced error formatting helper
 const formatError = (error: any) => {
   if (error instanceof Error) {
@@ -266,10 +338,69 @@ const formatError = (error: any) => {
   return { message: String(error) };
 };
 
+// Add this function to enforce one streamer per room
+function ensureOnlyOneStreamerInRoom(
+  io: SocketIOServer,
+  room: Room,
+  currentUserId: string,
+  currentSocketId: string
+) {
+  // Find any existing broadcasters
+  const existingBroadcasters = Array.from(room.peers.values()).filter(
+    (peer) => peer.isStreamer && peer.userId !== currentUserId
+  );
+
+  // If there's already a broadcaster that's not this user, disconnect them
+  if (existingBroadcasters.length > 0) {
+    for (const broadcaster of existingBroadcasters) {
+      logger.warn(
+        `[WebRTC] Removing existing broadcaster as a new one is connecting`,
+        {
+          existingBroadcasterId: broadcaster.userId,
+          existingBroadcasterSocketId: broadcaster.socketId,
+          newBroadcasterId: currentUserId,
+          newBroadcasterSocketId: currentSocketId,
+        }
+      );
+
+      try {
+        // Close their transports
+        for (const transport of broadcaster.transports.values()) {
+          transport.close();
+        }
+
+        // Remove them from the room
+        room.peers.delete(broadcaster.socketId);
+
+        // Get the actual socket from the IO server
+        const socket = io.sockets.sockets.get(broadcaster.socketId);
+        if (socket) {
+          // Notify the client they're being disconnected
+          socket.emit("broadcaster_replaced", {
+            message: "Another streamer has taken over this stream",
+          });
+
+          // Use disconnect() to force close their connection
+          socket.disconnect(true);
+        }
+      } catch (err) {
+        logger.error(`[WebRTC] Error removing existing broadcaster`, {
+          error: formatError(err),
+          userId: broadcaster.userId,
+        });
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
 // Main exported function for server.js
-export function initializeSocketIOServer(
-  httpServer: HttpServer
-): SocketIOServer {
+export async function initializeSocketIOServer(
+  httpServer: HttpServer,
+  existingIo?: SocketIOServer
+): Promise<SocketIOServer> {
   logger.info("[Socket.IO] Initializing Socket.IO server");
 
   // Log any existing open connections before creating the server
@@ -286,52 +417,58 @@ export function initializeSocketIOServer(
   });
 
   try {
-    // Create Socket.IO server with CORS and WebSocket options
-    const io = new SocketIOServer(httpServer, {
-      cors: {
-        origin: "*", // In production, restrict this to your domains
-        methods: ["GET", "POST"],
-        credentials: true,
-      },
-      // Allow all transports with WebSocket preferred
-      transports: ["websocket", "polling"],
-      allowUpgrades: true,
-      // Path and settings
-      path: "/socket.io/",
-      serveClient: false, // Don't serve client files to save bandwidth
-      connectTimeout: 45000, // 45 seconds (more than default 20s)
-      // Polling settings
-      pingTimeout: 30000,
-      pingInterval: 25000,
-      upgradeTimeout: 10000,
-      // WebSocket specific settings
-      maxHttpBufferSize: 1e8, // 100 MB max message size
-      // Detailed logging
-      // @ts-ignore - logger option is available in socket.io
-      logger: {
-        debug: (...args: any[]) => logger.debug("[Socket.IO Debug]", ...args),
-        info: (...args: any[]) => logger.info("[Socket.IO Info]", ...args),
-        warn: (...args: any[]) => logger.warn("[Socket.IO Warning]", ...args),
-        error: (...args: any[]) => logger.error("[Socket.IO Error]", ...args),
-      },
-    });
+    // Use the existing Socket.IO instance if provided, or create a new one
+    const io =
+      existingIo ||
+      new SocketIOServer(httpServer, {
+        cors: {
+          origin: "*", // In production, restrict this to your domains
+          methods: ["GET", "POST"],
+          credentials: true,
+        },
+        // Allow all transports with WebSocket preferred
+        transports: ["websocket", "polling"],
+        allowUpgrades: true,
+        // Path and settings
+        path: "/socket.io/",
+        serveClient: false, // Don't serve client files to save bandwidth
+        connectTimeout: 45000, // 45 seconds (more than default 20s)
+        // Polling settings
+        pingTimeout: 30000,
+        pingInterval: 25000,
+        upgradeTimeout: 10000,
+        // WebSocket specific settings
+        maxHttpBufferSize: 1e8, // 100 MB max message size
+        // Fix for Next.js 13+ compatibility
+        addTrailingSlash: false,
+        // Enable connection state recovery
+        connectionStateRecovery: {
+          // optional, see https://socket.io/docs/v4/connection-state-recovery/#options
+          maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+          skipMiddlewares: true, // RECOMMENDED
+        },
+      });
 
     // Store the Socket.IO server instance on the HTTP server for later access
     (httpServer as ExtendedHttpServer).io = io;
 
     // Initialize MediaSoup worker
-    createMediasoupWorker()
-      .then((worker) => {
-        mediasoupWorker = worker;
-        // @ts-ignore
-        global.mediasoupWorker = worker;
-        logger.info("[MediaSoup] MediaSoup worker created successfully");
-      })
-      .catch((error) => {
-        logger.error("[MediaSoup] Failed to create MediaSoup worker", {
-          error,
-        });
-      });
+    try {
+      mediasoupWorker = await createMediasoupWorker();
+      // @ts-ignore
+      global.mediasoupWorker = mediasoupWorker;
+      logger.info(
+        "[MediaSoup] MediaSoup worker created successfully and is ready."
+      );
+    } catch (error) {
+      logger.error(
+        "[MediaSoup] CRITICAL: Failed to create initial MediaSoup worker during server init.",
+        { error }
+      );
+      // Depending on the desired behavior, you might want to throw an error here
+      // to prevent the server from starting in a potentially broken state.
+      // For now, logging the error and allowing the server to continue.
+    }
 
     // Main Socket.IO connection handler
     io.on("connection", async (socket: Socket) => {
@@ -341,15 +478,19 @@ export function initializeSocketIOServer(
         userId,
         username = "Anonymous",
         isAnonymous = false,
+        isStreamer = false,
       } = socket.handshake.query as {
         streamId?: string;
         userId?: string;
         username?: string;
         isAnonymous?: string | boolean;
+        isStreamer?: string | boolean;
       };
 
       const isAnonymousUser =
         isAnonymous === "true" || isAnonymous === "1" || isAnonymous === true;
+      const isStreamerUser =
+        isStreamer === "true" || isStreamer === "1" || isStreamer === true;
       const clientIp =
         socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
 
@@ -359,8 +500,14 @@ export function initializeSocketIOServer(
         Math.random() * 2000000000
       )}`;
 
-      // Log connection
-      logger.info(`[Socket.IO] Client connected`, {
+      // Store this flag for broadcaster/viewer differentiation
+      socket.data.isBroadcaster = isStreamerUser;
+      socket.data.streamId = streamId;
+      socket.data.userId = userId;
+      socket.data.username = username;
+      socket.data.sessionId = sessionId;
+
+      logger.info("[Socket.IO] Client connected", {
         socketId: socket.id,
         sessionId,
         streamId: streamId || "no-stream",
@@ -368,7 +515,7 @@ export function initializeSocketIOServer(
         username: username || "Anonymous",
         isAnonymous: isAnonymousUser,
         ip: clientIp,
-        transport: socket.conn.transport.name, // 'polling' or 'websocket'
+        transport: socket.conn.transport.name,
         query: socket.handshake.query,
       });
 
@@ -498,57 +645,286 @@ export function initializeSocketIOServer(
         }
       });
 
-      // Handle producer (streamer) ready
-      socket.on("broadcaster_ready", (data) => {
-        if (!streamId) return;
+      // Handle broadcaster (streamer) ready
+      socket.on("broadcaster_ready", async (data) => {
+        try {
+          if (!streamId) {
+            socket.emit("error", { message: "No streamId provided" });
+            return;
+          }
 
-        logger.info(`[WebRTC] Broadcaster ready for stream: ${streamId}`, {
-          socketId: socket.id,
-          sessionId,
-        });
+          logger.info(`[WebRTC] Broadcaster ready for stream: ${streamId}`, {
+            socketId: socket.id,
+            sessionId: data.sessionId || sessionId,
+          });
 
-        // Store this socket as the broadcaster for this stream
-        socket.data.isBroadcaster = true;
-        socket.data.streamId = streamId;
+          // Get the room
+          const room = await getOrCreateRoom(streamId);
 
-        // Let all clients in this stream know the broadcaster is ready
-        socket.to(`stream:${streamId}`).emit("broadcaster_ready", {
-          broadcasterSocketId: socket.id,
-          broadcasterSessionId: sessionId,
-          streamId,
-        });
-      });
+          // Store that this is a broadcaster in the socket data for later reference
+          socket.data.isBroadcaster = true;
+          socket.data.streamId = streamId;
 
-      // Handle consumer (viewer) ready
-      socket.on("viewer_ready", (data) => {
-        if (!streamId) return;
+          // Enhanced debugging to log the room peer state
+          logger.debug(
+            `[WebRTC] Room peer state before broadcaster ready check:`,
+            {
+              streamId,
+              socketId: socket.id,
+              peersInRoom: Array.from(room.peers.keys()),
+              peerExists: room.peers.has(socket.id),
+            }
+          );
 
-        logger.info(`[WebRTC] Viewer ready for stream: ${streamId}`, {
-          socketId: socket.id,
-          sessionId,
-        });
+          // Check for existing broadcasters for this stream but with different socket IDs
+          if (userId) {
+            const existingConnection = findExistingUserConnection(
+              room,
+              userId as string,
+              true // Looking for streamers
+            );
 
-        // Find broadcaster in this room
-        const broadcasters = Array.from(io.sockets.sockets.values()).filter(
-          (s) => s.data.isBroadcaster && s.data.streamId === streamId
-        );
+            if (
+              existingConnection &&
+              existingConnection.socketId !== socket.id
+            ) {
+              logger.warn(
+                `[WebRTC] Found existing broadcaster connection for user ${userId}`,
+                {
+                  existingSocketId: existingConnection.socketId,
+                  newSocketId: socket.id,
+                }
+              );
 
-        if (broadcasters.length > 0) {
-          const broadcaster = broadcasters[0];
-          // Notify broadcaster that this viewer is ready
-          broadcaster.emit("viewer_ready", {
-            viewerSocketId: socket.id,
-            viewerSessionId: sessionId,
+              // Remove the existing connection to prevent duplicates
+              if (removeExistingPeer(room, existingConnection.socketId)) {
+                logger.info(
+                  `[WebRTC] Successfully removed stale broadcaster connection ${existingConnection.socketId}`
+                );
+              }
+            }
+          }
+
+          // Get peer from the room - check if peer exists
+          let peer = room.peers.get(socket.id);
+
+          // If the peer doesn't exist, create it
+          if (!peer) {
+            logger.info(
+              `[WebRTC] Broadcaster not found in peers map, creating it now: ${socket.id}`
+            );
+
+            // Create a new peer for this socket
+            peer = {
+              socketId: socket.id,
+              userId: userId as string,
+              username: username as string,
+              sessionId: sessionId,
+              isStreamer: true,
+              transports: new Map(),
+              producers: new Map(),
+              consumers: new Map(),
+              lastActivity: Date.now(),
+            };
+
+            // Add the peer to the room
+            room.peers.set(socket.id, peer);
+            room.activeSessions.set(sessionId, socket.id);
+
+            logger.info(
+              `[WebRTC] Added broadcaster peer to room: ${socket.id}`
+            );
+          } else {
+            // Update existing peer details
+            logger.info(
+              `[WebRTC] Found existing broadcaster peer: ${socket.id}`
+            );
+
+            // Make sure isStreamer flag is set to true
+            peer.isStreamer = true;
+            peer.lastActivity = Date.now();
+          }
+
+          // Ensure only one streamer per room
+          ensureOnlyOneStreamerInRoom(io, room, userId as string, socket.id);
+
+          // Find active producers from this streamer
+          const activeProducers: Array<{
+            producerId: string;
+            kind: string;
+            peerId: string;
+          }> = [];
+
+          peer.producers.forEach((producer) => {
+            activeProducers.push({
+              producerId: producer.id,
+              kind: producer.kind,
+              peerId: socket.id,
+            });
+          });
+
+          // Log the room state for debugging
+          logger.debug(`[WebRTC] Room state after broadcaster ready:`, {
+            streamId,
+            peersCount: room.peers.size,
+            peerSocketIds:
+              Array.from(room.peers.keys()).slice(0, 10) +
+              (room.peers.size > 10
+                ? `... and ${room.peers.size - 10} more`
+                : ""),
+            activeBroadcasters: Array.from(room.peers.values())
+              .filter((p) => p.isStreamer)
+              .map((p) => ({
+                socketId: p.socketId,
+                userId: p.userId,
+                producers: p.producers.size,
+              })),
+          });
+
+          logger.info(
+            `[WebRTC] Notifying viewers that broadcaster is ready with ${activeProducers.length} producers`,
+            {
+              streamId,
+              broadcasterSocketId: socket.id,
+              producers: activeProducers.map((p) => ({
+                id: p.producerId,
+                kind: p.kind,
+              })),
+            }
+          );
+
+          // Notify all viewers
+          io.to(`stream:${streamId}`).emit("broadcaster_ready", {
+            streamId,
+            broadcasterSocketId: socket.id,
+            broadcasterUserId: userId,
+            broadcasterUsername: username,
+            activeProducers: activeProducers,
+          });
+
+          // Send a success response directly to the broadcaster
+          socket.emit("broadcaster_ready_confirmed", {
+            success: true,
+            roomState: {
+              totalPeers: room.peers.size,
+              viewers: room.peers.size - 1, // exclude self
+              streamId,
+            },
+          });
+
+          logger.info(
+            `[WebRTC] Stream ${streamId} is now active with broadcaster ${userId}`
+          );
+        } catch (err) {
+          logger.error(`[WebRTC] Error in broadcaster_ready handler`, {
+            error: formatError(err),
+            socketId: socket.id,
             streamId,
           });
-        } else {
-          // No broadcaster found, notify viewer
-          socket.emit("no_broadcaster", { streamId });
+
+          socket.emit("error", {
+            message: "Server error occurred. Please try again.",
+            code: "INTERNAL_ERROR",
+            details: formatError(err),
+          });
+        }
+      });
+
+      // Handle viewer ready
+      socket.on("viewer_ready", async (data) => {
+        try {
+          if (!streamId) {
+            return;
+          }
+
+          logger.info(`[WebRTC] Viewer ready for stream: ${streamId}`, {
+            socketId: socket.id,
+            sessionId: data.sessionId || sessionId,
+          });
+
+          // Get the room
+          const room = await getOrCreateRoom(streamId);
+
+          // Mark this socket as a viewer (not a streamer)
+          const peer = room.peers.get(socket.id);
+          if (peer) {
+            peer.isStreamer = false;
+            peer.lastActivity = Date.now();
+          } else {
+            logger.warn(`[WebRTC] Viewer not found in peers map: ${socket.id}`);
+          }
+
+          // Find the streamer in this room if any
+          let streamerPeer: Peer | null = null;
+          let streamerSocketId: string | null = null;
+          for (const [socketId, remotePeer] of room.peers.entries()) {
+            if (remotePeer.isStreamer) {
+              streamerPeer = remotePeer;
+              streamerSocketId = socketId;
+              break;
+            }
+          }
+
+          // Find active producers from the streamer
+          const activeProducers: Array<{
+            producerId: string;
+            kind: string;
+            peerId: string;
+          }> = [];
+
+          if (streamerPeer) {
+            streamerPeer.producers.forEach((producer) => {
+              activeProducers.push({
+                producerId: producer.id,
+                kind: producer.kind,
+                peerId: streamerSocketId as string,
+              });
+            });
+          }
+
+          logger.info(
+            `[WebRTC] Notifying viewer about ${activeProducers.length} active producers`,
+            {
+              streamId,
+              viewerSocketId: socket.id,
+              producers: activeProducers.map((p) => ({
+                id: p.producerId,
+                kind: p.kind,
+              })),
+            }
+          );
+
+          // Send a response directly to this viewer with active producers
+          socket.emit("viewer_ready_response", {
+            streamId,
+            hasActiveStreamer: !!streamerPeer,
+            broadcasterSocketId: streamerSocketId,
+            broadcasterUserId: streamerPeer?.userId,
+            activeProducers: activeProducers,
+          });
+
+          // Also notify the broadcaster about this viewer
+          if (streamerSocketId) {
+            socket.to(streamerSocketId).emit("viewer_connected", {
+              streamId,
+              viewerSocketId: socket.id,
+              viewerUserId: userId,
+              viewerUsername: username,
+            });
+          }
+
+          logger.info(`[WebRTC] Viewer ${userId} ready for stream ${streamId}`);
+        } catch (err) {
+          logger.error(`[WebRTC] Error in viewer_ready handler`, {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
         }
       });
 
       // Handle client disconnect
-      socket.on("disconnect", (reason) => {
+      socket.on("disconnect", async (reason) => {
         logger.info(`[Socket.IO] Client disconnected`, {
           socketId: socket.id,
           sessionId,
@@ -556,6 +932,42 @@ export function initializeSocketIOServer(
           userId: userId || "anonymous",
           reason,
         });
+
+        // Clean up WebRTC resources if the stream exists
+        if (streamId) {
+          try {
+            const room = rooms.get(streamId);
+            if (room) {
+              // Clean up the peer using our helper function
+              const cleanupSuccess = removeExistingPeer(room, socket.id);
+
+              if (cleanupSuccess) {
+                logger.info(
+                  `[WebRTC] Successfully cleaned up peer on disconnect`,
+                  {
+                    socketId: socket.id,
+                    streamId,
+                    userId: userId || "anonymous",
+                  }
+                );
+              }
+
+              // Check if the room is now empty and log its status
+              logger.debug(`[WebRTC] Room status after disconnect:`, {
+                streamId,
+                peersRemaining: room.peers.size,
+                peerSocketIds: Array.from(room.peers.keys()),
+                sessionCount: room.activeSessions.size,
+              });
+            }
+          } catch (err) {
+            logger.error(`[WebRTC] Error cleaning up peer on disconnect`, {
+              error: formatError(err),
+              socketId: socket.id,
+              streamId,
+            });
+          }
+        }
 
         // Notify others in the stream if this was a broadcaster
         if (socket.data.isBroadcaster && streamId) {
@@ -602,6 +1014,694 @@ export function initializeSocketIOServer(
           rooms: socket.rooms,
         });
       });
+
+      // Handle getRouterRtpCapabilities - CRITICAL for WebRTC setup
+      socket.on("getRouterRtpCapabilities", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ error: "No streamId provided" });
+          }
+
+          logger.info(
+            `[WebRTC] Getting router capabilities for stream: ${streamId}`,
+            {
+              socketId: socket.id,
+              sessionId: data.sessionId || sessionId,
+            }
+          );
+
+          const room = await getOrCreateRoom(streamId);
+
+          // Check for existing user connections - important for reconnection scenarios
+          let duplicateConnection = false;
+          let existingSocketId = null;
+
+          if (userId) {
+            const existingConnection = findExistingUserConnection(
+              room,
+              userId as string,
+              isStreamerUser
+            );
+
+            if (
+              existingConnection &&
+              existingConnection.socketId !== socket.id
+            ) {
+              duplicateConnection = true;
+              existingSocketId = existingConnection.socketId;
+              logger.warn(
+                `[WebRTC] Found existing ${
+                  isStreamerUser ? "streamer" : "viewer"
+                } connection for user`,
+                {
+                  userId,
+                  existingSocketId: existingConnection.socketId,
+                  newSocketId: socket.id,
+                }
+              );
+
+              // Remove the existing connection to prevent duplicates
+              if (removeExistingPeer(room, existingConnection.socketId)) {
+                logger.info(
+                  `[WebRTC] Successfully removed existing connection ${existingConnection.socketId} for user ${userId}`
+                );
+              }
+            }
+          }
+
+          // Get the peer if it already exists
+          let peer = room.peers.get(socket.id);
+
+          // Create a new peer if it doesn't exist
+          if (!peer) {
+            logger.info(`[WebRTC] Creating new peer for socket: ${socket.id}`, {
+              streamId,
+              userId,
+              isStreamer: isStreamerUser,
+            });
+
+            // Create a new peer for this connection - THIS IS CRITICAL
+            peer = {
+              socketId: socket.id,
+              userId: userId as string,
+              username: username as string,
+              sessionId: sessionId,
+              isStreamer: isStreamerUser,
+              transports: new Map(),
+              producers: new Map(),
+              consumers: new Map(),
+              lastActivity: Date.now(),
+              rtpCapabilities: data.rtpCapabilities, // Store client RTP capabilities if provided
+            };
+
+            // Add the peer to the room
+            room.peers.set(socket.id, peer);
+            room.activeSessions.set(sessionId, socket.id);
+
+            logger.info(`[WebRTC] Added peer to room for: ${socket.id}`, {
+              streamId,
+              userId,
+              isStreamer: isStreamerUser,
+            });
+          } else {
+            // Update existing peer
+            logger.info(`[WebRTC] Updating existing peer: ${socket.id}`, {
+              streamId,
+              userId,
+              isStreamer: isStreamerUser,
+            });
+
+            // Update last activity timestamp and RTP capabilities
+            peer.lastActivity = Date.now();
+            if (data.rtpCapabilities) {
+              peer.rtpCapabilities = data.rtpCapabilities;
+            }
+          }
+
+          // Special handling for streamer connections to enforce one streamer per room
+          if (isStreamerUser) {
+            ensureOnlyOneStreamerInRoom(io, room, userId as string, socket.id);
+          }
+
+          // Log the current room state after updates
+          logger.debug(`[WebRTC] Room state after capability request:`, {
+            streamId,
+            peersCount: room.peers.size,
+            peerSocketIds: Array.from(room.peers.keys()),
+            sessionCount: room.activeSessions.size,
+          });
+
+          // Return the router capabilities
+          callback({
+            rtpCapabilities: room.router.rtpCapabilities,
+            duplicateConnection,
+            existingSocketId,
+          });
+        } catch (err) {
+          logger.error("[WebRTC] Error getting router capabilities", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
+          callback({ error: formatError(err) });
+        }
+      });
+
+      // Handle createProducerTransport
+      socket.on("createProducerTransport", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ error: "No streamId provided" });
+          }
+
+          logger.info(
+            `[WebRTC] Creating producer transport for stream: ${streamId}`,
+            {
+              socketId: socket.id,
+            }
+          );
+
+          const room = await getOrCreateRoom(streamId);
+
+          // Update peer activity timestamp
+          const peer = room.peers.get(socket.id);
+          if (peer) {
+            peer.lastActivity = Date.now();
+          } else {
+            return callback({ error: "Peer not found" });
+          }
+
+          // Create a WebRTC transport
+          const transport = await room.router.createWebRtcTransport({
+            ...mediasoupAppConfig.webRtcTransport,
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+            enableSctp: true,
+          });
+
+          // Store the transport
+          peer.transports.set(transport.id, transport);
+
+          // Set up transport close handler
+          transport.on("routerclose", () => {
+            transport.close();
+            peer.transports.delete(transport.id);
+          });
+
+          // Return transport parameters
+          callback({
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
+          });
+
+          // If this is a streamer, enforce only one streamer per room
+          if (isStreamerUser) {
+            ensureOnlyOneStreamerInRoom(io, room, userId as string, socket.id);
+          }
+        } catch (error) {
+          logger.error(`[WebRTC] Error creating producer transport`, {
+            error,
+            streamId,
+            socketId: socket.id,
+          });
+          callback({ error: "Error creating producer transport" });
+        }
+      });
+
+      // Handle createConsumerTransport
+      socket.on("createConsumerTransport", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ error: "No streamId provided" });
+          }
+
+          logger.info(
+            `[WebRTC] Creating consumer transport for stream: ${streamId}`,
+            {
+              socketId: socket.id,
+              sessionId: data.sessionId || sessionId,
+            }
+          );
+
+          const room = await getOrCreateRoom(streamId);
+          const peer = room.peers.get(socket.id);
+
+          if (!peer) {
+            throw new Error("Peer not found, please reconnect");
+          }
+
+          // Update peer activity timestamp
+          peer.lastActivity = Date.now();
+
+          // Create a new WebRTC transport on the server
+          const transport = await room.router.createWebRtcTransport({
+            listenIps: mediasoupAppConfig.webRtcTransport.listenIps,
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+            initialAvailableOutgoingBitrate:
+              mediasoupAppConfig.webRtcTransport
+                .initialAvailableOutgoingBitrate,
+          });
+
+          // Store the transport
+          peer.transports.set(transport.id, transport);
+
+          // Return transport parameters to the client
+          callback({
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
+          });
+        } catch (err) {
+          logger.error("[WebRTC] Error creating consumer transport", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
+          callback({ error: formatError(err) });
+        }
+      });
+
+      // Handle connectTransport
+      socket.on("connectTransport", async (data, callback) => {
+        try {
+          if (!streamId || !data.transportId || !data.dtlsParameters) {
+            return callback({ error: "Missing required parameters" });
+          }
+
+          logger.info(`[WebRTC] Connecting transport for stream: ${streamId}`, {
+            transportId: data.transportId,
+            socketId: socket.id,
+          });
+
+          const room = await getOrCreateRoom(streamId);
+
+          // Update peer activity timestamp
+          const peer = room.peers.get(socket.id);
+          if (!peer) {
+            return callback({ error: "Peer not found" });
+          }
+
+          peer.lastActivity = Date.now();
+
+          // Get the transport
+          const transport = peer.transports.get(data.transportId);
+          if (!transport) {
+            return callback({ error: "Transport not found" });
+          }
+
+          // Connect the transport
+          await transport.connect({ dtlsParameters: data.dtlsParameters });
+
+          logger.info(`[WebRTC] Transport connected successfully`, {
+            transportId: data.transportId,
+            socketId: socket.id,
+          });
+
+          callback({ connected: true });
+        } catch (error) {
+          logger.error(`[WebRTC] Error connecting transport`, {
+            error,
+            streamId,
+            socketId: socket.id,
+            transportId: data.transportId,
+          });
+          callback({ error: "Error connecting transport" });
+        }
+      });
+
+      // Handle produce
+      socket.on("produce", async (data, callback) => {
+        try {
+          if (
+            !streamId ||
+            !data.transportId ||
+            !data.kind ||
+            !data.rtpParameters
+          ) {
+            return callback({ error: "Missing required parameters" });
+          }
+
+          logger.info(
+            `[WebRTC] Producing ${data.kind} media for stream: ${streamId}`,
+            {
+              transportId: data.transportId,
+              socketId: socket.id,
+            }
+          );
+
+          const room = await getOrCreateRoom(streamId);
+
+          // Update peer activity timestamp
+          const peer = room.peers.get(socket.id);
+          if (!peer) {
+            return callback({ error: "Peer not found" });
+          }
+
+          peer.lastActivity = Date.now();
+
+          // Get the transport
+          const transport = peer.transports.get(data.transportId);
+          if (!transport) {
+            return callback({ error: "Transport not found" });
+          }
+
+          // Create producer
+          const producer = await transport.produce({
+            kind: data.kind,
+            rtpParameters: data.rtpParameters,
+            appData: data.appData || {},
+          });
+
+          // Store the producer
+          peer.producers.set(producer.id, producer);
+
+          // Set up producer close handler
+          producer.on("transportclose", () => {
+            producer.close();
+            peer.producers.delete(producer.id);
+          });
+
+          logger.info(`[WebRTC] Producer created successfully`, {
+            producerId: producer.id,
+            kind: data.kind,
+            socketId: socket.id,
+          });
+
+          // Notify all consumers about the new producer
+          if (peer.isStreamer) {
+            socket.to(`stream:${streamId}`).emit("new-producer", {
+              producerId: producer.id,
+              kind: data.kind,
+            });
+          }
+
+          callback({ id: producer.id });
+        } catch (error) {
+          logger.error(`[WebRTC] Error producing media`, {
+            error,
+            streamId,
+            socketId: socket.id,
+            transportId: data.transportId,
+          });
+          callback({ error: "Error producing media" });
+        }
+      });
+
+      // Handle getProducers
+      socket.on("getProducers", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ error: "No streamId provided" });
+          }
+
+          logger.info(`[WebRTC] Getting producers for stream: ${streamId}`, {
+            socketId: socket.id,
+          });
+
+          const room = await getOrCreateRoom(streamId);
+          const producers: Array<{
+            producerId: string;
+            kind: string;
+            peerId: string;
+          }> = [];
+
+          // Find all producers in the room
+          for (const [socketId, peer] of room.peers) {
+            if (peer.isStreamer) {
+              // Add all producers from this streamer with metadata
+              peer.producers.forEach((producer) => {
+                producers.push({
+                  producerId: producer.id,
+                  kind: producer.kind,
+                  peerId: socketId,
+                });
+              });
+            }
+          }
+
+          logger.info(
+            `[WebRTC] Found ${producers.length} producers in room ${streamId}`,
+            {
+              producers: producers.map((p) => ({
+                id: p.producerId,
+                kind: p.kind,
+              })),
+            }
+          );
+
+          callback(producers);
+        } catch (err) {
+          logger.error("[WebRTC] Error getting producers", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
+          callback({ error: formatError(err) });
+        }
+      });
+
+      // Handle consume
+      socket.on("consume", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ error: "No streamId provided" });
+          }
+
+          logger.info(`[WebRTC] Consume request for stream: ${streamId}`, {
+            socketId: socket.id,
+            producerId: data.producerId,
+            transportId: data.transportId,
+          });
+
+          const room = await getOrCreateRoom(streamId);
+          const peer = room.peers.get(socket.id);
+
+          if (!peer) {
+            throw new Error("Peer not found, please reconnect");
+          }
+
+          // Update peer activity timestamp
+          peer.lastActivity = Date.now();
+
+          // Get the transport
+          const transport = peer.transports.get(data.transportId);
+          if (!transport) {
+            throw new Error(`Transport not found: ${data.transportId}`);
+          }
+
+          // Find the producer
+          let producer = null;
+          let producerPeer = null;
+
+          // Search for the producer in all peers
+          for (const [socketId, remotePeer] of room.peers.entries()) {
+            const foundProducer = remotePeer.producers.get(data.producerId);
+            if (foundProducer) {
+              producer = foundProducer;
+              producerPeer = remotePeer;
+              break;
+            }
+          }
+
+          if (!producer) {
+            throw new Error(`Producer not found: ${data.producerId}`);
+          }
+
+          // Check if the client can consume this producer
+          if (
+            !peer.rtpCapabilities ||
+            !room.router.canConsume({
+              producerId: producer.id,
+              rtpCapabilities: data.rtpCapabilities,
+            })
+          ) {
+            throw new Error(
+              "Cannot consume this producer with your device capabilities"
+            );
+          }
+
+          // Create the consumer
+          const consumer = await transport.consume({
+            producerId: producer.id,
+            rtpCapabilities: data.rtpCapabilities,
+            paused: data.paused || true, // Start paused to avoid initial packet loss
+          });
+
+          // Store the consumer
+          peer.consumers.set(consumer.id, consumer);
+
+          // Handle consumer events
+          consumer.on("producerclose", () => {
+            logger.info(
+              `[WebRTC] Producer closed for consumer: ${consumer.id}`,
+              {
+                socketId: socket.id,
+                consumerId: consumer.id,
+              }
+            );
+
+            // Remove the consumer
+            peer.consumers.delete(consumer.id);
+
+            // Notify the client
+            socket.emit("consumerClosed", { consumerId: consumer.id });
+          });
+
+          // Return consumer info
+          callback({
+            consumerId: consumer.id,
+            producerId: producer.id,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+            producerUserId: producerPeer?.userId || "unknown",
+          });
+        } catch (err) {
+          logger.error("[WebRTC] Error consuming", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
+          callback({ error: formatError(err) });
+        }
+      });
+
+      // Handle resumeConsumer
+      socket.on("resumeConsumer", async (data, callback) => {
+        try {
+          if (!streamId || !data.consumerId) {
+            return callback({ error: "Missing required parameters" });
+          }
+
+          logger.info(`[WebRTC] Resuming consumer: ${data.consumerId}`, {
+            socketId: socket.id,
+            streamId,
+          });
+
+          const room = await getOrCreateRoom(streamId);
+          const peer = room.peers.get(socket.id);
+
+          if (!peer) {
+            throw new Error("Peer not found, please reconnect");
+          }
+
+          // Find the consumer
+          const consumer = peer.consumers.get(data.consumerId);
+
+          if (!consumer) {
+            throw new Error(`Consumer not found: ${data.consumerId}`);
+          }
+
+          // Resume the consumer
+          await consumer.resume();
+
+          callback({ success: true });
+        } catch (err) {
+          logger.error("[WebRTC] Error resuming consumer", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+            consumerId: data.consumerId,
+          });
+          callback({ error: formatError(err) });
+        }
+      });
+
+      // Update the consumer connectRtpCapabilities handler to save rtpCapabilities
+      socket.on("connectRtpCapabilities", async (data, callback) => {
+        try {
+          if (!streamId) {
+            return callback({ success: false, error: "No streamId provided" });
+          }
+
+          logger.info(
+            `[WebRTC] Saving RTP capabilities for ${socket.id} in stream ${streamId}`
+          );
+
+          const room = await getOrCreateRoom(streamId);
+          let peer = room.peers.get(socket.id);
+
+          if (!peer) {
+            logger.warn(
+              `[WebRTC] Peer not found for RTP capabilities, creating one: ${socket.id}`,
+              {
+                streamId,
+                peers: Array.from(room.peers.keys()),
+              }
+            );
+
+            // Create a new peer since it doesn't exist yet
+            peer = {
+              socketId: socket.id,
+              userId: userId as string,
+              username: username as string,
+              sessionId: sessionId,
+              isStreamer: isStreamerUser,
+              transports: new Map(),
+              producers: new Map(),
+              consumers: new Map(),
+              lastActivity: Date.now(),
+              rtpCapabilities: data.rtpCapabilities,
+            };
+
+            // Add the peer to the room
+            room.peers.set(socket.id, peer);
+            room.activeSessions.set(sessionId, socket.id);
+
+            logger.info(
+              `[WebRTC] Added new peer for RTP capabilities: ${socket.id}`,
+              {
+                streamId,
+                userId,
+                isStreamer: isStreamerUser,
+              }
+            );
+          } else {
+            // Store the client's RTP capabilities
+            peer.rtpCapabilities = data.rtpCapabilities;
+            peer.lastActivity = Date.now();
+
+            logger.info(
+              `[WebRTC] Updated RTP capabilities for existing peer: ${socket.id}`
+            );
+          }
+
+          // Check if there are any active producers in the room (for viewers)
+          const activeProducers: Array<{
+            producerId: string;
+            kind: string;
+            peerId: string;
+          }> = [];
+
+          if (!peer.isStreamer) {
+            for (const [peerSocketId, remotePeer] of room.peers.entries()) {
+              if (remotePeer.isStreamer) {
+                remotePeer.producers.forEach((producer) => {
+                  activeProducers.push({
+                    producerId: producer.id,
+                    kind: producer.kind,
+                    peerId: peerSocketId,
+                  });
+                });
+              }
+            }
+          }
+
+          // Log producers found for debugging
+          if (activeProducers.length > 0) {
+            logger.info(
+              `[WebRTC] Found ${activeProducers.length} active producers for viewer`,
+              {
+                streamId,
+                producerIds: activeProducers.map((p) => p.producerId),
+              }
+            );
+          }
+
+          // Send back the success response with any available producer info
+          callback({
+            success: true,
+            activeProducers:
+              activeProducers.length > 0 ? activeProducers : undefined,
+          });
+        } catch (err) {
+          logger.error("[WebRTC] Error saving RTP capabilities", {
+            error: formatError(err),
+            socketId: socket.id,
+            streamId,
+          });
+          callback({
+            success: false,
+            error: formatError(err),
+            reconnect: true, // Suggest reconnect on serious errors
+          });
+        }
+      });
     });
 
     // Log server started
@@ -612,6 +1712,11 @@ export function initializeSocketIOServer(
         cors: io._opts.cors ? "enabled" : "disabled",
         allowUpgrades: io._opts.allowUpgrades,
       },
+    });
+
+    // Add debug logging for Socket.IO
+    io.engine.on("connection_error", (err) => {
+      logger.error("[Socket.IO] Connection error:", err);
     });
 
     return io;

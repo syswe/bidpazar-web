@@ -1,25 +1,25 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
-import { getUserFromToken } from '@/lib/auth';
-import { logger } from '@/lib/logger';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import { getUserFromToken } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 
 // Schema for category creation
 const createCategorySchema = z.object({
-  name: z.string().min(1, 'Kategori adı gereklidir'),
+  name: z.string().min(1, "Kategori adı gereklidir"),
   description: z.string().optional(),
   parentId: z.string().optional(),
 });
 
 // Schema for category update
 const updateCategorySchema = z.object({
-  name: z.string().min(1, 'Kategori adı gereklidir').optional(),
+  name: z.string().min(1, "Kategori adı gereklidir").optional(),
   description: z.string().optional(),
   parentId: z.string().optional(),
 });
 
 export async function GET(request: Request) {
-  logger.info('API GET /api/categories', {
+  logger.info("API GET /api/categories", {
     headers: Object.fromEntries(request.headers.entries()),
     url: request.url,
   });
@@ -34,9 +34,32 @@ export async function GET(request: Request) {
 
     return NextResponse.json(categories);
   } catch (error: any) {
-    logger.error('Kategoriler getirilirken hata', error);
+    // Check for database connection errors
+    const isPrismaConnectionError =
+      error.message &&
+      (error.message.includes("Can't reach database server") ||
+        error.message.includes("Connection refused") ||
+        error.message.includes("Connection timed out"));
+
+    logger.error("Kategoriler getirilirken hata", {
+      error: error.message,
+      stack: error.stack,
+      isPrismaConnectionError,
+      errorCode: error.code,
+      name: error.name,
+    });
+
+    // For database connection errors, return an empty array instead of an error
+    // This allows the front-end to continue functioning for non-logged in users
+    if (isPrismaConnectionError) {
+      logger.warn(
+        "Database connection error, returning empty categories array for non-authenticated route"
+      );
+      return NextResponse.json([], { status: 200 });
+    }
+
     return NextResponse.json(
-      { error: 'Kategoriler getirilirken bir hata oluştu' },
+      { error: "Kategoriler getirilirken bir hata oluştu" },
       { status: 500 }
     );
   }
@@ -50,12 +73,12 @@ export async function POST(request: Request) {
   } catch {
     body = undefined;
   }
-  logger.info('API POST /api/categories', { headers, body });
+  logger.info("API POST /api/categories", { headers, body });
   try {
-    const token = request.headers.get('authorization')?.split(' ')[1];
+    const token = request.headers.get("authorization")?.split(" ")[1];
     if (!token) {
       return NextResponse.json(
-        { error: 'Kimlik doğrulama gereklidir' },
+        { error: "Kimlik doğrulama gereklidir" },
         { status: 401 }
       );
     }
@@ -63,7 +86,7 @@ export async function POST(request: Request) {
     const user = await getUserFromToken(token);
     if (!user || !user.isAdmin) {
       return NextResponse.json(
-        { error: 'Bu işlem için yetkiniz yok' },
+        { error: "Bu işlem için yetkiniz yok" },
         { status: 403 }
       );
     }
@@ -78,7 +101,7 @@ export async function POST(request: Request) {
 
       if (!parentCategory) {
         return NextResponse.json(
-          { error: 'Belirtilen üst kategori bulunamadı' },
+          { error: "Belirtilen üst kategori bulunamadı" },
           { status: 404 }
         );
       }
@@ -94,7 +117,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(category, { status: 201 });
   } catch (error: any) {
-    logger.error('Kategori oluşturulurken hata', error);
+    logger.error("Kategori oluşturulurken hata", error);
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0].message },
@@ -103,8 +126,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Kategori oluşturulurken bir hata oluştu' },
+      { error: "Kategori oluşturulurken bir hata oluştu" },
       { status: 500 }
     );
   }
-} 
+}

@@ -80,51 +80,87 @@ export async function GET(request: NextRequest) {
     }
 
     // Retrieve user information
-    const user = await getUserFromToken(token);
+    try {
+      const user = await getUserFromToken(token);
 
-    if (!user) {
-      logger.warn("[API][/api/auth/validate] User not found for token");
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      if (!user) {
+        logger.warn("[API][/api/auth/validate] User not found for token");
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+
+      // Create a new token with the current app version if needed
+      let newToken = token;
+      if (!payload.appVersion || payload.appVersion !== APP_VERSION) {
+        logger.info(
+          "[API][/api/auth/validate] Updating token with current app version"
+        );
+        newToken = jwt.sign(
+          {
+            userId: user.id,
+            email: user.email,
+            username: user.username,
+            isAdmin: user.isAdmin ?? false,
+            appVersion: APP_VERSION,
+          },
+          process.env.JWT_SECRET!,
+          { expiresIn: "7d" }
+        );
+      }
+
+      // Set up response
+      const response = NextResponse.json({
+        user,
+        token: newToken,
+      });
+
+      // Set the token in both cookie formats for compatibility
+      response.cookies.set({
+        name: "authToken",
+        value: newToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: "/",
+      });
+
+      return response;
+    } catch (dbError: any) {
+      // Check for database connection errors
+      const isPrismaConnectionError =
+        dbError.message &&
+        (dbError.message.includes("Can't reach database server") ||
+          dbError.message.includes("Connection refused") ||
+          dbError.message.includes("Connection timed out"));
+
+      if (isPrismaConnectionError) {
+        logger.warn(
+          "[API][/api/auth/validate] Database connection error, returning temporary auth error",
+          {
+            error: dbError.message,
+            stack: dbError.stack,
+          }
+        );
+
+        // Return a specific status code for database connection issues
+        // 503 = Service Unavailable
+        return NextResponse.json(
+          {
+            error: "Database service unavailable. Please try again later.",
+            code: "DB_UNAVAILABLE",
+            temporary: true,
+          },
+          { status: 503 }
+        );
+      }
+
+      // Re-throw for other errors
+      throw dbError;
     }
-
-    // Create a new token with the current app version if needed
-    let newToken = token;
-    if (!payload.appVersion || payload.appVersion !== APP_VERSION) {
-      logger.info(
-        "[API][/api/auth/validate] Updating token with current app version"
-      );
-      newToken = jwt.sign(
-        {
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-          isAdmin: user.isAdmin ?? false,
-          appVersion: APP_VERSION,
-        },
-        process.env.JWT_SECRET!,
-        { expiresIn: "7d" }
-      );
-    }
-
-    // Set up response
-    const response = NextResponse.json({
-      user,
-      token: newToken,
-    });
-
-    // Set the token in both cookie formats for compatibility
-    response.cookies.set({
-      name: "authToken",
-      value: newToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: "/",
-    });
-
-    return response;
   } catch (error) {
-    logger.error("[API][/api/auth/validate] Token validation error", error);
+    logger.error("[API][/api/auth/validate] Token validation error", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       { error: "Authentication error" },
       { status: 500 }

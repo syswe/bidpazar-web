@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Device } from "mediasoup-client";
 import { logger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 // import WebSocket from 'ws';
 
 // ===================== LOGGING SYSTEM =====================
@@ -327,45 +328,92 @@ const getIceServers = (config: any | null): RTCIceServer[] => {
     return [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:19302" },
-      { urls: "stun:stun3.l.google.com:19302" },
-      { urls: "stun:stun4.l.google.com:19302" },
     ];
   }
 
   const iceServers: RTCIceServer[] = [];
 
+  // Log all available config for debugging
+  logDebug("ICE server configuration from runtime config", {
+    stunServerUrl: config.stunServerUrl,
+    stunServer: config.stunServer,
+    turnServerUrl: config.turnServerUrl,
+    turnServer: config.turnServer,
+    turnUsername: config.turnUsername ? "present" : "missing",
+    turnPassword: config.turnPassword ? "present" : "missing",
+  });
+
   // Add configured STUN server if available
-  if (config.stunServer) {
-    iceServers.push({ urls: config.stunServer });
+  if (config.stunServerUrl) {
+    // Ensure STUN server URL has correct format (stun: prefix)
+    let stunUrl = config.stunServerUrl;
+    if (!stunUrl.startsWith("stun:") && !stunUrl.startsWith("stuns:")) {
+      stunUrl = `stun:${stunUrl}`;
+      logWarn("STUN server URL corrected to include stun: prefix", {
+        original: config.stunServerUrl,
+        corrected: stunUrl,
+      });
+    }
+
+    iceServers.push({ urls: stunUrl });
     logInfo("Added configured STUN server to ICE configuration", {
-      url: config.stunServer,
+      url: stunUrl,
     });
-  } else if (config.stunServerUrl) {
-    iceServers.push({ urls: config.stunServerUrl });
-    logInfo("Added configured STUN server to ICE configuration", {
-      url: config.stunServerUrl,
-    });
+  } else if (config.stunServer) {
+    // Legacy support for stunServer property
+    let stunUrl = config.stunServer;
+    if (!stunUrl.startsWith("stun:") && !stunUrl.startsWith("stuns:")) {
+      stunUrl = `stun:${stunUrl}`;
+      logWarn("STUN server URL corrected to include stun: prefix", {
+        original: config.stunServer,
+        corrected: stunUrl,
+      });
+    }
+
+    iceServers.push({ urls: stunUrl });
+    logInfo(
+      "Added configured STUN server to ICE configuration (legacy property)",
+      {
+        url: stunUrl,
+      }
+    );
   }
 
   // Add TURN server if credentials are configured
   if (
-    (config.turnServer || config.turnServerUrl) &&
+    (config.turnServerUrl || config.turnServer) &&
     config.turnUsername &&
     config.turnPassword
   ) {
-    const turnUrl = config.turnServer || config.turnServerUrl;
+    const turnUrl = config.turnServerUrl || config.turnServer;
+
+    // Ensure TURN server URL has correct format (turn: prefix)
+    let normalizedTurnUrl = turnUrl;
+    if (
+      !normalizedTurnUrl.startsWith("turn:") &&
+      !normalizedTurnUrl.startsWith("turns:")
+    ) {
+      normalizedTurnUrl = `turn:${normalizedTurnUrl}`;
+      logWarn("TURN server URL corrected to include turn: prefix", {
+        original: turnUrl,
+        corrected: normalizedTurnUrl,
+      });
+    }
+
     // Add UDP TURN server (default)
     iceServers.push({
-      urls: turnUrl,
+      urls: normalizedTurnUrl,
       username: config.turnUsername,
       credential: config.turnPassword,
     });
 
     // Add TCP TURN server option for firewall traversal
     // First check if the URL already specifies a transport
-    if (!turnUrl.includes("?transport=")) {
-      const turnUrlBase = turnUrl.split("?")[0]; // Get base URL without params
+    if (!normalizedTurnUrl.includes("?transport=")) {
+      // Extract base URL without any parameters
+      const turnUrlBase = normalizedTurnUrl.split("?")[0];
+
+      // Add TCP variant
       iceServers.push({
         urls: `${turnUrlBase}?transport=tcp`,
         username: config.turnUsername,
@@ -375,20 +423,32 @@ const getIceServers = (config: any | null): RTCIceServer[] => {
         url: `${turnUrlBase}?transport=tcp`,
       });
 
-      // Also add TLS variant for additional fallback
-      iceServers.push({
-        urls: `${turnUrlBase}?transport=tls`,
-        username: config.turnUsername,
-        credential: config.turnPassword,
-      });
-      logInfo("Added TLS TURN server variant for secure fallback", {
-        url: `${turnUrlBase}?transport=tls`,
-      });
+      // Only add TLS variant if we're using a secure connection already
+      if (
+        window.location.protocol === "https:" ||
+        turnUrlBase.startsWith("turns:")
+      ) {
+        iceServers.push({
+          urls: `${turnUrlBase}?transport=tls`,
+          username: config.turnUsername,
+          credential: config.turnPassword,
+        });
+        logInfo("Added TLS TURN server variant for secure fallback", {
+          url: `${turnUrlBase}?transport=tls`,
+        });
+      }
     }
 
     logInfo("Added TURN server to ICE configuration", {
-      url: turnUrl,
+      url: normalizedTurnUrl,
       username: config.turnUsername,
+      credentialProvided: !!config.turnPassword,
+    });
+  } else if (config.turnServerUrl || config.turnServer) {
+    logWarn("TURN server URL provided but missing username or password", {
+      turnUrl: config.turnServerUrl || config.turnServer,
+      hasUsername: !!config.turnUsername,
+      hasPassword: !!config.turnPassword,
     });
   }
 
@@ -396,15 +456,26 @@ const getIceServers = (config: any | null): RTCIceServer[] => {
   if (iceServers.length === 0) {
     iceServers.push({ urls: "stun:stun.l.google.com:19302" });
     iceServers.push({ urls: "stun:stun1.l.google.com:19302" });
-    logInfo("Using public fallback STUN servers", {
-      servers: iceServers.map((s) => s.urls),
-    });
+    logWarn(
+      "Using public fallback STUN servers because no ICE servers were configured",
+      {
+        servers: iceServers.map((s) => s.urls),
+      }
+    );
   }
 
-  logDebug("Using ICE servers", {
+  logInfo("Final ICE server configuration", {
     serverCount: iceServers.length,
-    servers: iceServers,
+    servers: iceServers.map((s) =>
+      typeof s.urls === "string"
+        ? s.urls
+        : Array.isArray(s.urls)
+        ? s.urls.join(", ")
+        : "unknown"
+    ),
+    hasCredentials: iceServers.some((s) => s.username && s.credential),
   });
+
   return iceServers;
 };
 
@@ -559,14 +630,12 @@ export default function WebRTCStreamManager({
 
   // =========== COMPONENT STATE ===========
   const [connectionStatus, setConnectionStatus] = useState<
-    "disconnected" | "connecting" | "connected"
+    "disconnected" | "connecting" | "connected" | "streaming"
   >("disconnected");
   const [error, setError] = useState<string | null>(null);
-  const [participants, setParticipants] = useState<number>(0);
-  const [streamReady, setStreamReady] = useState(false);
-  const [isMuted, setIsMuted] = useState(
-    isStreamer ? !externalMicrophoneOn : true
-  ); // Streamers unmuted, viewers muted by default
+  const [participantCount, setParticipantCount] = useState<number>(0);
+  const [streamReady, setStreamReady] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState(!externalMicrophoneOn);
   const [isVideoHidden, setIsVideoHidden] = useState(!externalCameraOn);
   const [showDeviceSelector, setShowDeviceSelector] =
     useState<boolean>(isStreamer);
@@ -580,6 +649,16 @@ export default function WebRTCStreamManager({
   // State for debug mode
   const [showDebugControls, setShowDebugControls] = useState<boolean>(false);
 
+  // Add state for transport readiness
+  const [transportReady, setTransportReady] = useState<boolean>(false);
+
+  // Add a state for device initialization
+  const [deviceInitialized, setDeviceInitialized] = useState(false);
+
+  // At the start of the component, add a new ref to track attempts
+  const getRouterAttemptsRef = useRef<number>(0);
+  const deviceErrorRef = useRef<boolean>(false);
+
   // =========== REFS ===========
   const videoRef = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -589,10 +668,21 @@ export default function WebRTCStreamManager({
     producer?: mediasoupClient.types.Transport | null;
     consumer?: mediasoupClient.types.Transport | null;
   }>({ producer: null, consumer: null });
-  const producersRef = useRef<{
+
+  // Update the ProducersRef type to include setupInProgress
+  type ProducersRef = {
     video?: mediasoupClient.types.Producer | null;
     audio?: mediasoupClient.types.Producer | null;
-  }>({ video: null, audio: null });
+    setupInProgress?: boolean;
+  };
+
+  // Define the producers ref with the updated type
+  const producersRef = useRef<ProducersRef>({
+    video: null,
+    audio: null,
+    setupInProgress: false,
+  });
+
   const consumersRef = useRef<{
     video?: mediasoupClient.types.Consumer | null;
     audio?: mediasoupClient.types.Consumer | null;
@@ -603,6 +693,9 @@ export default function WebRTCStreamManager({
   const didInitialSetupRef = useRef<boolean>(false);
   const connectInProgressRef = useRef<boolean>(false);
   const mediaSetupAttemptRef = useRef<number>(0); // Moved mediaSetupAttempt here
+  const transportOptionsRef = useRef<any>(null);
+  const rtpCapabilitiesRef =
+    useRef<mediasoupClient.types.RtpCapabilities | null>(null);
 
   // Maximum connection attempts before giving up
   const MAX_CONNECTION_ATTEMPTS = 10;
@@ -619,300 +712,521 @@ export default function WebRTCStreamManager({
   const reconnectionCounterRef = useRef<number>(0);
   const lastReconnectionTimeRef = useRef<number>(0);
 
+  // Helper function to normalize Socket.IO URL (add near the top of the file with other helper functions)
+  const normalizeSocketIOUrl = (url: string): string => {
+    if (!url) return "ws://localhost:3000"; // Default to ws
+
+    let normalizedUrl = url;
+
+    // Step 1: Ensure it has a protocol. If not, default to ws://
+    // We no longer convert ws:// to http:// here.
+    if (!normalizedUrl.match(/^[a-z]+:\/\//i)) {
+      normalizedUrl = "ws://" + normalizedUrl;
+      logDebug("Added ws:// protocol to URL without protocol", {
+        original: url,
+        normalized: normalizedUrl,
+      });
+    } else if (normalizedUrl.startsWith("http://")) {
+      // If it explicitly starts with http://, change it to ws:// for Socket.IO
+      // This handles cases where window.location.origin might be http and was used as a fallback
+      normalizedUrl = normalizedUrl.replace(/^http:\/\//i, "ws://");
+      logDebug("Converted explicit http:// to ws:// for Socket.IO", {
+        original: url,
+        normalized: normalizedUrl,
+      });
+    } else if (normalizedUrl.startsWith("https://")) {
+      // If it explicitly starts with https://, change it to wss://
+      normalizedUrl = normalizedUrl.replace(/^https:\/\//i, "wss://");
+      logDebug("Converted explicit https:// to wss:// for Socket.IO", {
+        original: url,
+        normalized: normalizedUrl,
+      });
+    }
+    // Ensure ws:// or wss:// is used. The client library will handle the handshake.
+
+    // Step 2: Remove trailing slash to avoid doubled slashes with path
+    if (normalizedUrl.endsWith("/")) {
+      normalizedUrl = normalizedUrl.replace(/\/+$/, "");
+      logDebug("Removed trailing slash(es) from URL", {
+        original: url,
+        normalized: normalizedUrl,
+      });
+    }
+
+    // Step 3: Handle port if not specified (not typically needed but added for completeness)
+    if (!normalizedUrl.match(/:\d+/) && !normalizedUrl.includes("localhost")) {
+      // No port specified, and not localhost (which defaults to 80/443)
+      // For most production deployments, the default port is fine
+      logDebug("URL has no explicit port, using default", {
+        url: normalizedUrl,
+      });
+    }
+
+    return normalizedUrl;
+  };
+
+  // Add the socketPromise utility function if it doesn't exist elsewhere
+  const socketPromise = <T,>(
+    socket: Socket,
+    event: string,
+    data: any = {}
+  ): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      try {
+        socket.emit(event, data, (response: any) => {
+          if (response && response.error) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response as T);
+          }
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
   // =========== SOCKET CONNECTION =====================
   // Connect to WebRTC signaling server
-  const connectToSignalingServer = useCallback(async () => {
-    if (!mountedRef.current) {
-      logWarn("Connection attempt aborted: Component is unmounted");
-      connectInProgressRef.current = false;
-      return;
-    }
-
+  const connectToSignalingServer = useCallback(() => {
     if (
+      !mountedRef.current ||
+      !streamId ||
       connectInProgressRef.current ||
-      (socketRef.current?.connected && connectionStatus === "connected")
+      (socketRef.current && socketRef.current.connected)
     ) {
-      logInfo("Connection attempt skipped: already in progress or connected.", {
-        inProgress: connectInProgressRef.current,
-        socketConnected: socketRef.current?.connected,
-        status: connectionStatus,
-      });
       return;
     }
 
-    // Reset hasActiveConnection flag before attempting new connection
-    hasActiveConnection.current = false;
+    connectInProgressRef.current = true;
+    connectionAttemptsRef.current += 1;
 
-    logTrace("connectToSignalingServer called", {
+    logInfo("connectToSignalingServer called", {
       currentStatus: connectionStatus,
       sessionId,
+      attemptNumber: connectionAttemptsRef.current,
     });
-    connectInProgressRef.current = true;
-    setConnectionStatus("connecting");
 
-    // Wait for runtime config to be ready
-    if (isConfigLoading) {
-      logWarn("Runtime config still loading, using fallback values if needed");
-    }
+    let effectiveSocketUrl = normalizeSocketIOUrl(
+      runtimeConfig?.socketUrl || window.location.origin
+    );
+    const configSocketUrl = runtimeConfig?.socketUrl || "";
+    const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "";
+    const locationOrigin = window.location.origin;
 
-    // Use values from runtime config with fallbacks
-    const socketUrl =
-      runtimeConfig?.socketUrl ||
-      process.env.NEXT_PUBLIC_SOCKET_URL ||
-      window.location.origin;
-
-    // Fix: ensure wsUrl doesn't contain duplicate /api paths
     const wsPath = runtimeConfig?.wsUrl || "/socket.io/";
 
-    // Log connection details for diagnostics
     logInfo("Signaling server connection details", {
-      effectiveSocketUrl: socketUrl,
-      configSocketUrl: runtimeConfig?.socketUrl,
-      envSocketUrl: process.env.NEXT_PUBLIC_SOCKET_URL,
-      locationOrigin: window.location.origin,
+      effectiveSocketUrl,
+      configSocketUrl,
+      envSocketUrl,
+      locationOrigin,
       wsPath,
       sessionId,
-      isReconnect: socketRef.current !== null,
+      isReconnect: reconnectionCounterRef.current > 0,
     });
 
-    if (!socketUrl) {
-      logError(
-        "Cannot connect to signaling server: No Socket URL available",
-        {
-          isConfigLoading,
-          hasConfig: !!runtimeConfig,
-        },
-        effectiveUserId,
-        streamId
-      );
-      setError("Configuration Error: Socket URL not found."); // Set error state
-      setConnectionStatus("disconnected");
-      connectInProgressRef.current = false;
-      return;
-    }
-
-    // Close any existing connection properly
-    if (socketRef.current) {
-      logInfo("Disconnecting existing socket before new connection attempt.");
-      // Make sure to cleanup existing connection properly
-      const oldSocket = socketRef.current;
-      socketRef.current = null; // Clear ref before disconnect to prevent reconnection conflicts
-
-      // Force close any existing producers/consumers
-      if (producersRef.current.audio) {
-        producersRef.current.audio.close();
-        producersRef.current.audio = null;
-      }
-
-      if (producersRef.current.video) {
-        producersRef.current.video.close();
-        producersRef.current.video = null;
-      }
-
-      if (consumersRef.current.audio) {
-        consumersRef.current.audio.close();
-        consumersRef.current.audio = null;
-      }
-
-      if (consumersRef.current.video) {
-        consumersRef.current.video.close();
-        consumersRef.current.video = null;
-      }
-
-      // Ensure transports are closed
-      if (transportRef.current.consumer) {
-        transportRef.current.consumer.close();
-        transportRef.current.consumer = null;
-      }
-
-      if (transportRef.current.producer) {
-        transportRef.current.producer.close();
-        transportRef.current.producer = null;
-      }
-
-      // Now disconnect
-      oldSocket.disconnect();
-
-      // Wait a bit before creating a new connection
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    // Make sure we have valid URLs
-    let finalSocketUrl = socketUrl;
-
-    // Fix common issues with socket URL formatting
-    if (finalSocketUrl.startsWith("https://")) {
-      logInfo("Using secure HTTPS Socket.IO URL");
-    } else if (finalSocketUrl.startsWith("http://")) {
-      logInfo("Using HTTP Socket.IO URL");
-    } else if (
-      finalSocketUrl.startsWith("ws://") ||
-      finalSocketUrl.startsWith("wss://")
+    // Determine optimal connection URL
+    if (
+      effectiveSocketUrl.startsWith("ws:") ||
+      effectiveSocketUrl.startsWith("wss:")
     ) {
-      // Convert explicit WebSocket URLs to HTTP(S) for Socket.IO which handles the protocol upgrade itself
-      finalSocketUrl = finalSocketUrl.replace(/^ws(s?):\/\//i, "http$1://");
-      logWarn(
-        "Socket URL corrected from WS to HTTP for Socket.IO compatibility",
-        { correctedUrl: finalSocketUrl }
-      );
-    } else if (!finalSocketUrl.match(/^[a-z]+:\/\//i)) {
-      // If URL has no protocol prefix at all, add http://
-      finalSocketUrl = "http://" + finalSocketUrl;
-      logWarn("Socket URL had no protocol, added HTTP", {
-        correctedUrl: finalSocketUrl,
-      });
+      logInfo("Using WebSocket Socket.IO URL");
+    } else {
+      logInfo("Using HTTP Socket.IO URL");
     }
 
-    // Ensure URL doesn't end with a slash before adding path
-    const fullSocketUrl = finalSocketUrl.endsWith("/")
-      ? finalSocketUrl.slice(0, -1)
-      : finalSocketUrl;
-
-    try {
-      logInfo("Connecting to signaling server", {
-        url: fullSocketUrl,
-        userId: effectiveUserId,
+    // Improved configuration with exponential backoff
+    const socket = io(effectiveSocketUrl, {
+      path: wsPath,
+      query: {
         streamId,
+        userId: effectiveUserId,
+        username: effectiveUsername,
+        isStreamer: isStreamer ? 1 : 0,
         sessionId,
-      });
+        isAnonymous: isAnonymous ? 1 : 0,
+      },
+      transports: ["websocket", "polling"], // Try both transports
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 8, // Increase from 5 to 8
+      reconnectionDelay: Math.min(
+        1000 * Math.pow(1.5, connectionAttemptsRef.current),
+        10000
+      ), // Exponential backoff
+      reconnectionDelayMax: 15000, // Increased from 8000 to 15000
+      timeout: 30000, // Increased timeout to allow for slower connections
+      forceNew: true, // Force a new connection each time to prevent reusing existing problematic connections
+      // Fix for trailing slash issues in Next.js 13+
+      addTrailingSlash: false,
+    });
 
-      // REMOVED direct WebSocket test to simplify the connection flow
+    socketRef.current = socket;
 
-      // FIXED: Use a more reliable Socket.IO configuration
-      const socket = io(fullSocketUrl, {
-        path: wsPath,
-        query: {
-          streamId,
-          userId: effectiveUserId,
-          username: effectiveUsername,
-          isStreamer: isStreamer ? 1 : 0,
-          sessionId,
-          isAnonymous: isAnonymous ? 1 : 0,
-        },
-        transports: ["websocket", "polling"], // Try both transports
-        autoConnect: true,
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 8000,
-        timeout: 15000,
-        forceNew: true, // Force a new connection each time to prevent reusing existing problematic connections
-      });
+    // Enhanced socket error handlers
+    socket.io.on("error", (err) => {
+      logError("Socket.IO engine error", err);
 
-      socketRef.current = socket;
-
-      // Set up socket event handlers
-      socket.on("connect", () => {
-        if (!mountedRef.current) {
-          logWarn("Socket connected but component unmounted, cleaning up");
-          socket.disconnect();
-          return;
-        }
-
-        // Reset reconnection counter on successful connection
-        reconnectionCounterRef.current = 0;
-        lastReconnectionTimeRef.current = Date.now();
-
-        logInfo("Socket connected", {
-          socketId: socket.id,
-          streamId,
-          userId: effectiveUserId,
-          sessionId,
-          transportType: socket.io.engine.transport.name, // Log the actual transport type that succeeded
+      // Report to parent component
+      if (onConnectionError) {
+        onConnectionError({
+          type: "SOCKET_ENGINE_ERROR",
+          message: `Connection error: ${err.message || "Unknown socket error"}`,
+          canReconnect: true,
         });
+      }
+    });
 
-        // Mark this component as having an active connection
-        hasActiveConnection.current = true;
-        connectInProgressRef.current = false;
-        setConnectionStatus("connected");
-        setError(null);
-        connectionAttemptsRef.current = 0; // Reset attempts on successful connection
-
-        // Request router capabilities after successful connection
-        socket.emit(
-          "getRouterRtpCapabilities",
-          { streamId, sessionId },
-          (response: any) => {
-            if (!mountedRef.current) return;
-
-            if (response.error) {
-              logError("Failed to get router capabilities", {
-                error: response.error,
-              });
-              setError(`Failed to initialize media: ${response.error}`);
-              return;
-            }
-
-            // Don't show error for duplicate connection, try to continue anyway
-            if (response.duplicateConnection) {
-              logWarn(
-                "Server reported duplicate connection but we'll try to continue",
-                {
-                  existingSocketId: response.existingSocketId,
-                }
-              );
-              // Instead of disconnecting, continue with the connection
-              logInfo("Continuing with connection despite duplicate warning");
-            }
-
-            logInfo("Received router capabilities", {
-              capabilities: response.rtpCapabilities,
-            });
-            initializeMediasoupDevice(response.rtpCapabilities);
-          }
-        );
-
-        // Mark connection as active in localStorage
-        const storedInfo = getStoredConnectionInfo(streamId, effectiveUserId);
-        if (storedInfo) {
-          storeConnectionInfo(streamId, effectiveUserId, {
-            ...storedInfo,
-            isActive: true,
-            timestamp: Date.now(),
-          });
-        }
+    socket.io.on("reconnect_attempt", (attempt) => {
+      logInfo(`Socket.IO reconnect attempt ${attempt}`, {
+        transportType: socket.io.engine?.transport?.name || "unknown",
       });
+    });
 
-      // Enhanced error handlers remain the same
+    socket.io.on("reconnect_error", (err) => {
+      logWarn("Socket.IO reconnect error", err);
+    });
 
-      // Set up additional debug event to monitor connection quality
-      socket.io.engine.on("upgrade", (transport) => {
-        logInfo("Socket.IO transport upgraded", {
-          from: socket.io.engine.transport.name,
-          to: transport.name,
+    socket.io.on("reconnect_failed", () => {
+      logError("Socket.IO reconnect failed after all attempts");
+      // Reset connection flags to allow manual reconnection attempts
+      connectInProgressRef.current = false;
+
+      // Report to parent component that connection failed permanently
+      if (onConnectionError) {
+        onConnectionError({
+          type: "RECONNECT_FAILED",
+          message: "Connection failed after multiple attempts",
+          canReconnect: false,
         });
-      });
+      }
+    });
 
-      // Add additional ping event to monitor connection
-      socket.on("ping", () => {
-        if (showDebugControls) {
-          logInfo("Ping received from server");
-        }
-      });
+    socket.io.on("reconnect", (attempt) => {
+      logInfo(`Socket.IO reconnected after ${attempt} attempts`);
+      reconnectionCounterRef.current += 1;
+      lastReconnectionTimeRef.current = Date.now();
 
-      return socket;
-    } catch (err) {
+      // Reset connection flag on successful reconnection
+      connectInProgressRef.current = false;
+    });
+
+    // Existing connect handler
+    socket.on("connect", () => {
       if (!mountedRef.current) {
-        connectInProgressRef.current = false;
+        logWarn("Socket connected but component unmounted, cleaning up");
+        socket.disconnect();
         return;
       }
 
-      logError("Error connecting to signaling server", formatError(err));
+      // Reset reconnection counter on successful connection
+      reconnectionCounterRef.current = 0;
+      lastReconnectionTimeRef.current = Date.now();
+
+      logInfo("Socket connected", {
+        socketId: socket.id,
+        streamId,
+        userId: effectiveUserId,
+        sessionId,
+        transportType: socket.io.engine.transport.name, // Log the actual transport type that succeeded
+      });
+
+      // Mark this component as having an active connection
+      hasActiveConnection.current = true;
       connectInProgressRef.current = false;
-      setError("Failed to connect to streaming server");
-      setConnectionStatus("disconnected");
+      setConnectionStatus("connected");
+      setError(null);
+      connectionAttemptsRef.current = 0; // Reset attempts on successful connection
+
+      // Request router capabilities after successful connection
+      socket.emit(
+        "getRouterRtpCapabilities",
+        { streamId, sessionId },
+        (response: RouterRtpCapabilitiesResponse) => {
+          if (!mountedRef.current) return;
+
+          if (response.error) {
+            logError("Failed to get router capabilities", {
+              error: response.error,
+            });
+            setError(`Failed to initialize media: ${response.error}`);
+            return;
+          }
+
+          // Store RTP capabilities for later use
+          if (response.rtpCapabilities) {
+            rtpCapabilitiesRef.current = response.rtpCapabilities;
+          }
+
+          // Don't show error for duplicate connection, try to continue anyway
+          if (response.duplicateConnection) {
+            logWarn(
+              "Server reported duplicate connection but we'll try to continue",
+              {
+                existingSocketId: response.existingSocketId,
+              }
+            );
+
+            // Store the duplicate connection info
+            if (response.existingSocketId) {
+              // This may be common during development with HMR, but should be rare in production
+              logInfo("Handling potential duplicate connection scenario", {
+                newSocketId: socket.id,
+                existingSocketId: response.existingSocketId,
+                streamId,
+              });
+
+              // Set state variables to prevent disruption
+              hasActiveConnection.current = true;
+
+              // Continue with normal flow but add a delay for the server to clean up previous connection
+              setTimeout(() => {
+                if (!mountedRef.current) return;
+
+                if (response.rtpCapabilities) {
+                  initializeMediasoupDevice(response.rtpCapabilities);
+                }
+              }, 300);
+
+              return; // Skip the immediate initialization below
+            }
+          }
+
+          logInfo("Received router capabilities", {
+            capabilities: response.rtpCapabilities,
+          });
+
+          if (response.rtpCapabilities) {
+            initializeMediasoupDevice(response.rtpCapabilities);
+          } else {
+            logError("No RTP capabilities received from server");
+            setError(
+              "Failed to initialize media: No RTP capabilities received"
+            );
+          }
+        }
+      );
+
+      // Mark connection as active in localStorage
+      const storedInfo = getStoredConnectionInfo(streamId, effectiveUserId);
+      if (storedInfo) {
+        storeConnectionInfo(streamId, effectiveUserId, {
+          ...storedInfo,
+          isActive: true,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Announce broadcaster or viewer readiness
+      if (isStreamer) {
+        logInfo("Emitting broadcaster_ready signal", { streamId, sessionId });
+        socket.emit("broadcaster_ready", { streamId, sessionId });
+      } else {
+        logInfo("Emitting viewer_ready signal", { streamId, sessionId });
+        socket.emit("viewer_ready", { streamId, sessionId });
+      }
+    });
+
+    // Add a handler for server-side errors
+    socket.on(
+      "error",
+      (data: {
+        message: string;
+        code?: string;
+        details?: any;
+        canReconnect?: boolean;
+      }) => {
+        if (!mountedRef.current) return;
+
+        logError(`Server reported error: ${data.message}`, {
+          code: data.code,
+          details: data.details,
+          canReconnect: data.canReconnect,
+        });
+
+        // Set the error message for the user
+        setError(data.message);
+
+        // If the server indicates we can reconnect, try that
+        if (data.canReconnect) {
+          logInfo("Will attempt to reconnect based on server suggestion");
+
+          // Wait a moment then try reconnecting
+          setTimeout(() => {
+            if (mountedRef.current) {
+              connectionAttemptsRef.current = 0;
+              setConnectionStatus("disconnected");
+              connectToSignalingServer();
+            }
+          }, 2000);
+        }
+
+        // Report the error to parent component if callback is provided
+        if (onConnectionError) {
+          onConnectionError({
+            type: data.code || "SERVER_ERROR",
+            message: data.message,
+            canReconnect: !!data.canReconnect,
+          });
+        }
+      }
+    );
+
+    // Set up broadcaster_ready and viewer_ready event handlers
+    if (!isStreamer) {
+      // Viewer listens for broadcaster ready events
+      socket.on("broadcaster_ready", (data) => {
+        logInfo("Received broadcaster_ready event", {
+          broadcasterSocketId: data.broadcasterSocketId,
+          broadcasterUserId: data.broadcasterUserId,
+          streamId: data.streamId,
+          activeProducers: data.activeProducers,
+        });
+
+        // Clear any error about streamer not broadcasting
+        if (error === "The streamer is not currently broadcasting") {
+          setError("");
+        }
+
+        // If we have active producers, set device initialized to trigger consumer transport
+        if (data.activeProducers && data.activeProducers.length > 0) {
+          logInfo(
+            `Broadcaster has ${data.activeProducers.length} active producers`
+          );
+          if (deviceRef.current?.loaded) {
+            setDeviceInitialized(true);
+          }
+        }
+      });
+
+      // Handle viewer_ready_response with active producers info
+      socket.on("viewer_ready_response", (data) => {
+        logInfo("Received viewer_ready_response event", {
+          broadcasterSocketId: data.broadcasterSocketId,
+          broadcasterUserId: data.broadcasterUserId,
+          hasActiveStreamer: data.hasActiveStreamer,
+          activeProducers: data.activeProducers,
+        });
+
+        // If we have active producers, set device initialized to trigger consumer transport
+        if (data.activeProducers && data.activeProducers.length > 0) {
+          logInfo(`Stream has ${data.activeProducers.length} active producers`);
+          if (deviceRef.current?.loaded) {
+            setDeviceInitialized(true);
+          }
+
+          // Clear any error about streamer not broadcasting
+          if (error === "The streamer is not currently broadcasting") {
+            setError("");
+          }
+        } else if (!data.hasActiveStreamer) {
+          setError("The streamer is not currently broadcasting");
+        }
+      });
+
+      // Send viewer ready event after connection
+      socket.emit("viewer_ready", {
+        streamId,
+        sessionId,
+      });
+    } else {
+      // Broadcaster listens for viewer ready events
+      socket.on("viewer_connected", (data) => {
+        logInfo("Received viewer_connected event", {
+          viewerSocketId: data.viewerSocketId,
+          viewerUserId: data.viewerUserId,
+          streamId: data.streamId,
+        });
+
+        // Update participant count
+        setParticipantCount((count) => count + 1);
+      });
+
+      // Handle broadcaster_ready_confirmed to know the server recognized us
+      socket.on("broadcaster_ready_confirmed", (data) => {
+        logInfo("Broadcaster ready confirmed by server", {
+          success: data.success,
+          roomState: data.roomState,
+        });
+
+        // Update UI state to show we're successfully broadcasting
+        if (data.success) {
+          setConnectionStatus("streaming");
+          setError(""); // Clear any previous errors
+
+          // Update participant count if provided
+          if (data.roomState && typeof data.roomState.viewers === "number") {
+            setParticipantCount(data.roomState.viewers);
+          }
+        }
+      });
     }
+
+    // Enhanced error handlers remain the same
+
+    // Set up additional debug event to monitor connection quality
+    socket.io.engine.on("upgrade", (transport) => {
+      logInfo("Socket.IO transport upgraded", {
+        from: socket.io.engine.transport.name,
+        to: transport.name,
+      });
+    });
+
+    // Add additional ping event to monitor connection
+    socket.on("ping", () => {
+      if (showDebugControls) {
+        logInfo("Ping received from server");
+      }
+    });
+
+    socket.on("participant_count", (data: { count: number }) => {
+      if (mountedRef.current) {
+        setParticipantCount(data.count);
+
+        // Call the callback if provided
+        if (onParticipantCount) {
+          onParticipantCount(data.count);
+        }
+      }
+    });
+
+    // Add an rtpCapabilities event handler and store the value
+    socket.on("rtpCapabilities", (rtpCapabilities) => {
+      logInfo("Received RTP capabilities from server");
+      rtpCapabilitiesRef.current = rtpCapabilities;
+    });
+
+    // In the socket.on("getRouterRtpCapabilities") handler, add:
+    socket.on("getRouterRtpCapabilities", async (data, callback) => {
+      try {
+        // Request RTP capabilities from server
+        const response = await socketPromise<RouterRtpCapabilitiesResponse>(
+          socket,
+          "getRouterRtpCapabilities",
+          { streamId }
+        );
+
+        if (response && response.rtpCapabilities) {
+          rtpCapabilitiesRef.current = response.rtpCapabilities;
+        }
+        callback({ rtpCapabilities: response.rtpCapabilities });
+      } catch (err) {
+        callback({ error: formatError(err) });
+      }
+    });
+
+    return socket;
   }, [
+    runtimeConfig,
     streamId,
     effectiveUserId,
     effectiveUsername,
     isStreamer,
-    runtimeConfig,
-    isConfigLoading,
-    onParticipantCount,
     isAnonymous,
-    // Added dependency:
-    showDebugControls,
+    sessionId,
+    connectionStatus,
+    onConnectionError,
   ]);
 
   /**
@@ -920,92 +1234,110 @@ export default function WebRTCStreamManager({
    * This helps diagnose raw WebSocket issues vs Socket.IO specific issues
    */
   const testDirectWebSocketConnectivity = async (
-    url: string
+    url: string // This 'url' is passed from preConnectionTest, e.g., ws://localhost:3000
   ): Promise<boolean> => {
-    return new Promise((resolve, reject) => {
-      try {
-        // Convert HTTP URLs to WebSocket URLs if needed
-        let wsTestConnectUrl = url;
+    return new Promise((resolve) => {
+      let baseUrl = url;
 
-        // Handle different URL formats properly
-        if (url.startsWith("http://")) {
-          wsTestConnectUrl =
-            url.replace(/^http:\/\//i, "ws://") +
-            "/socket.io/?EIO=4&transport=websocket";
-        } else if (url.startsWith("https://")) {
-          wsTestConnectUrl =
-            url.replace(/^https:\/\//i, "wss://") +
-            "/socket.io/?EIO=4&transport=websocket";
-        } else if (url.startsWith("ws://") || url.startsWith("wss://")) {
-          wsTestConnectUrl = url + "/socket.io/?EIO=4&transport=websocket";
-        } else if (!url.match(/^[a-z]+:\/\//i)) {
-          // No protocol, assume ws://
-          wsTestConnectUrl =
-            "ws://" + url + "/socket.io/?EIO=4&transport=websocket";
-        }
-
-        logInfo(`Testing direct WebSocket connectivity to ${wsTestConnectUrl}`);
-
-        // Use browser's native WebSocket
-        let ws: WebSocket; // Native WebSocket
-
-        try {
-          ws = new WebSocket(wsTestConnectUrl);
-        } catch (wsError) {
-          // This can happen if the URL scheme is invalid or malformed
-          logError(
-            "Failed to create WebSocket with URL",
-            {
-              wsUrl: wsTestConnectUrl,
-              error: formatError(wsError),
-            },
-            effectiveUserId,
-            streamId
-          );
-
-          // Try an alternative approach - use the current origin with ws/wss
-          const altWsUrl =
-            window.location.origin.replace(/^http(s?):\/\//i, "ws$1://") +
-            "/socket.io/?EIO=4&transport=websocket";
-          logInfo(`Trying alternative WebSocket URL: ${altWsUrl}`);
-
-          ws = new WebSocket(altWsUrl);
-        }
-
-        const connectTimeout = setTimeout(() => {
-          ws.close();
-          reject(new Error("WebSocket connection timeout after 5 seconds"));
-        }, 5000);
-
-        ws.onopen = () => {
-          logInfo("Direct WebSocket connection successful");
-          clearTimeout(connectTimeout);
-          ws.close();
-          resolve(true);
-        };
-
-        ws.onerror = (event) => {
-          clearTimeout(connectTimeout);
-          logError(
-            "Direct WebSocket connection failed",
-            {
-              error: "WebSocket error event",
-              wsUrl: wsTestConnectUrl,
-            },
-            effectiveUserId,
-            streamId
-          );
-          reject(new Error("WebSocket connection failed"));
-        };
-      } catch (error) {
-        logError(
-          "Exception during WebSocket connectivity test",
-          formatError(error),
-          effectiveUserId,
-          streamId
-        );
-        reject(error);
+      // Remove trailing slash if present
+      if (baseUrl.endsWith("/")) {
+        baseUrl = baseUrl.slice(0, -1);
       }
+
+      // First try: Direct connection to base WebSocket URL
+      let attemptCount = 0;
+      const maxAttempts = 2;
+      let wsConnectionSuccessful = false;
+
+      const attemptConnection = () => {
+        attemptCount++;
+        const currentAttemptUrl =
+          attemptCount === 1
+            ? baseUrl
+            : `${baseUrl}/socket.io/?EIO=4&transport=websocket`;
+
+        logInfo(
+          `[WebRTCManager] WS Connection attempt ${attemptCount}/${maxAttempts} to: ${currentAttemptUrl}`
+        );
+
+        // Set timeout to prevent hanging
+        const connectionTimeout = setTimeout(() => {
+          logInfo(
+            `[WebRTCManager] Native WebSocket connection to ${currentAttemptUrl} timed out after 3s`
+          );
+          if (ws) {
+            ws.close();
+          }
+
+          if (attemptCount < maxAttempts) {
+            attemptConnection(); // Try next approach
+          } else {
+            logError(
+              "[WebRTCManager] All WebSocket connection attempts failed"
+            );
+            resolve(false);
+          }
+        }, 3000);
+
+        // Create WebSocket connection
+        let ws: WebSocket;
+        try {
+          ws = new WebSocket(currentAttemptUrl);
+
+          ws.onopen = () => {
+            logInfo(
+              `[WebRTCManager] WebSocket connection successful to ${currentAttemptUrl}`
+            );
+            clearTimeout(connectionTimeout);
+            wsConnectionSuccessful = true;
+            resolve(true);
+            try {
+              ws.close(1000, "Test complete"); // Clean close
+            } catch (e) {
+              // Ignore close errors
+            }
+          };
+
+          ws.onerror = (error) => {
+            logInfo(
+              `[WebRTCManager] Native WebSocket connection to ${currentAttemptUrl} failed.`,
+              { error }
+            );
+            // Don't resolve here - wait for timeout or close
+          };
+
+          ws.onclose = (event) => {
+            if (!wsConnectionSuccessful) {
+              logInfo(
+                `[WebRTCManager] WebSocket connection closed during test (code: ${event.code})`,
+                { wasClean: event.wasClean }
+              );
+              clearTimeout(connectionTimeout);
+
+              if (attemptCount < maxAttempts) {
+                attemptConnection(); // Try next approach
+              } else {
+                resolve(false);
+              }
+            }
+          };
+        } catch (err) {
+          logError("[WebRTCManager] Exception creating WebSocket connection", {
+            error: err,
+            url: currentAttemptUrl,
+          });
+          clearTimeout(connectionTimeout);
+
+          if (attemptCount < maxAttempts) {
+            attemptConnection(); // Try next approach
+          } else {
+            resolve(false);
+          }
+        }
+      };
+
+      // Start the connection attempt sequence
+      attemptConnection();
     });
   };
 
@@ -1016,53 +1348,205 @@ export default function WebRTCStreamManager({
   const initializeMediasoupDevice = useCallback(
     async (routerRtpCapabilities: mediasoupClient.types.RtpCapabilities) => {
       try {
-        logger.debug("Initializing MediaSoup device");
+        if (!mountedRef.current) return;
+
+        // Track device errors separately
+        const hasDeviceError = deviceErrorRef.current;
+
+        // Add more detailed logging
         logInfo("Initializing MediaSoup device with router capabilities", {
-          routerCapabilitiesCodecs: routerRtpCapabilities.codecs?.map((c) => ({
-            mimeType: c.mimeType,
-            clockRate: c.clockRate,
-            channels: c.channels,
-          })),
+          hasDeviceRef: !!deviceRef.current,
+          deviceLoaded: deviceRef.current?.loaded,
+          hasDeviceError,
+          socketId: socketRef.current?.id || "no-socket",
         });
 
-        // Create a new MediaSoup device
-        const device = new mediasoupClient.Device();
+        // If device was previously initialized and failed, create a new one
+        if (hasDeviceError) {
+          logWarn("Previous device had errors, creating a fresh one");
+          deviceRef.current = new mediasoupClient.Device();
+          // Reset error flag
+          deviceErrorRef.current = false;
+        }
 
-        // Load router RTP capabilities
-        await device.load({ routerRtpCapabilities });
+        // Create device if needed
+        if (!deviceRef.current) {
+          logInfo("Creating new MediaSoup device");
+          deviceRef.current = new mediasoupClient.Device();
+        }
 
-        // Log device capabilities for diagnostics
-        logInfo("MediaSoup device initialized successfully", {
-          canProduceVideo: device.canProduce("video"),
-          canProduceAudio: device.canProduce("audio"),
-          loaded: device.loaded,
-          rtpCapabilities: {
-            codecs: device.rtpCapabilities?.codecs?.map((c) => ({
-              mimeType: c.mimeType,
-              preferredPayloadType: c.preferredPayloadType,
-              clockRate: c.clockRate,
-              channels: c.channels,
-            })),
-          },
-        });
+        // Only load the device if it's not loaded yet
+        if (!deviceRef.current.loaded) {
+          try {
+            logInfo("Loading device with RTP capabilities", {
+              routerRtpCapabilities: {
+                codecs: routerRtpCapabilities.codecs?.map((c) => c.mimeType),
+                headerExtensions:
+                  routerRtpCapabilities.headerExtensions?.length,
+              },
+            });
 
-        deviceRef.current = device;
-        return device;
+            await deviceRef.current.load({ routerRtpCapabilities });
+
+            logInfo("MediaSoup device initialized successfully", {
+              canProduceVideo: deviceRef.current.canProduce("video"),
+              canProduceAudio: deviceRef.current.canProduce("audio"),
+              loaded: deviceRef.current.loaded,
+            });
+          } catch (deviceErr: any) {
+            logError(
+              `Failed to load MediaSoup device: ${
+                deviceErr.message || "Unknown error"
+              }`,
+              formatError(deviceErr)
+            );
+            // Mark device error state
+            deviceErrorRef.current = true;
+
+            // Delay and try again once if this was a device load error
+            setTimeout(() => {
+              if (mountedRef.current && socketRef.current?.connected) {
+                logInfo(
+                  "Attempting to recover from MediaSoup device load failure"
+                );
+                socketRef.current.emit(
+                  "getRouterRtpCapabilities",
+                  { streamId, sessionId, recovery: true },
+                  (response: RouterRtpCapabilitiesResponse) => {
+                    if (response.rtpCapabilities && mountedRef.current) {
+                      initializeMediasoupDevice(response.rtpCapabilities);
+                    }
+                  }
+                );
+              }
+            }, 2000); // Increased from 1000ms to 2000ms
+
+            return;
+          }
+        }
+
+        // After device is loaded, send our RTP capabilities to the server
+        if (socketRef.current && deviceRef.current.loaded) {
+          try {
+            logInfo("Sending device RTP capabilities to server", {
+              deviceLoaded: deviceRef.current.loaded,
+              socketConnected: socketRef.current.connected,
+            });
+
+            const response = await socketPromise<{
+              success: boolean;
+              error?: string;
+              reconnect?: boolean;
+              activeProducers?: Array<{
+                producerId: string;
+                kind: string;
+                peerId: string;
+              }>;
+            }>(socketRef.current, "connectRtpCapabilities", {
+              rtpCapabilities: deviceRef.current.rtpCapabilities,
+              streamId,
+            });
+
+            if (response && response.success) {
+              logInfo("Successfully sent RTP capabilities to server");
+
+              // Signal that the device is ready for transport setup
+              hasActiveConnection.current = true;
+
+              // If we're a viewer and there are active producers, handle them
+              if (
+                !isStreamer &&
+                response.activeProducers &&
+                response.activeProducers.length > 0
+              ) {
+                logInfo(
+                  `Server reports ${response.activeProducers.length} active producers available`,
+                  {
+                    producers: response.activeProducers.map((p) => ({
+                      id: p.producerId,
+                      kind: p.kind,
+                    })),
+                  }
+                );
+
+                // Set device initialized flag to trigger consumer transport creation
+                setDeviceInitialized(true);
+              }
+
+              // For streamers, create producer transport
+              if (isStreamer) {
+                logInfo(
+                  "Streamer device initialized, proceeding with producer setup"
+                );
+                // Set device initialized flag to trigger producer transport creation
+                setDeviceInitialized(true);
+              }
+            } else if (response && response.error) {
+              logWarn(`Failed to send RTP capabilities: ${response.error}`);
+
+              // If server requests reconnection, try that
+              if (response.reconnect && socketRef.current) {
+                logInfo(
+                  "Server requested reconnection, attempting to reconnect"
+                );
+                socketRef.current.disconnect();
+                socketRef.current = null;
+
+                // Short delay before reconnecting
+                setTimeout(() => {
+                  if (mountedRef.current) {
+                    connectToSignalingServer();
+                  }
+                }, 1000);
+                return;
+              }
+            }
+          } catch (err) {
+            logWarn("Failed to send RTP capabilities to server", {
+              error: formatError(err),
+            });
+
+            // Try again after a short delay - this is not fatal
+            setTimeout(() => {
+              if (
+                mountedRef.current &&
+                socketRef.current?.connected &&
+                deviceRef.current?.loaded
+              ) {
+                logInfo("Retrying sending RTP capabilities");
+                socketRef.current.emit("connectRtpCapabilities", {
+                  rtpCapabilities: deviceRef.current.rtpCapabilities,
+                  streamId,
+                  retry: true,
+                });
+              }
+            }, 1500);
+          }
+        }
+
+        // Set a flag for viewers to create transport in an effect
+        if (!isStreamer && connectionStatus === "connected") {
+          setDeviceInitialized(true);
+        }
       } catch (err) {
-        logger.error("Failed to initialize MediaSoup device", formatError(err));
         logError(
-          "Failed to initialize MediaSoup device",
+          "Error initializing MediaSoup device",
           formatError(err),
           effectiveUserId,
           streamId
         );
-        setError(
-          "Failed to initialize media device. Please reload and try again."
-        );
-        return null;
+        setError(`Failed to initialize media: ${formatError(err)}`);
       }
     },
-    [effectiveUserId, streamId]
+    [
+      isStreamer,
+      streamId,
+      effectiveUserId,
+      connectionStatus,
+      sessionId,
+      connectToSignalingServer,
+      socketPromise,
+    ]
   );
 
   /**
@@ -1344,7 +1828,7 @@ export default function WebRTCStreamManager({
   );
 
   /**
-   * Create and set up a consumer transport for the viewer
+   * Create and set up a consumer transport for viewers
    */
   const setupConsumerTransport = useCallback(
     async (transportOptions: any) => {
@@ -1585,60 +2069,35 @@ export default function WebRTCStreamManager({
                         effectiveUserId,
                         streamId
                       );
-
-                      if (mountedRef.current) {
-                        setError(
-                          `Connection failed. Please refresh and try again.`
-                        );
-                      }
                     }
                   }
                 }
               );
-            } else {
-              if (mountedRef.current) {
-                setError(`Connection failed. Please refresh and try again.`);
-              }
             }
-          } else if (state === "disconnected" || state === "closed") {
-            logger.error(
-              "Consumer transport connection closed or disconnected",
-              { state }
-            );
-            logError(
-              "Consumer transport connection closed or disconnected",
-              {
-                state,
-                transportId: transport.id,
-                isViewer: !isStreamer,
-              },
-              effectiveUserId,
-              streamId
-            );
-
-            if (mountedRef.current) {
-              setError(`Connection ${state}. Please try again.`);
-            }
+          } else if (state === "disconnected") {
+            logWarn("Consumer transport ICE disconnected", {
+              transportId: transport.id,
+            });
+          } else if (state === "closed") {
+            logWarn("Consumer transport closed", { transportId: transport.id });
           }
         });
 
+        // Store the transport for later use
         transportRef.current.consumer = transport;
         return transport;
       } catch (err) {
-        logger.error("Failed to set up consumer transport", formatError(err));
+        logger.error("Failed to create consumer transport", formatError(err));
         logError(
-          "Failed to set up consumer transport",
+          "Failed to create consumer transport",
           formatError(err),
           effectiveUserId,
           streamId
         );
-        setError(
-          "Failed to set up media connection. Please reload and try again."
-        );
         return null;
       }
     },
-    [streamId, runtimeConfig, isConfigLoading, effectiveUserId, isStreamer]
+    [effectiveUserId, isConfigLoading, isStreamer, runtimeConfig, streamId]
   );
 
   /**
@@ -1647,6 +2106,18 @@ export default function WebRTCStreamManager({
   const produceLocalMedia = useCallback(
     async (transport: mediasoupClient.types.Transport, stream: MediaStream) => {
       try {
+        // Make sure transport is valid and not closed
+        if (!transport || transport.closed) {
+          logError("Cannot produce media: Transport is closed or invalid");
+          if (onMediaError) {
+            onMediaError(
+              "produce",
+              "Transport closed. Please refresh the page."
+            );
+          }
+          return false;
+        }
+
         // Close existing producers
         if (producersRef.current.video) {
           producersRef.current.video.close();
@@ -1675,45 +2146,55 @@ export default function WebRTCStreamManager({
             readyState: videoTracks[0].readyState,
           });
 
-          // Modified: Use simpler encoding settings to ensure compatibility
-          const videoProducer = await transport.produce({
-            track: videoTracks[0],
-            encodings: [
-              // Use a single encoding with reasonable bitrate that will work on most connections
-              { maxBitrate: 800000, scaleResolutionDownBy: 1 },
-            ],
-            codecOptions: {
-              videoGoogleStartBitrate: 800,
-            },
-          });
+          try {
+            // Modified: Use simpler encoding settings to ensure compatibility
+            const videoProducer = await transport.produce({
+              track: videoTracks[0],
+              encodings: [
+                // Use a single encoding with reasonable bitrate that will work on most connections
+                { maxBitrate: 800000, scaleResolutionDownBy: 1 },
+              ],
+              codecOptions: {
+                videoGoogleStartBitrate: 800,
+              },
+            });
 
-          logger.info("Video producer created", {
-            producerId: videoProducer.id,
-          });
-          producersRef.current.video = videoProducer;
+            logger.info("Video producer created", {
+              producerId: videoProducer.id,
+            });
+            producersRef.current.video = videoProducer;
 
-          // Add more diagnostic events
-          videoProducer.on("transportclose", () => {
-            logger.info("Video producer transport closed");
-            producersRef.current.video = null;
-          });
+            // Add more diagnostic events
+            videoProducer.on("transportclose", () => {
+              logger.info("Video producer transport closed");
+              producersRef.current.video = null;
+            });
 
-          videoProducer.on("trackended", () => {
-            logger.info("Video track ended");
-            videoProducer.close();
-            producersRef.current.video = null;
-          });
+            videoProducer.on("trackended", () => {
+              logger.info("Video track ended");
+              videoProducer.close();
+              producersRef.current.video = null;
+            });
 
-          // Add new event listeners for better diagnostics
-          videoProducer.observer.on("close", () => {
-            logger.info("Video producer closed through observer");
-          });
+            // Add new event listeners for better diagnostics
+            videoProducer.observer.on("close", () => {
+              logger.info("Video producer closed through observer");
+            });
 
-          // Log successful video producer creation to help debug
-          logInfo("Video producer successfully created and connected", {
-            producerId: videoProducer.id,
-            trackSettings: videoTracks[0].getSettings(),
-          });
+            // Log successful video producer creation to help debug
+            logInfo("Video producer successfully created and connected", {
+              producerId: videoProducer.id,
+              trackSettings: videoTracks[0].getSettings(),
+            });
+          } catch (err) {
+            logError(
+              "Failed to create video producer",
+              formatError(err),
+              effectiveUserId,
+              streamId
+            );
+            // Continue with audio producer even if video fails
+          }
         } else {
           logWarn("No video tracks found in the local stream");
         }
@@ -1735,45 +2216,54 @@ export default function WebRTCStreamManager({
             readyState: audioTracks[0].readyState,
           });
 
-          // Enhanced audio options for better quality and reliability
-          const audioProducer = await transport.produce({
-            track: audioTracks[0],
-            codecOptions: {
-              opusStereo: false, // Use mono for better reliability
-              opusDtx: true,
-              opusFec: true,
-              opusMaxPlaybackRate: 48000,
-              opusPtime: 20,
-            },
-          });
+          try {
+            // Enhanced audio options for better quality and reliability
+            const audioProducer = await transport.produce({
+              track: audioTracks[0],
+              codecOptions: {
+                opusStereo: false, // Use mono for better reliability
+                opusDtx: true,
+                opusFec: true,
+                opusMaxPlaybackRate: 48000,
+                opusPtime: 20,
+              },
+            });
 
-          logger.info("Audio producer created", {
-            producerId: audioProducer.id,
-          });
-          producersRef.current.audio = audioProducer;
+            logger.info("Audio producer created", {
+              producerId: audioProducer.id,
+            });
+            producersRef.current.audio = audioProducer;
 
-          // Handle producer events
-          audioProducer.on("transportclose", () => {
-            logger.info("Audio producer transport closed");
-            producersRef.current.audio = null;
-          });
+            // Handle producer events
+            audioProducer.on("transportclose", () => {
+              logger.info("Audio producer transport closed");
+              producersRef.current.audio = null;
+            });
 
-          audioProducer.on("trackended", () => {
-            logger.info("Audio track ended");
-            audioProducer.close();
-            producersRef.current.audio = null;
-          });
+            audioProducer.on("trackended", () => {
+              logger.info("Audio track ended");
+              audioProducer.close();
+              producersRef.current.audio = null;
+            });
 
-          // Add new event listeners for better diagnostics
-          audioProducer.observer.on("close", () => {
-            logger.info("Audio producer closed through observer");
-          });
+            // Add new event listeners for better diagnostics
+            audioProducer.observer.on("close", () => {
+              logger.info("Audio producer closed through observer");
+            });
 
-          // Log successful audio producer creation
-          logInfo("Audio producer successfully created and connected", {
-            producerId: audioProducer.id,
-            trackSettings: audioTracks[0].getSettings(),
-          });
+            // Log successful audio producer creation
+            logInfo("Audio producer successfully created and connected", {
+              producerId: audioProducer.id,
+              trackSettings: audioTracks[0].getSettings(),
+            });
+          } catch (err) {
+            logError(
+              "Failed to create audio producer",
+              formatError(err),
+              effectiveUserId,
+              streamId
+            );
+          }
         } else {
           logWarn("No audio tracks found in the local stream");
         }
@@ -1799,6 +2289,9 @@ export default function WebRTCStreamManager({
           } else if (err.message.includes("Transport")) {
             errorMessage =
               "Connection issue: Transport setup failed. Please try refreshing the page.";
+          } else if (err.message.includes("closed")) {
+            errorMessage =
+              "Connection closed. Please refresh the page to reconnect.";
           } else {
             errorMessage = `Failed to publish media: ${err.message}`;
           }
@@ -1814,7 +2307,7 @@ export default function WebRTCStreamManager({
         return false;
       }
     },
-    [setStreamReady, setError, onMediaError, error]
+    [setStreamReady, setError, onMediaError, error, effectiveUserId, streamId]
   );
 
   /**
@@ -2087,23 +2580,20 @@ export default function WebRTCStreamManager({
    * Handle streamer's device selection change
    */
   const handleDeviceChange = useCallback(
-    (type: "audio" | "video", deviceId: string) => {
-      if (type === "audio") {
-        setSelectedAudioDevice(deviceId);
-        logger.info("Audio device changed", { deviceId });
-      } else if (type === "video") {
+    (deviceType: "video" | "audio", deviceId: string) => {
+      logInfo(`Device selection changed: ${deviceType}=${deviceId}`);
+
+      if (deviceType === "video") {
         setSelectedVideoDevice(deviceId);
-        logger.info("Video device changed", { deviceId });
+      } else if (deviceType === "audio") {
+        setSelectedAudioDevice(deviceId);
       }
 
-      // If already streaming, apply the change
-      if (connectionStatus === "connected" && isStreamer) {
-        // We'll recapture media with the new device selection
-        // This will be handled in the useEffect that depends on selectedAudioDevice/selectedVideoDevice
-      }
+      // Store for the device change effect to pick up
+      didDeviceChangeRef.current = true;
     },
-    [isStreamer, selectedVideoDevice, selectedAudioDevice, produceLocalMedia]
-  ); // Added dependencies
+    [setSelectedVideoDevice, setSelectedAudioDevice]
+  );
 
   /**
    * Capture local media with selected devices (for streamers)
@@ -2125,26 +2615,62 @@ export default function WebRTCStreamManager({
       }
 
       // Track local media setup attempts to prevent excessive retries
-      // const mediaSetupAttempt = useRef(0); // Removed from here
       if (mediaSetupAttemptRef.current > 3) {
-        // Instead of throwing an error, report it through onMediaError and continue
-        const errorMessage =
-          "Failed to set up media devices after multiple attempts";
-        logError(errorMessage);
-
-        // Report the error through the callback
-        if (onMediaError) {
-          onMediaError("setup", errorMessage);
-        }
-
-        // Set local error state
-        setError(
-          "Could not access camera/microphone after multiple attempts. Continuing in view-only mode."
+        // Instead of immediately failing, try to continue with audio-only or video-only
+        logWarn(
+          "Multiple media setup attempts, trying fallback with reduced requirements"
         );
 
-        // Return null instead of throwing, to allow component to continue in view-only mode
-        return null;
+        // Attempt audio-only as fallback
+        try {
+          logInfo("Attempting audio-only fallback");
+          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+
+          logInfo("Audio-only fallback successful");
+          setIsVideoHidden(true); // Hide video UI since we don't have video
+          localStreamRef.current = audioOnlyStream;
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = audioOnlyStream;
+            videoRef.current.muted = true; // Mute local preview
+          }
+
+          return audioOnlyStream;
+        } catch (audioErr) {
+          // Last resort - try to continue without media for debugging purposes
+          logError(
+            "All media fallbacks failed",
+            formatError(audioErr),
+            effectiveUserId,
+            streamId
+          );
+
+          // Create an empty stream as last resort (may not work well in production)
+          const emptyStream = new MediaStream();
+          localStreamRef.current = emptyStream;
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = emptyStream;
+          }
+
+          // Report the error through the callback but don't stop the connection
+          if (onMediaError) {
+            onMediaError(
+              "setup",
+              "Failed to access any media devices after multiple attempts. You may need to grant permissions in your browser settings."
+            );
+          }
+
+          setError(
+            "Could not access camera or microphone after multiple attempts. Check browser permissions."
+          );
+          return emptyStream;
+        }
       }
+
       mediaSetupAttemptRef.current++; // Increment the ref from component scope
 
       // Detect platform for optimal constraints
@@ -2221,6 +2747,7 @@ export default function WebRTCStreamManager({
               audio: false,
             });
             setError("Microphone access denied. Streaming without audio.");
+            setIsMuted(true);
           } catch (videoOnlyErr) {
             // Try audio-only as a last resort
             try {
@@ -2232,6 +2759,7 @@ export default function WebRTCStreamManager({
                   : true,
               });
               setError("Camera access denied. Streaming with audio only.");
+              setIsVideoHidden(true);
             } catch (audioOnlyErr) {
               throw new Error(
                 "Both camera and microphone access denied. Cannot stream without media."
@@ -2246,84 +2774,16 @@ export default function WebRTCStreamManager({
           (err as any)?.name === "NotReadableError" ||
           (err as any)?.name === "AbortError"
         ) {
-          // Don't throw an error immediately, try with different devices or fallback options
+          // Try with simpler constraints instead of throwing error
           logWarn(
-            "Device access error (NotReadableError/AbortError), trying alternative approach",
+            "Device access error (NotReadableError/AbortError), trying simpler approach",
             formatError(err)
           );
 
-          // First try using a different camera/mic if available
-          try {
-            // Get all available devices
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(
-              (d) =>
-                d.kind === "videoinput" &&
-                (!selectedVideoDevice || d.deviceId !== selectedVideoDevice)
-            );
-            const audioDevices = devices.filter(
-              (d) =>
-                d.kind === "audioinput" &&
-                (!selectedAudioDevice || d.deviceId !== selectedAudioDevice)
-            );
-
-            logInfo("Attempting with alternative devices", {
-              alternativeVideoDevices: videoDevices.length,
-              alternativeAudioDevices: audioDevices.length,
-            });
-
-            // If we have alternative devices, try them
-            if (videoDevices.length > 0 || audioDevices.length > 0) {
-              const altVideoId =
-                videoDevices.length > 0 ? videoDevices[0].deviceId : undefined;
-              const altAudioId =
-                audioDevices.length > 0 ? audioDevices[0].deviceId : undefined;
-
-              // Try with alternative devices
-              stream = await navigator.mediaDevices.getUserMedia({
-                video: altVideoId ? { deviceId: { exact: altVideoId } } : false,
-                audio: altAudioId ? { deviceId: { exact: altAudioId } } : false,
-              });
-
-              // If successful, update the selected devices
-              if (altVideoId) setSelectedVideoDevice(altVideoId);
-              if (altAudioId) setSelectedAudioDevice(altAudioId);
-
-              logInfo("Successfully connected using alternative devices");
-
-              // Show a warning to the user
-              setError(
-                "Using alternative camera/microphone. Your primary devices may be in use by another application."
-              );
-              // Clear the error after 5 seconds
-              setTimeout(() => {
-                if (mountedRef.current) setError(null);
-              }, 5000);
-
-              return stream;
-            }
-
-            // If no alternative devices, try with minimal constraints
-            logInfo(
-              "No alternative devices available, trying minimal constraints"
-            );
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { width: 320, height: 240, frameRate: { max: 15 } },
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-              },
-            });
-
-            return stream;
-          } catch (fallbackErr) {
-            logError("All fallback attempts failed", formatError(fallbackErr));
-            // Now throw a more helpful error
-            throw new Error(
-              "Could not access your camera/microphone. They may be in use by another application. Please close other apps using your camera (like Zoom, Teams, etc.) and refresh this page."
-            );
-          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: true,
+          });
         } else if ((err as any)?.name === "OverconstrainedError") {
           // Fallback to basic constraints without specific requirements
           logWarn(
@@ -2400,6 +2860,10 @@ export default function WebRTCStreamManager({
         }
       }
 
+      // Reset error state if stream was acquired successfully
+      setError(null);
+      mediaSetupAttemptRef.current = 0; // Reset attempts on success
+
       // If we already have a producer transport, produce with the new stream
       if (transportRef.current.producer) {
         logger.info("Producing with new media stream");
@@ -2411,25 +2875,54 @@ export default function WebRTCStreamManager({
     } catch (err) {
       logger.error("Error accessing media devices", formatError(err));
 
+      // Track error for the UI
+      let errorMessage = "Failed to access camera/microphone";
+
       // Provide more specific error message
       if ((err as any)?.name === "NotAllowedError") {
-        setError(
-          "Camera/microphone access denied. Please check your browser permissions and click the camera icon in the address bar."
-        );
+        errorMessage =
+          "Camera/microphone access denied. Please check browser permissions.";
       } else if ((err as any)?.name === "NotFoundError") {
-        setError(
-          "Camera or microphone not found. Please check your device connections."
-        );
+        errorMessage =
+          "Camera or microphone not found. Please check device connections.";
       } else if ((err as any)?.name === "NotReadableError") {
-        setError(
-          "Could not access your camera/microphone. They may be in use by another application."
-        );
+        errorMessage =
+          "Could not access media devices. They may be in use by another application.";
       } else if ((err as Error)?.message) {
-        setError((err as Error).message);
-      } else {
-        setError(
-          "Failed to access camera or microphone. Please check your permissions."
-        );
+        errorMessage = (err as Error).message;
+      }
+
+      setError(errorMessage);
+
+      // Report the error through the callback
+      if (onMediaError) {
+        onMediaError("setup", errorMessage);
+      }
+
+      // For streamers, one more chance with audio-only before giving up
+      if (isStreamer && mediaSetupAttemptRef.current <= 3) {
+        try {
+          logWarn("Attempting audio-only as final fallback");
+          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+
+          logInfo("Audio-only fallback successful after error");
+          setIsVideoHidden(true);
+          localStreamRef.current = audioOnlyStream;
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = audioOnlyStream;
+            videoRef.current.muted = true;
+          }
+
+          setError("Camera unavailable. Streaming with audio only.");
+          setStreamReady(true);
+          return audioOnlyStream;
+        } catch (fallbackErr) {
+          logError("Audio-only fallback failed", formatError(fallbackErr));
+        }
       }
 
       return null;
@@ -2441,14 +2934,14 @@ export default function WebRTCStreamManager({
     produceLocalMedia,
     externalCameraOn,
     externalMicrophoneOn,
-    effectiveUserId, // Added
-    streamId, // Added
-    setError, // Added
-    setStreamReady, // Added
-    setIsVideoHidden, // Added
-    setIsMuted, // Added
-    // Assuming logError, formatError, logger, logInfo, logWarn are stable and defined outside or memoized
-    // Refs (localStreamRef, videoRef, transportRef) are stable by nature
+    effectiveUserId,
+    streamId,
+    setError,
+    setStreamReady,
+    setIsVideoHidden,
+    setIsMuted,
+    onMediaError,
+    isAnonymous,
   ]);
 
   // =========== MEDIA CONTROLS ===========
@@ -2456,40 +2949,29 @@ export default function WebRTCStreamManager({
    * Toggle audio mute state
    */
   const toggleMute = useCallback(() => {
-    logger.info("Toggling audio mute state");
-
-    setIsMuted((prev) => !prev);
-
-    if (isStreamer && localStreamRef.current) {
-      // Mute/unmute outgoing audio for streamers
+    if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks();
       audioTracks.forEach((track) => {
-        track.enabled = isMuted; // Toggle to opposite of current state
+        track.enabled = !track.enabled;
       });
+      setIsMuted((prev) => !prev);
+      logInfo(`Toggled audio: ${isMuted ? "unmuted" : "muted"}`);
     }
-
-    // Mute/unmute the video element for viewers
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted; // Toggle to opposite of current state
-    }
-  }, [isStreamer, isMuted]);
+  }, [isMuted]);
 
   /**
    * Toggle video visibility
    */
   const toggleVideo = useCallback(() => {
-    logger.info("Toggling video visibility");
-
-    setIsVideoHidden((prev) => !prev);
-
-    if (isStreamer && localStreamRef.current) {
-      // Enable/disable outgoing video
+    if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
       videoTracks.forEach((track) => {
-        track.enabled = isVideoHidden; // Toggle to opposite of current state
+        track.enabled = !track.enabled;
       });
+      setIsVideoHidden((prev) => !prev);
+      logInfo(`Toggled video: ${isVideoHidden ? "shown" : "hidden"}`);
     }
-  }, [isStreamer, isVideoHidden]);
+  }, [isVideoHidden]);
 
   // =========== EFFECTS ===========
   // Initialize component
@@ -2533,8 +3015,32 @@ export default function WebRTCStreamManager({
 
       // Force disconnect socket
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        logInfo("Disconnecting socket on unmount", {
+          socketId: socketRef.current.id,
+        });
+
+        // Keep a reference to the socket
+        const socket = socketRef.current;
+
+        // Clear the reference immediately to prevent further operations
         socketRef.current = null;
+
+        // Add a short delay before disconnecting to avoid rapid connect/disconnect cycles
+        // This is especially important during development with React HMR
+        setTimeout(() => {
+          try {
+            // Only actually disconnect if we haven't quickly remounted
+            // This prevents connection thrashing during refreshes
+            if (!mountedRef.current && socket && socket.connected) {
+              logInfo("Disconnecting socket after unmount delay", {
+                socketId: socket.id,
+              });
+              socket.disconnect();
+            }
+          } catch (err) {
+            // Socket might already be disconnected, ignore errors
+          }
+        }, 300);
       }
 
       // Explicitly stop all media tracks
@@ -2688,8 +3194,29 @@ export default function WebRTCStreamManager({
         logInfo("Disconnecting socket on unmount", {
           socketId: socketRef.current.id,
         });
-        socketRef.current.disconnect();
+
+        // Keep a reference to the socket
+        const socket = socketRef.current;
+
+        // Clear the reference immediately to prevent further operations
         socketRef.current = null;
+
+        // Add a short delay before disconnecting to avoid rapid connect/disconnect cycles
+        // This is especially important during development with React HMR
+        setTimeout(() => {
+          try {
+            // Only actually disconnect if we haven't quickly remounted
+            // This prevents connection thrashing during refreshes
+            if (!mountedRef.current && socket && socket.connected) {
+              logInfo("Disconnecting socket after unmount delay", {
+                socketId: socket.id,
+              });
+              socket.disconnect();
+            }
+          } catch (err) {
+            // Socket might already be disconnected, ignore errors
+          }
+        }, 300);
       }
 
       // Close peer connection
@@ -2757,31 +3284,227 @@ export default function WebRTCStreamManager({
 
       // 2. Check Socket.IO server connectivity
       try {
-        // Get the socket URL and convert WebSocket URL to HTTP(S) for fetch testing
         const socketUrl =
           runtimeConfig?.socketUrl ||
           process.env.NEXT_PUBLIC_SOCKET_URL ||
-          window.location.origin;
-        const testUrl = socketUrl.replace(/^ws(s)?:\/\//i, "http$1://");
+          window.location.origin; // Fallback, should be ws:// from config mostly
 
-        logInfo(`Testing signaling server connectivity to ${testUrl}`);
+        const testUrl = normalizeSocketIOUrl(socketUrl); // This now correctly returns ws:// or wss://
 
-        const response = await fetch(testUrl, {
-          method: "HEAD",
-          mode: "no-cors",
-          signal: AbortSignal.timeout(5000),
+        logInfo(
+          `[WebRTCManager] Running Socket.IO pre-connection test for: ${testUrl}`
+        );
+
+        // First try direct WebSocket connectivity
+        const wsConnected = await testDirectWebSocketConnectivity(testUrl);
+
+        if (!wsConnected) {
+          logWarn(
+            `[WebRTCManager] Direct WebSocket connection test failed for ${testUrl}`
+          );
+
+          // Try with explicit Socket.IO path as fallback
+          if (!testUrl.includes("/socket.io/")) {
+            const socketIoUrl = testUrl.replace(/\/$/, "") + "/socket.io/";
+            logInfo(
+              `[WebRTCManager] Trying fallback test with explicit Socket.IO path: ${socketIoUrl}`
+            );
+
+            const fallbackConnected = await testDirectWebSocketConnectivity(
+              socketIoUrl
+            );
+            if (!fallbackConnected) {
+              throw new Error(
+                `Cannot connect to streaming server at ${testUrl} or ${socketIoUrl}`
+              );
+            }
+          } else {
+            throw new Error(`Cannot connect to Socket.IO server at ${testUrl}`);
+          }
+        }
+
+        logInfo(
+          `[WebRTCManager] Socket.IO connectivity test passed for ${testUrl}`
+        );
+      } catch (error) {
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "Cannot connect to streaming server. Check your network connection or try again later.";
+
+        logError("[WebRTCManager] Pre-connection test failed", {
+          reason,
+          error,
         });
 
-        logInfo("Signaling server connectivity test successful");
-      } catch (error) {
         return {
           success: false,
-          error:
-            "Cannot connect to streaming server. Check your network connection or try again later.",
+          error: reason,
         };
       }
 
-      // 3. For streamers, check media device permissions
+      // 3. For streamers, test STUN/TURN connectivity
+      if (isStreamer) {
+        try {
+          logInfo("Testing STUN/TURN server connectivity");
+          const iceServers = getIceServers(runtimeConfig);
+
+          if (iceServers.length === 0) {
+            logWarn("No ICE servers configured for testing");
+          } else {
+            // Run ICE connectivity test in a self-contained function to avoid scope issues
+            const testIceConnectivity = async (): Promise<boolean> => {
+              // Create peer connections with our ICE server configuration
+              const pc1 = new RTCPeerConnection({ iceServers });
+              const pc2 = new RTCPeerConnection({ iceServers });
+
+              // Variables to track test progress
+              let pc1IceComplete = false;
+              let pc2IceComplete = false;
+              let pc1HasCandidates = false;
+              let pc2HasCandidates = false;
+              let iceTestTimeout: NodeJS.Timeout | null = null;
+
+              // Create a data channel to trigger ICE candidate generation
+              pc1.createDataChannel("connectivity-test");
+
+              // Create a promise that will resolve when the test is complete
+              return new Promise<boolean>((resolve) => {
+                // Helper function to check if test conditions are met
+                const checkTestCompletion = () => {
+                  // Test is complete if both have finished gathering candidates or both have at least one candidate
+                  if (
+                    (pc1IceComplete && pc2IceComplete) ||
+                    (pc1HasCandidates && pc2HasCandidates)
+                  ) {
+                    if (iceTestTimeout) {
+                      clearTimeout(iceTestTimeout);
+                    }
+
+                    // Test is successful if both peers generated candidates
+                    const success = pc1HasCandidates && pc2HasCandidates;
+                    logInfo(
+                      `ICE connectivity test ${
+                        success ? "successful" : "failed"
+                      }`,
+                      {
+                        pc1HasCandidates,
+                        pc2HasCandidates,
+                        pc1IceComplete,
+                        pc2IceComplete,
+                      }
+                    );
+
+                    // Clean up
+                    pc1.close();
+                    pc2.close();
+
+                    resolve(success);
+                  }
+                };
+
+                // Set up event handlers for both peer connections
+                pc1.onicecandidate = (event) => {
+                  if (event.candidate) {
+                    pc1HasCandidates = true;
+                    // Forward candidates to pc2
+                    pc2.addIceCandidate(event.candidate).catch((e) => {
+                      logError(
+                        "Failed to add ICE candidate to PC2",
+                        formatError(e)
+                      );
+                    });
+                    checkTestCompletion();
+                  }
+                };
+
+                pc2.onicecandidate = (event) => {
+                  if (event.candidate) {
+                    pc2HasCandidates = true;
+                    // Forward candidates to pc1
+                    pc1.addIceCandidate(event.candidate).catch((e) => {
+                      logError(
+                        "Failed to add ICE candidate to PC1",
+                        formatError(e)
+                      );
+                    });
+                    checkTestCompletion();
+                  }
+                };
+
+                pc1.onicegatheringstatechange = () => {
+                  logInfo(`PC1 ICE gathering state: ${pc1.iceGatheringState}`);
+                  if (pc1.iceGatheringState === "complete") {
+                    pc1IceComplete = true;
+                    checkTestCompletion();
+                  }
+                };
+
+                pc2.onicegatheringstatechange = () => {
+                  logInfo(`PC2 ICE gathering state: ${pc2.iceGatheringState}`);
+                  if (pc2.iceGatheringState === "complete") {
+                    pc2IceComplete = true;
+                    checkTestCompletion();
+                  }
+                };
+
+                // Set timeout for test completion
+                iceTestTimeout = setTimeout(() => {
+                  logWarn("ICE connectivity test timed out");
+
+                  // If we got any candidates, consider it partially successful
+                  const partialSuccess = pc1HasCandidates || pc2HasCandidates;
+
+                  // Clean up
+                  pc1.close();
+                  pc2.close();
+
+                  resolve(partialSuccess);
+                }, 5000);
+
+                // Start the connection process
+                const startPeerConnection = async () => {
+                  try {
+                    const offer = await pc1.createOffer();
+                    await pc1.setLocalDescription(offer);
+                    await pc2.setRemoteDescription(offer);
+                    const answer = await pc2.createAnswer();
+                    await pc2.setLocalDescription(answer);
+                    await pc1.setRemoteDescription(answer);
+                  } catch (e) {
+                    logError(
+                      "Error during ICE connectivity test setup",
+                      formatError(e)
+                    );
+                    resolve(false);
+                  }
+                };
+
+                // Start the peer connection process
+                startPeerConnection();
+              });
+            };
+
+            // Run the test and get the result
+            const iceConnectivityResult = await testIceConnectivity();
+
+            if (!iceConnectivityResult) {
+              logWarn("STUN/TURN connectivity test failed");
+              return {
+                success: false,
+                error:
+                  "Could not establish peer connection. This may indicate a firewall or network issue.",
+              };
+            }
+          }
+        } catch (error) {
+          logError("Error testing STUN/TURN connectivity", formatError(error));
+          // Don't fail the overall test for this, but log the issue
+          logWarn("Continuing despite STUN/TURN connectivity test failure");
+        }
+      }
+
+      // 4. For streamers, check media device permissions
       if (isStreamer) {
         try {
           logInfo("Testing camera and microphone access");
@@ -2811,60 +3534,30 @@ export default function WebRTCStreamManager({
               error: "Camera not available. You need a camera to stream.",
             };
           } else if (!hasAudio) {
-            return {
-              success: false,
-              error:
-                "Microphone not available. You need a microphone to stream.",
-            };
+            logWarn("Microphone not available. Continuing without audio.");
+            // Still allow streaming without audio
           }
-
-          logInfo("Camera and microphone access test successful", {
-            hasVideo,
-            hasAudio,
-          });
-        } catch (error) {
+        } catch (error: any) {
+          logError("Media device test failed", formatError(error));
           return {
             success: false,
-            error:
-              "Could not access camera or microphone. Please check permissions and try again.",
+            error: `Camera/microphone permission denied: ${
+              error.message || "Please check your device settings."
+            }`,
           };
         }
-      }
-
-      // 4. Test STUN connectivity (simplified version of the full test)
-      try {
-        logInfo("Testing STUN server connectivity");
-        const iceServers = getIceServers(runtimeConfig);
-
-        if (iceServers.length === 0) {
-          return {
-            success: false,
-            error:
-              "No ICE servers configured. Cannot establish peer connections.",
-          };
-        }
-
-        // Just verify the configuration is valid, no need for a full test
-        logInfo("ICE servers configured correctly", {
-          count: iceServers.length,
-        });
-      } catch (error) {
-        logWarn("ICE server configuration test warning", formatError(error));
-        // Continue anyway, this is just a warning
       }
 
       // All tests passed
+      logInfo("Pre-connection test successful");
       return { success: true };
-    } catch (error) {
-      logError(
-        "Pre-connection test failed with exception",
-        formatError(error),
-        effectiveUserId,
-        streamId
-      );
+    } catch (error: any) {
+      logError("Unexpected error in pre-connection test", formatError(error));
       return {
         success: false,
-        error: "Connection setup error. Please try refreshing the page.",
+        error: `Connection test failed: ${
+          error.message || "Unknown error"
+        }. Please check your network settings.`,
       };
     }
   };
@@ -2880,38 +3573,53 @@ export default function WebRTCStreamManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConfigLoading, runtimeConfig, connectToSignalingServer]); // Added connectToSignalingServer to deps
 
+  // Add didDeviceChangeRef at component level, outside of all conditionals or loops
+  const didDeviceChangeRef = useRef<boolean>(false);
+
   // Effect to handle device changes after initial setup
   useEffect(() => {
-    if (connectionStatus === "connected" && isStreamer && mountedRef.current) {
-      // Skip the first render
-      if (didInitialSetupRef.current) {
-        logger.info("Device selection changed, recapturing media");
+    // Only handle device changes when fully connected and for streamers
+    if (
+      connectionStatus === "connected" &&
+      isStreamer &&
+      mountedRef.current &&
+      didInitialSetupRef.current &&
+      (selectedAudioDevice || selectedVideoDevice) // Only if we have device selections
+    ) {
+      // Use the existing ref instead of creating a new one
+      if (!didDeviceChangeRef.current) {
+        didDeviceChangeRef.current = true;
 
-        // Schedule device change after state updates
+        // Schedule device change with a slight delay to allow state updates
         const timeoutId = setTimeout(() => {
           if (mountedRef.current) {
-            logger.info("Recapturing media with new device selection");
-            // Restore the call to the main captureLocalMedia function
-            captureLocalMedia();
-          }
-        }, 100);
+            logger.info("Recapturing media with new device selection", {
+              audioDevice: selectedAudioDevice,
+              videoDevice: selectedVideoDevice,
+            });
 
-        return () => clearTimeout(timeoutId);
-      } else {
-        // This else block was part of the original code but seems to always set didInitialSetupRef to true
-        // after the first render pass of this effect, regardless of the condition above.
-        // It might be redundant if the main useEffect and config-ready useEffect handle didInitialSetupRef.
-        // For now, keeping it to maintain original behavior outside the direct connection logic.
-        didInitialSetupRef.current = true;
+            captureLocalMedia().catch((err) => {
+              logError(
+                "Failed to recapture media after device change",
+                formatError(err)
+              );
+            });
+          }
+        }, 500); // Longer delay to ensure React state is stable
+
+        return () => {
+          clearTimeout(timeoutId);
+          didDeviceChangeRef.current = false;
+        };
       }
     }
-    // Add captureLocalMedia back to the dependency array
   }, [
     selectedAudioDevice,
     selectedVideoDevice,
     connectionStatus,
     isStreamer,
     captureLocalMedia,
+    didInitialSetupRef,
   ]);
 
   // Add comprehensive system diagnostics
@@ -3068,558 +3776,295 @@ export default function WebRTCStreamManager({
         await pc2.setLocalDescription(answer);
         await pc1.setRemoteDescription(answer);
 
-        // Wait a short time for candidates
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        // Update results
-        results.stunServer.success = stunSuccess;
-        if (!stunSuccess) {
-          results.stunServer.error =
-            "No STUN candidates received. Possible firewall blocking.";
-          logWarn(
-            "STUN connectivity test failed - no server reflexive candidates received"
-          );
+        // Check ICE connection state
+        if (stunSuccess && turnSuccess) {
+          logInfo("Both STUN and TURN connectivity tests successful");
+          results.stunServer.success = true;
+          results.turnServer.success = true;
+        } else if (stunSuccess) {
+          logInfo("STUN connectivity test successful");
+          results.stunServer.success = true;
+        } else if (turnSuccess) {
+          logInfo("TURN connectivity test successful");
+          results.turnServer.success = true;
+        } else {
+          logWarn("Both STUN and TURN connectivity tests failed");
+          results.stunServer.error = "Failed to establish STUN connection";
+          results.turnServer.error = "Failed to establish TURN connection";
         }
-
-        results.turnServer.success = turnSuccess;
-        if (!turnSuccess) {
-          results.turnServer.error =
-            "No TURN candidates received. Check TURN credentials or firewall.";
-          logWarn(
-            "TURN connectivity test failed - no relay candidates received"
-          );
-        }
-
-        // Clean up
-        pc1.close();
-        pc2.close();
       } catch (error) {
         logError(
-          "Error during STUN/TURN connectivity test",
-          formatError(error),
-          effectiveUserId,
-          streamId
+          "Error testing STUN/TURN server connectivity",
+          formatError(error)
         );
-        results.stunServer.error = results.turnServer.error = (
-          error as Error
-        ).message;
+        results.stunServer.error = (error as Error).message;
+        results.turnServer.error = (error as Error).message;
       }
 
-      logInfo("Network connectivity test results", results);
       return results;
     } catch (error) {
-      logError(
-        "Network diagnostics failed",
-        formatError(error),
-        effectiveUserId,
-        streamId
-      );
-      return { ...results, error: (error as Error).message };
+      logError("Error testing network connectivity", formatError(error));
+      return { error: "Failed to test network connectivity" };
     }
-  }, [runtimeConfig, effectiveUserId, streamId]);
+  }, [runtimeConfig]);
 
-  // Add connectivity tests to diagnostic report
-  const saveDiagnosticLogs = useCallback(async () => {
+  // Create a proper createConsumerTransport function
+  const createConsumerTransport = useCallback(async () => {
+    if (!socketRef.current || !deviceRef.current || !mountedRef.current) {
+      logWarn("Cannot create consumer transport - missing socket or device");
+      return false;
+    }
+
     try {
-      // Run connectivity tests
-      const connectivityResults = await testNetworkConnectivity();
+      logInfo("Creating consumer transport");
 
-      // Get browser diagnostics
-      const browserDiagnostics = getBrowserDiagnostics();
+      // Request a consumer transport from the server
+      const consumerTransportOptions =
+        await socketPromise<ProducerTransportResponse>(
+          socketRef.current,
+          "createConsumerTransport",
+          { streamId }
+        );
 
-      // Create a comprehensive diagnostic report
-      const report = {
-        timestamp: new Date().toISOString(),
-        userId: effectiveUserId,
-        streamId,
-        isStreamer,
-        browserInfo: browserDiagnostics,
-        connectionStatus,
-        error,
-        streamReady,
-        connectivityTests: connectivityResults,
-        deviceInfo: {
-          selectedVideoDevice,
-          selectedAudioDevice,
-          hasLocalStream: !!localStreamRef.current,
-          hasVideo: localStreamRef.current
-            ? localStreamRef.current.getVideoTracks().length > 0
-            : false,
-          hasAudio: localStreamRef.current
-            ? localStreamRef.current.getAudioTracks().length > 0
-            : false,
-        },
-        transports: {
-          hasProducerTransport: !!transportRef.current.producer,
-          hasConsumerTransport: !!transportRef.current.consumer,
-          producerConnectionState: transportRef.current.producer
-            ? (transportRef.current.producer as any).connectionState
-            : "none",
-          consumerConnectionState: transportRef.current.consumer
-            ? (transportRef.current.consumer as any).connectionState
-            : "none",
-        },
-        logs: diagnosticLogs,
-      };
-
-      // Convert to JSON string
-      const jsonReport = JSON.stringify(report, null, 2);
-
-      // 1. Save local copy
-      // Create a blob and download link
-      const blob = new Blob([jsonReport], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-
-      // Create a download link and click it
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `webrtc-diagnostic-${streamId}-${new Date()
-        .toISOString()
-        .replace(/:/g, "-")}.json`;
-      document.body.appendChild(a);
-      a.click();
-
-      // Clean up
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
-
-      // 2. Send to server for analysis if permitted
-      try {
-        // Prepare a condensed version to reduce payload size for server
-        const serverReport = {
-          timestamp: report.timestamp,
-          userId: report.userId,
-          streamId: report.streamId,
-          isStreamer: report.isStreamer,
-          userAgent: navigator.userAgent,
-          connectionStatus: report.connectionStatus,
-          errorMessage: report.error,
-          streamReady: report.streamReady,
-          connectivityTests: report.connectivityTests,
-          clientInfo: browserDiagnostics,
-          // Include last 20 logs only to limit size
-          recentLogs: diagnosticLogs.slice(-20),
-        };
-
-        // Send to server
-        fetch("/api/logs/webrtc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(serverReport),
-        })
-          .then((response) => {
-            if (response.ok) {
-              logInfo("Diagnostics successfully sent to server");
-            } else {
-              logWarn("Failed to send diagnostics to server", {
-                status: response.status,
-              });
-            }
-          })
-          .catch((error) => {
-            logError("Error sending diagnostics to server", formatError(error));
-          });
-      } catch (serverError) {
-        // Don't fail the diagnostic save if server upload fails
-        logError(
-          "Failed to prepare/send diagnostics to server",
-          formatError(serverError)
+      if (!consumerTransportOptions || consumerTransportOptions.error) {
+        throw new Error(
+          consumerTransportOptions?.error ||
+            "Failed to create consumer transport"
         );
       }
 
+      // Create the consumer transport
+      const transport = deviceRef.current.createRecvTransport({
+        id: consumerTransportOptions.id || "",
+        iceParameters: consumerTransportOptions.iceParameters,
+        iceCandidates: consumerTransportOptions.iceCandidates,
+        dtlsParameters: consumerTransportOptions.dtlsParameters,
+        iceServers: getIceServers(runtimeConfig),
+      });
+
+      // Store the consumer transport
+      transportRef.current.consumer = transport;
+
+      // Handle transport connection events
+      transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+        try {
+          logInfo("Consumer transport connect event", {
+            transportId: transport.id,
+          });
+
+          // Connect the transport
+          await socketPromise(socketRef.current!, "connectTransport", {
+            transportId: transport.id,
+            dtlsParameters,
+            streamId,
+          });
+
+          callback();
+        } catch (err) {
+          logError("Error in consumer transport connect", formatError(err));
+          errback(err as Error);
+        }
+      });
+
+      // Handle connection state changes
+      transport.on("connectionstatechange", async (state) => {
+        logInfo(`Consumer transport connection state changed to: ${state}`);
+
+        if (state === "connected") {
+          // Now that we're connected, consume available producers
+          await consumeExistingProducers();
+        } else if (
+          state === "failed" ||
+          state === "disconnected" ||
+          state === "closed"
+        ) {
+          logError(`Consumer transport connection ${state}`);
+        }
+      });
+
+      logInfo("Consumer transport created", { id: transport.id });
       return true;
-    } catch (error) {
-      logError(
-        "Failed to save diagnostic logs",
-        formatError(error),
-        effectiveUserId,
-        streamId
-      );
+    } catch (err) {
+      logError("Failed to create consumer transport", formatError(err));
+      if (onMediaError) {
+        onMediaError("setup", `Error setting up stream: ${formatError(err)}`);
+      }
       return false;
     }
-  }, [
-    effectiveUserId,
-    streamId,
-    isStreamer,
-    connectionStatus,
-    error,
-    streamReady,
-    selectedVideoDevice,
-    selectedAudioDevice,
-    getBrowserDiagnostics,
-    testNetworkConnectivity,
-  ]);
+  }, [streamId, getIceServers, runtimeConfig]);
 
-  // Function to diagnose common issues and provide targeted advice
-  const diagnoseStreamingIssue = useCallback(async () => {
-    let diagnosis =
-      "Unknown issue. Please save diagnostic logs and contact support.";
-    let possibleSolutions: string[] = [];
+  // Add function to consume existing producers
+  const consumeExistingProducers = useCallback(async () => {
+    if (
+      !socketRef.current ||
+      !deviceRef.current ||
+      !transportRef.current.consumer
+    ) {
+      return;
+    }
 
     try {
-      // Run connectivity tests
-      const connectivityResults = await testNetworkConnectivity();
+      // Get list of active producers from the server
+      const producers = await socketPromise<{ producerIds: string[] }>(
+        socketRef.current,
+        "getProducers",
+        { streamId }
+      );
 
-      // Get additional diagnostics
-      const browserInfo = getBrowserDiagnostics();
-      let mediasoupDeviceSupport = "unknown";
+      if (
+        !producers ||
+        !producers.producerIds ||
+        !producers.producerIds.length
+      ) {
+        logWarn("No producers available to consume");
+        return;
+      }
 
-      // Test MediaSoup device support
+      // Consume each producer
+      for (const producerId of producers.producerIds) {
+        await consumeProducer(producerId);
+      }
+    } catch (err) {
+      logError("Error consuming existing producers", formatError(err));
+    }
+  }, [streamId]);
+
+  // Add function to consume a producer
+  const consumeProducer = useCallback(
+    async (producerId: string) => {
+      if (
+        !socketRef.current ||
+        !deviceRef.current ||
+        !transportRef.current.consumer
+      ) {
+        return null;
+      }
+
       try {
-        logInfo("Testing MediaSoup device support");
-        const device = new mediasoupClient.Device();
-        mediasoupDeviceSupport = "supported";
+        // Create consumer for this producer
+        if (!deviceRef.current) {
+          logError("Cannot consume producer: device is null");
+          return null;
+        }
 
-        // Check if browser supports WebRTC features needed by MediaSoup
-        // Safely check browserInfo structure
+        const { rtpCapabilities } = deviceRef.current;
+
+        // Skip if we don't have capabilities
+        if (!rtpCapabilities) {
+          logError("No RTP capabilities available");
+          return null;
+        }
+
+        const consumerOptions = await socketPromise<{
+          consumerId?: string;
+          producerId?: string;
+          kind?: string;
+          rtpParameters?: any;
+          producerUserId?: string;
+          error?: string;
+        }>(socketRef.current, "consume", {
+          transportId: transportRef.current.consumer.id,
+          producerId,
+          rtpParameters: rtpCapabilities,
+          streamId,
+        });
+
+        if (consumerOptions?.error) {
+          throw new Error(consumerOptions.error);
+        }
+
         if (
-          browserInfo &&
-          "browser" in browserInfo &&
-          "webRTC" in browserInfo.browser
+          !consumerOptions?.consumerId ||
+          !consumerOptions?.producerId ||
+          !consumerOptions?.kind ||
+          !consumerOptions?.rtpParameters
         ) {
-          if (!browserInfo.browser.webRTC.supportsPeerConnection) {
-            mediasoupDeviceSupport = "no-rtcpeerconnection";
-          } else if (!browserInfo.browser.webRTC.supportsMediaRecorder) {
-            mediasoupDeviceSupport = "no-mediarecorder";
+          throw new Error("Invalid consumer options returned from server");
+        }
+
+        // Create the consumer
+        const consumer = await transportRef.current.consumer.consume({
+          id: consumerOptions.consumerId,
+          producerId: consumerOptions.producerId,
+          kind: consumerOptions.kind as "audio" | "video",
+          rtpParameters: consumerOptions.rtpParameters,
+        });
+
+        // Store the consumer in our ref
+        if (consumer.kind === "video") {
+          consumersRef.current.video = consumer;
+        } else if (consumer.kind === "audio") {
+          consumersRef.current.audio = consumer;
+        }
+
+        // Resume the consumer (it starts in paused state)
+        try {
+          await socketPromise(socketRef.current, "resumeConsumer", {
+            consumerId: consumer.id,
+            streamId,
+          });
+        } catch (err) {
+          logWarn(`Error resuming consumer: ${formatError(err)}`);
+        }
+
+        // Add the track to our remote stream and update the video element
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
+        }
+
+        remoteStreamRef.current.addTrack(consumer.track);
+
+        // Update video element with the stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = remoteStreamRef.current;
+
+          // Attempt to autoplay
+          try {
+            await videoRef.current.play();
+            setAutoplayBlocked(false);
+            setStreamReady(true);
+          } catch (error) {
+            logWarn("Autoplay blocked, user interaction needed", {
+              error: formatError(error),
+            });
+            setAutoplayBlocked(true);
           }
         }
+
+        return consumer;
       } catch (err) {
-        mediasoupDeviceSupport = "error";
-        logError(
-          "MediaSoup device support test failed",
-          formatError(err),
-          effectiveUserId,
-          streamId
-        );
+        logError(`Error consuming producer ${producerId}`, formatError(err));
+        return null;
       }
+    },
+    [streamId]
+  );
 
-      // Add session information to diagnosis
-      const sessionInfo = {
-        sessionId,
-        hasActiveConnection: hasActiveConnection.current,
-        connectionAttempts: connectionAttemptsRef.current,
-        isStreamer,
-        isComponentMounted: isComponentMounted.current,
-      };
+  // Add this with the other refs
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
-      // Check for issues in order of likelihood
+  // Add proper type definitions at the top of the file
+  interface RouterRtpCapabilitiesResponse {
+    rtpCapabilities?: mediasoupClient.types.RtpCapabilities;
+    error?: string;
+    duplicateConnection?: boolean;
+    existingSocketId?: string;
+  }
 
-      // 1. Check for duplicate connections
-      if (
-        error &&
-        error.includes("Another connection for this stream already exists")
-      ) {
-        diagnosis = `Duplicate connection detected. Session ID: ${sessionId}`;
-        possibleSolutions = [
-          "Close other tabs or windows with this stream open",
-          "Reload this page",
-          "Try in a private/incognito window",
-        ];
-      }
-      // 2. MediaSoup device support
-      else if (mediasoupDeviceSupport !== "supported") {
-        diagnosis = `WebRTC not fully supported by your browser (${mediasoupDeviceSupport}).`;
-        possibleSolutions = [
-          "Update your browser to the latest version",
-          "Try a different browser like Chrome, Firefox, or Safari",
-          "Disable browser extensions that might block WebRTC",
-        ];
-      }
-      // 3. Check network connectivity
-      else if (!navigator.onLine) {
-        diagnosis = "Network connection is offline.";
-        possibleSolutions = [
-          "Check your internet connection",
-          "Connect to a different network if available",
-        ];
-      }
-      // 4. Check server connectivity
-      else if (!connectivityResults.socketServer.success) {
-        diagnosis = "Cannot connect to streaming server.";
-        possibleSolutions = [
-          "Check your internet connection",
-          "Server may be down or blocked by your network",
-          "Try a different network connection if possible",
-        ];
-      }
-      // 5. Check STUN/TURN connectivity (NAT traversal issues)
-      else if (
-        !connectivityResults.stunServer.success &&
-        !connectivityResults.turnServer.success
-      ) {
-        diagnosis =
-          "NAT traversal failure: Cannot establish media connection through firewalls.";
-        possibleSolutions = [
-          "Your network firewall is likely blocking WebRTC connections",
-          "Try a different network connection (e.g., mobile data instead of corporate WiFi)",
-          "Contact your network administrator to allow WebRTC traffic",
-        ];
-      }
-      // 6. Check browser compatibility
-      else if (!window.RTCPeerConnection || !navigator.mediaDevices) {
-        diagnosis = "Your browser does not fully support WebRTC technology.";
-        possibleSolutions = [
-          "Update your browser to the latest version",
-          "Try a different browser (Chrome, Firefox, or Safari)",
-          "If using private browsing mode, try regular browsing mode",
-        ];
-      }
-      // 7. Check if the stream is ready
-      else if (!streamReady && connectionStatus === "connected") {
-        diagnosis =
-          "Connected to signaling server but no media stream received.";
-        possibleSolutions = [
-          "The streamer may have ended the broadcast",
-          "The streamer might be having technical difficulties",
-          "Try refreshing the page",
-        ];
-      }
-      // 8. Check for media autoplay issues
-      else if (streamReady && videoRef.current && videoRef.current.paused) {
-        diagnosis =
-          "Media stream received but playback is paused (likely autoplay policy).";
-        possibleSolutions = [
-          "Click the video to start playback",
-          "Check browser autoplay settings",
-          "Try unmuting the stream",
-        ];
-      }
-      // 9. Check for component mounting issues
-      else if (!isComponentMounted.current) {
-        diagnosis = "Component mounting issue detected.";
-        possibleSolutions = [
-          "Try refreshing the page",
-          "Clear browser cache and reload",
-          "Check for errors in browser console",
-        ];
-      }
-      // 10. General connection issues
-      else if (connectionStatus !== "connected") {
-        diagnosis = `Connection status: ${connectionStatus}. Session ID: ${sessionId}`;
-        possibleSolutions = [
-          "Try refreshing the page",
-          "Check your internet connection stability",
-          "The streaming server may be overloaded",
-        ];
-      }
+  interface ProducerTransportResponse {
+    id?: string;
+    iceParameters?: any;
+    iceCandidates?: any;
+    dtlsParameters?: any;
+    error?: string;
+  }
 
-      logInfo("Streaming issue diagnosis", {
-        diagnosis,
-        possibleSolutions,
-        mediasoupDeviceSupport,
-        connectivityResults,
-        sessionInfo,
-      });
+  interface ProduceResponse {
+    id?: string;
+    error?: string;
+  }
 
-      return {
-        diagnosis,
-        possibleSolutions,
-        connectivityResults,
-        mediasoupDeviceSupport,
-        browserInfo,
-        sessionInfo,
-      };
-    } catch (error) {
-      logError(
-        "Error diagnosing streaming issue",
-        formatError(error),
-        effectiveUserId,
-        streamId
-      );
-      return {
-        diagnosis: "Error during diagnosis process.",
-        possibleSolutions: [
-          "Try refreshing the page",
-          "Check browser console for errors",
-        ],
-        error: (error as Error).message,
-        sessionId,
-      };
-    }
-  }, [
-    connectionStatus,
-    streamReady,
-    testNetworkConnectivity,
-    effectiveUserId,
-    streamId,
-    getBrowserDiagnostics,
-    error,
-    isStreamer,
-    sessionId,
-  ]);
-
-  // Function to show diagnostics to the user
-  const showStreamingDiagnostics = useCallback(async () => {
-    setShowDebugControls(true);
-
-    // Diagnose the issue
-    const diagnosis = await diagnoseStreamingIssue();
-
-    // Update the error message with more helpful information
-    if (diagnosis.diagnosis && diagnosis.possibleSolutions.length > 0) {
-      setError(
-        `${
-          diagnosis.diagnosis
-        }\\n\\nTry these solutions:\\n• ${diagnosis.possibleSolutions.join(
-          "\\n• "
-        )}`
-      );
-    }
-
-    // Return the diagnosis for reference
-    return diagnosis;
-  }, [diagnoseStreamingIssue]);
-
-  // Effect to respond to camera and microphone state changes from parent
-  useEffect(() => {
-    if (
-      typeof externalCameraOn !== "undefined" &&
-      isStreamer &&
-      localStreamRef.current
-    ) {
-      const videoTracks = localStreamRef.current.getVideoTracks();
-      videoTracks.forEach((track) => {
-        track.enabled = externalCameraOn;
-      });
-      setIsVideoHidden(!externalCameraOn);
-      logInfo(
-        `Camera state updated from parent: ${
-          externalCameraOn ? "enabled" : "disabled"
-        }`
-      );
-    }
-  }, [externalCameraOn, isStreamer]);
-
-  useEffect(() => {
-    if (
-      typeof externalMicrophoneOn !== "undefined" &&
-      isStreamer &&
-      localStreamRef.current
-    ) {
-      const audioTracks = localStreamRef.current.getAudioTracks();
-      audioTracks.forEach((track) => {
-        track.enabled = externalMicrophoneOn;
-      });
-      setIsMuted(!externalMicrophoneOn);
-      logInfo(
-        `Microphone state updated from parent: ${
-          externalMicrophoneOn ? "enabled" : "disabled"
-        }`
-      );
-    }
-  }, [externalMicrophoneOn, isStreamer]);
-
-  // Add a diagnostic state saving function
-  const saveComponentState = useCallback(() => {
-    try {
-      const state = {
-        timestamp: new Date().toISOString(),
-        component: "WebRTCStreamManager",
-        props: {
-          streamId,
-          userId: effectiveUserId,
-          username: effectiveUsername,
-          isStreamer,
-        },
-        state: {
-          connectionStatus,
-          error,
-          streamReady,
-          isMuted,
-          isVideoHidden,
-          participants,
-          selectedVideoDevice,
-          selectedAudioDevice,
-          showDeviceSelector,
-          showDebugControls,
-        },
-        refs: {
-          mounted: mountedRef.current,
-          connectionAttempts: connectionAttemptsRef.current,
-          connectInProgress: connectInProgressRef.current,
-          didInitialSetup: didInitialSetupRef.current,
-          hasSocket: !!socketRef.current,
-          socketConnected: socketRef.current?.connected,
-          socketId: socketRef.current?.id,
-          hasDevice: !!deviceRef.current,
-          hasLocalStream: !!localStreamRef.current,
-          hasProducerTransport: !!transportRef.current.producer,
-          hasConsumerTransport: !!transportRef.current.consumer,
-          hasVideoProducer: !!producersRef.current.video,
-          hasAudioProducer: !!producersRef.current.audio,
-          hasVideoConsumer: !!consumersRef.current.video,
-          hasAudioConsumer: !!consumersRef.current.audio,
-        },
-        mediaState: localStreamRef.current
-          ? {
-              videoTracks: localStreamRef.current.getVideoTracks().map((t) => ({
-                id: t.id,
-                label: t.label,
-                enabled: t.enabled,
-                muted: t.muted,
-                readyState: t.readyState,
-              })),
-              audioTracks: localStreamRef.current.getAudioTracks().map((t) => ({
-                id: t.id,
-                label: t.label,
-                enabled: t.enabled,
-                muted: t.muted,
-                readyState: t.readyState,
-              })),
-            }
-          : "No local stream",
-        videoElement: videoRef.current
-          ? {
-              srcObject: !!videoRef.current.srcObject,
-              paused: videoRef.current.paused,
-              muted: videoRef.current.muted,
-              currentTime: videoRef.current.currentTime,
-              readyState: videoRef.current.readyState,
-            }
-          : "No video element",
-        recentLogs: diagnosticLogs.slice(-20),
-      };
-
-      const blob = new Blob([JSON.stringify(state, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `webrtc-state-${streamId}-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
-
-      return true;
-    } catch (error) {
-      logError("Failed to save component state", formatError(error));
-      return false;
-    }
-  }, [
-    streamId,
-    effectiveUserId,
-    effectiveUsername,
-    isStreamer,
-    connectionStatus,
-    error,
-    streamReady,
-    isMuted,
-    isVideoHidden,
-    participants,
-    selectedVideoDevice,
-    selectedAudioDevice,
-    showDeviceSelector,
-    showDebugControls,
-  ]);
-
-  // Add a function to handle manual play
+  // Add the handleManualPlay function definition
   const handleManualPlay = useCallback(() => {
     if (videoRef.current) {
       videoRef.current
@@ -3640,82 +4085,255 @@ export default function WebRTCStreamManager({
     }
   }, [effectiveUserId, streamId]);
 
-  // Add a new UI component for device access issues - add this just before the return statement of the WebRTCStreamManager component
-  // Add device troubleshooter UI when access error occurs
-  const deviceTroubleshooting =
-    error &&
-    (error.includes("camera/microphone") ||
-      error.includes("device connections") ||
-      error.includes("Could not access")) ? (
-      <div className="absolute inset-0 flex items-center justify-center bg-black/75 z-50">
-        <div className="bg-background p-6 rounded-lg shadow-xl max-w-md">
-          <div className="flex items-center text-destructive mb-4">
-            <AlertTriangle className="w-6 h-6 mr-2" />
-            <h3 className="text-lg font-semibold">
-              Camera/Microphone Access Issue
-            </h3>
-          </div>
+  // Add an effect to create consumer transport when device is initialized
+  useEffect(() => {
+    if (
+      deviceInitialized &&
+      !isStreamer &&
+      connectionStatus === "connected" &&
+      socketRef.current &&
+      deviceRef.current
+    ) {
+      // Function to create consumer transport
+      const setupViewerTransport = async () => {
+        try {
+          logInfo("Setting up viewer transport after device initialization");
 
-          <p className="mb-4 text-muted-foreground">{error}</p>
+          // Request a consumer transport from the server
+          const consumerTransportOptions =
+            await socketPromise<ProducerTransportResponse>(
+              socketRef.current!,
+              "createConsumerTransport",
+              { streamId }
+            );
 
-          <div className="space-y-3 mb-4">
-            <h4 className="font-medium">Troubleshooting steps:</h4>
-            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
-              <li>
-                Close other applications using your camera (like Zoom, Teams, or
-                other browser tabs)
-              </li>
-              <li>Verify camera permissions in your browser settings</li>
-              <li>Restart your browser</li>
-              <li>Try a different camera or microphone if available</li>
-            </ul>
-          </div>
+          if (!consumerTransportOptions || consumerTransportOptions.error) {
+            throw new Error(
+              consumerTransportOptions?.error ||
+                "Failed to create consumer transport"
+            );
+          }
 
-          <div className="flex justify-between space-x-2">
-            <button
-              onClick={() => {
-                // Try testing device access again
-                captureLocalMedia();
-              }}
-              className="flex-1 py-2 px-4 bg-primary text-primary-foreground rounded hover:bg-primary/90"
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => {
-                // Try with audio only as fallback
-                setIsVideoHidden(true);
-                navigator.mediaDevices
-                  .getUserMedia({ audio: true, video: false })
-                  .then((stream) => {
-                    localStreamRef.current = stream;
-                    if (videoRef.current) {
-                      videoRef.current.srcObject = stream;
-                    }
-                    setError(null);
-                    setStreamReady(true);
+          // First check if the device exists and is loaded
+          if (!deviceRef.current) {
+            logError("Cannot create consumer transport: device is null");
+            return;
+          }
 
-                    // If we already have a producer transport, produce with the new stream
-                    if (transportRef.current.producer) {
-                      produceLocalMedia(transportRef.current.producer, stream);
-                    }
-                  })
-                  .catch((err) => {
-                    logError("Audio-only fallback failed", formatError(err));
-                  });
-              }}
-              className="flex-1 py-2 px-4 bg-muted text-muted-foreground rounded hover:bg-muted/90"
-            >
-              Try Audio Only
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : null;
+          // Create the consumer transport
+          const transport = deviceRef.current.createRecvTransport({
+            id: consumerTransportOptions.id || "",
+            iceParameters: consumerTransportOptions.iceParameters,
+            iceCandidates: consumerTransportOptions.iceCandidates,
+            dtlsParameters: consumerTransportOptions.dtlsParameters,
+            iceServers: getIceServers(runtimeConfig),
+          });
 
-  // =========== RENDER ===========
+          // Store the consumer transport
+          transportRef.current.consumer = transport;
+
+          // Handle transport connection events
+          transport.on(
+            "connect",
+            async ({ dtlsParameters }, callback, errback) => {
+              try {
+                logInfo("Consumer transport connect event", {
+                  transportId: transport.id,
+                });
+
+                // Connect the transport
+                await socketPromise(socketRef.current!, "connectTransport", {
+                  transportId: transport.id,
+                  dtlsParameters,
+                  streamId,
+                });
+
+                callback();
+              } catch (err) {
+                logError(
+                  "Error in consumer transport connect",
+                  formatError(err)
+                );
+                errback(err as Error);
+              }
+            }
+          );
+
+          // Handle connection state changes
+          transport.on("connectionstatechange", async (state) => {
+            logInfo(`Consumer transport connection state changed to: ${state}`);
+
+            if (state === "connected") {
+              // Now that we're connected, request producers to consume
+              await requestProducersToConsume();
+            } else if (
+              state === "failed" ||
+              state === "disconnected" ||
+              state === "closed"
+            ) {
+              logError(`Consumer transport connection ${state}`);
+            }
+          });
+
+          logInfo("Consumer transport created", { id: transport.id });
+        } catch (err) {
+          logError("Failed to create consumer transport", formatError(err));
+          if (onMediaError) {
+            onMediaError(
+              "setup",
+              `Error setting up stream: ${formatError(err)}`
+            );
+          }
+        }
+      };
+
+      setupViewerTransport();
+    }
+  }, [
+    deviceInitialized,
+    isStreamer,
+    connectionStatus,
+    streamId,
+    getIceServers,
+    runtimeConfig,
+  ]);
+
+  // Add the requestProducersToConsume function
+  const requestProducersToConsume = useCallback(async () => {
+    if (
+      !socketRef.current ||
+      !deviceRef.current ||
+      !transportRef.current.consumer
+    ) {
+      return;
+    }
+
+    try {
+      // Get list of active producers from the server
+      const response = await socketPromise<{
+        producerIds?: string[];
+        error?: string;
+      }>(socketRef.current, "getProducers", { streamId });
+
+      if (response.error) {
+        logWarn(`Failed to get producers: ${response.error}`);
+        return;
+      }
+
+      if (!response.producerIds || !response.producerIds.length) {
+        logWarn("No producers available to consume");
+        return;
+      }
+
+      // Consume each producer
+      for (const producerId of response.producerIds) {
+        await consumeProducer(producerId);
+      }
+    } catch (err) {
+      logError("Error consuming existing producers", formatError(err));
+    }
+  }, [streamId, consumeProducer]);
+
+  // Effect to create consumer transport for viewers when device is initialized
+  useEffect(() => {
+    const attemptConsumerTransportCreation = async () => {
+      if (
+        !isStreamer &&
+        deviceInitialized &&
+        connectionStatus === "connected" &&
+        deviceRef.current?.loaded
+      ) {
+        logInfo("Device initialized, creating consumer transport for viewer");
+        try {
+          const success = await createConsumerTransport();
+          if (success) {
+            logInfo("Successfully created consumer transport for viewer");
+            // Request available producers after transport is created
+            await consumeExistingProducers();
+          }
+        } catch (error) {
+          logError("Failed to create consumer transport", formatError(error));
+        }
+      }
+    };
+
+    attemptConsumerTransportCreation();
+  }, [
+    isStreamer,
+    deviceInitialized,
+    connectionStatus,
+    createConsumerTransport,
+    consumeExistingProducers,
+  ]);
+
+  // Fetch router RTP capabilities from the server
+  const fetchRouterRtpCapabilities = useCallback(async () => {
+    try {
+      if (
+        !socketRef.current ||
+        !socketRef.current.connected ||
+        !mountedRef.current
+      ) {
+        logError("Cannot fetch RTP capabilities: socket not connected");
+        return null;
+      }
+
+      // Clear any existing device
+      if (deviceRef.current) {
+        try {
+          // Only attempt to dispose if it was loaded
+          if (deviceRef.current.loaded) {
+            // This is a safe operation, won't throw if device is not properly initialized
+            logInfo("Disposing existing MediaSoup device");
+          }
+        } catch (err) {
+          // Ignore errors when disposing device
+          logWarn("Error disposing MediaSoup device", formatError(err));
+        }
+      }
+
+      // Create a fresh device
+      deviceRef.current = new mediasoupClient.Device();
+
+      // Request router capabilities from the server
+      const response = await socketPromise<RouterRtpCapabilitiesResponse>(
+        socketRef.current,
+        "getRouterRtpCapabilities",
+        {
+          streamId,
+          sessionId,
+        }
+      );
+
+      if (response.error) {
+        logError(`Error getting router capabilities: ${response.error}`);
+        return null;
+      }
+
+      if (!response.rtpCapabilities) {
+        logError("No RTP capabilities received from server");
+        return null;
+      }
+
+      // If we have capabilities, initialize the device
+      await initializeMediasoupDevice(response.rtpCapabilities);
+      return response.rtpCapabilities;
+    } catch (error) {
+      logError("Error fetching RTP capabilities", formatError(error));
+      return null;
+    }
+  }, [
+    socketRef,
+    mountedRef,
+    deviceRef,
+    streamId,
+    sessionId,
+    initializeMediasoupDevice,
+  ]);
+
+  // Return the proper rendering code
   return (
-    <div className={`relative w-full h-full ${className || ""}`}>
+    <div className={cn("webrtc-stream-manager relative", className)}>
       {/* Video element */}
       <video
         ref={videoRef}
@@ -3726,9 +4344,6 @@ export default function WebRTCStreamManager({
           isVideoHidden ? "invisible" : "visible"
         }`}
       />
-
-      {/* Device troubleshooting overlay */}
-      {deviceTroubleshooting}
 
       {/* Loading indicator */}
       {connectionStatus !== "connected" && !error && (
@@ -3799,8 +4414,8 @@ export default function WebRTCStreamManager({
             }`}
           ></div>
           <span className="text-xs font-medium">
-            {participants > 0
-              ? `${participants} viewer${participants !== 1 ? "s" : ""}`
+            {participantCount > 0
+              ? `${participantCount} viewer${participantCount !== 1 ? "s" : ""}`
               : "Live"}
           </span>
         </div>
@@ -3839,95 +4454,11 @@ export default function WebRTCStreamManager({
         )}
       </div>
 
-      {/* Debug controls */}
-      {(process.env.NODE_ENV !== "production" || showDebugControls) && (
-        <div className="absolute bottom-16 left-4 flex flex-col space-y-2 z-5">
-          <button
-            onClick={saveComponentState}
-            className="bg-blue-500/70 text-white p-2 rounded hover:bg-blue-600/70 transition-colors flex items-center space-x-1"
-            title="Save component state for debugging"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
-            </svg>
-            <span className="text-xs">Save Debug State</span>
-          </button>
-
-          {!isStreamer && (
-            <button
-              onClick={showStreamingDiagnostics}
-              className="bg-blue-500/70 text-white p-2 rounded hover:bg-blue-600/70 transition-colors flex items-center space-x-1"
-              title="Diagnose streaming issues"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12" y2="8"></line>
-              </svg>
-              <span className="text-xs">Diagnose Issues</span>
-            </button>
-          )}
-
-          <button
-            onClick={testNetworkConnectivity}
-            className="bg-blue-500/70 text-white p-2 rounded hover:bg-blue-600/70 transition-colors flex items-center space-x-1"
-            title="Test network connectivity"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M5 12s2-8 7-8 7 8 7 8-2 8-7 8-7-8-7-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-            <span className="text-xs">Test Network</span>
-          </button>
-        </div>
-      )}
-
-      {/* Debug button to show controls - ensure low z-index */}
-      {!showDebugControls && (
-        <button
-          onClick={() => setShowDebugControls(true)}
-          className="absolute bottom-4 left-20 bg-black/30 text-white p-1 rounded text-xs opacity-50 hover:opacity-100 transition-opacity z-5"
-          title="Show debug controls"
-        >
-          Debug
-        </button>
-      )}
-
-      {/* Device selector (for streamers only) - ensure it doesn't block controls */}
+      {/* Device selector (for streamers only) */}
       <div
         className={`absolute top-4 right-4 z-20 ${
           !isStreamer ? "hide-for-viewers" : ""
         }`}
-        style={{ zIndex: 20 }}
       >
         <button
           onClick={() => setShowDeviceSelector((prev) => !prev)}
@@ -3966,4 +4497,15 @@ export default function WebRTCStreamManager({
       )}
     </div>
   );
+}
+
+// Add this interface extension near the top of the file, after other type definitions
+// Extend the MediaSoup Device type to include our custom error property
+declare module "mediasoup-client" {
+  namespace types {
+    interface Device {
+      // Custom property to track device error state
+      error?: boolean;
+    }
+  }
 }

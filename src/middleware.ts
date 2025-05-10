@@ -54,8 +54,16 @@ export async function middleware(request: NextRequest) {
     path.includes("/favicon.ico") ||
     path.startsWith("/_next/");
 
+  // Enhanced WebSocket detection
   const isWebSocketRequest =
-    request.headers.get("upgrade")?.toLowerCase() === "websocket";
+    request.headers.get("upgrade")?.toLowerCase() === "websocket" ||
+    request.headers.get("connection")?.toLowerCase().includes("upgrade") ||
+    // Include EIO parameter which is used by Socket.IO
+    request.nextUrl.searchParams.has("EIO") ||
+    // Socket.IO polling transport should also bypass middleware
+    (request.nextUrl.pathname.includes("/socket.io") &&
+      (request.nextUrl.searchParams.has("transport") ||
+        request.nextUrl.searchParams.has("sid")));
 
   // Log socket requests for debugging
   if (isSocketPath || isWebSocketRequest) {
@@ -65,7 +73,9 @@ export async function middleware(request: NextRequest) {
     console.log(
       `[Middleware] Headers: Upgrade=${request.headers.get(
         "upgrade"
-      )}, Connection=${request.headers.get("connection")}`
+      )}, Connection=${request.headers.get("connection")}, Query=${
+        request.nextUrl.search
+      }`
     );
     return NextResponse.next();
   }
@@ -128,7 +138,10 @@ export const config = {
     {
       source:
         "/((?!_next/static|_next/image|socket\\.io|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets).*)",
-      missing: [{ type: "header", key: "upgrade", value: "websocket" }],
+      missing: [
+        { type: "header", key: "upgrade", value: "websocket" },
+        { type: "query", key: "EIO" },
+      ],
     },
   ],
 };

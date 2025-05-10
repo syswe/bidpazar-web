@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 
-// This route exists to ensure Next.js properly recognizes the Socket.IO path
-// and doesn't try to handle it as a regular API route
+// This is a fallback API route to help ensure Socket.IO connections
+// can find a valid endpoint for handshake requests
 export async function GET(request: NextRequest) {
   logger.info("Socket.IO API route accessed", {
     url: request.url,
@@ -10,16 +10,17 @@ export async function GET(request: NextRequest) {
     headers: Object.fromEntries(request.headers.entries()),
   });
 
-  // Just return a response indicating this is a Socket.IO endpoint
-  // The actual Socket.IO handling is done in the socketHandler.ts using the HTTP server
+  // Return information about the Socket.IO endpoint
   return NextResponse.json({
     message:
-      "Socket.IO endpoint - WebSocket connections should be upgraded properly now",
-    time: new Date().toISOString(),
+      "Socket.IO API route - WebSocket connections should be handled by the custom server",
+    info: "This route exists to prevent 404 errors for Socket.IO HTTP polling fallbacks",
+    success: true,
+    timestamp: new Date().toISOString(),
   });
 }
 
-// Also handle POST for Socket.IO polling transport
+// Support POST requests for compatibility with Socket.IO polling
 export async function POST(request: NextRequest) {
   logger.info("Socket.IO API route POST accessed", {
     url: request.url,
@@ -28,8 +29,11 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json({
-    message:
-      "Socket.IO endpoint - POST transport should be handled by Socket.IO server",
-    time: new Date().toISOString(),
+    message: "Socket.IO API route - POST endpoint",
+    success: true,
+    timestamp: new Date().toISOString(),
   });
 }
+
+// Add explicit export to prevent warnings
+export const dynamic = "force-dynamic";

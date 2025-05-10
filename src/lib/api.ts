@@ -1,6 +1,6 @@
 import { getToken } from "./frontend-auth";
-import { env } from './env';
-import { logger } from './logger';
+import { env } from "./env";
+import { logger } from "./logger";
 
 // Add window.__ENV__ interface to fix TypeScript error
 declare global {
@@ -15,20 +15,26 @@ declare global {
 }
 
 // Enable client-side debugging in development
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  const existingDebug = localStorage.getItem('debug') || '';
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+  const existingDebug = localStorage.getItem("debug") || "";
   const newDebugScopes = [];
 
-  if (!existingDebug.includes('socket.io-client:*')) {
-    newDebugScopes.push('socket.io-client:*');
+  if (!existingDebug.includes("socket.io-client:*")) {
+    newDebugScopes.push("socket.io-client:*");
   }
-  if (!existingDebug.includes('mediasoup-client:*')) {
-    newDebugScopes.push('mediasoup-client:*');
+  if (!existingDebug.includes("mediasoup-client:*")) {
+    newDebugScopes.push("mediasoup-client:*");
   }
 
   if (newDebugScopes.length > 0) {
-    localStorage.setItem('debug', [existingDebug, ...newDebugScopes].filter(Boolean).join(','));
-    console.log('[Dev Logging] Enabled Socket.IO and Mediasoup client debug logs. Current localStorage.debug:', localStorage.getItem('debug'));
+    localStorage.setItem(
+      "debug",
+      [existingDebug, ...newDebugScopes].filter(Boolean).join(",")
+    );
+    console.log(
+      "[Dev Logging] Enabled Socket.IO and Mediasoup client debug logs. Current localStorage.debug:",
+      localStorage.getItem("debug")
+    );
   }
 }
 
@@ -39,7 +45,7 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
 // console.log("-----------------------------");
 
 // Simplify to always use relative URLs for API endpoints
-export const apiBaseUrl = '/api'; // Use relative path for Next.js API routes
+export const apiBaseUrl = "/api"; // Use relative path for Next.js API routes
 
 // Log API URL configuration for debugging purposes
 // console.log("API configuration:");
@@ -51,10 +57,10 @@ export const apiBaseUrl = '/api'; // Use relative path for Next.js API routes
 // Simplify URL construction - no need for complex logic with full-stack app
 const constructApiUrl = (endpoint: string): string => {
   // If endpoint already starts with apiBaseUrl or is a full URL, return as is
-  if (endpoint.startsWith(apiBaseUrl) || endpoint.startsWith('http')) {
+  if (endpoint.startsWith(apiBaseUrl) || endpoint.startsWith("http")) {
     return endpoint;
   }
-  
+
   // Remove any leading slashes from the endpoint
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
   // Simply join the base path and the cleaned endpoint
@@ -217,7 +223,7 @@ export const fetcher = async <T>(
     returnEmptyOnError?: boolean;
     defaultValue?: T;
     autoRefreshToken?: boolean;
-  } = {},
+  } = {}
 ): Promise<T> => {
   const {
     method = "GET",
@@ -243,7 +249,10 @@ export const fetcher = async <T>(
     if (requireAuth) {
       const token = getToken(); // Assuming getToken() is still available from frontend-auth
       if (!token) {
-        console.error("Authentication required but no token available for URL:", fullUrl);
+        console.error(
+          "Authentication required but no token available for URL:",
+          fullUrl
+        );
         throw new Error("Authentication required. Please log in.");
       }
       headers["Authorization"] = `Bearer ${token}`;
@@ -253,7 +262,10 @@ export const fetcher = async <T>(
     if (process.env.NODE_ENV === "development") {
       console.debug(`API Request: ${method} ${fullUrl}`);
       if (method !== "GET" && body) {
-        console.debug("Request body:", typeof body === "string" ? body : JSON.stringify(body));
+        console.debug(
+          "Request body:",
+          typeof body === "string" ? body : JSON.stringify(body)
+        );
       }
       console.debug("Request headers:", headers);
     }
@@ -280,8 +292,9 @@ export const fetcher = async <T>(
 
     // Parse response
     let data: any;
-    if (response.status === 204) { // Handle No Content
-        data = null;
+    if (response.status === 204) {
+      // Handle No Content
+      data = null;
     } else if (isJson) {
       data = await response.json();
     } else {
@@ -298,17 +311,34 @@ export const fetcher = async <T>(
 
     // Handle error responses
     if (!response.ok) {
-      const errorMessage = isJson && data.message ? data.message : `API error: ${response.status}`;
-      console.error(`API Error: ${errorMessage}`, { status: response.status, data });
-      
+      const errorMessage =
+        isJson && data.message ? data.message : `API error: ${response.status}`;
+      console.error(`API Error: ${errorMessage}`, {
+        status: response.status,
+        data,
+      });
+
+      // Handle database unavailable (503) responses for non-auth requests
+      if (response.status === 503 && isJson && data.code === "DB_UNAVAILABLE") {
+        console.warn("Database unavailable (temporary error)");
+
+        // For routes that should work without authentication, return empty data
+        if (!requireAuth && returnEmptyOnError) {
+          console.info(
+            `Returning empty default data for ${url} due to database unavailability`
+          );
+          return (Array.isArray(defaultValue) ? [] : defaultValue) as T;
+        }
+      }
+
       // Handle authentication errors with token refresh if enabled
       if (response.status === 401 && requireAuth && autoRefreshToken) {
         console.warn("Authentication error - attempting token refresh");
-        
+
         // Import refreshToken dynamically to avoid circular dependencies
-        const { refreshToken } = await import('./frontend-auth');
+        const { refreshToken } = await import("./frontend-auth");
         const refreshed = await refreshToken();
-        
+
         if (refreshed) {
           console.log("Token refreshed, retrying request");
           // Retry the request with the new token (but don't auto-refresh again to avoid loops)
@@ -321,24 +351,25 @@ export const fetcher = async <T>(
           throw new Error("Authentication failed. Please log in again.");
         }
       }
-      
+
       throw new Error(errorMessage);
     }
 
     return data as T;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`API request failed: ${errorMessage}`, { 
-      url, 
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error(`API request failed: ${errorMessage}`, {
+      url,
       options,
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      type: error instanceof Error ? error.constructor.name : typeof error
+      stack: error instanceof Error ? error.stack : "No stack trace",
+      type: error instanceof Error ? error.constructor.name : typeof error,
     });
-    
+
     if (returnEmptyOnError) {
       return defaultValue as T;
     }
-    
+
     throw error;
   }
 };
@@ -347,7 +378,7 @@ export const fetcher = async <T>(
 export const getCategories = async (): Promise<Category[]> => {
   return fetcher<Category[]>(`categories`, {
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
@@ -389,9 +420,9 @@ export const deleteCategory = async (id: string): Promise<void> => {
 export const getProducts = async (): Promise<Product[]> => {
   // Use the correct API path (apiBaseUrl) to prevent double 'api' in the URL
   // Also add returnEmptyOnError and specify a defaultValue for robustness
-  return fetcher<Product[]>('products', {
+  return fetcher<Product[]>("products", {
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
@@ -399,10 +430,12 @@ export const getProductById = async (id: string): Promise<Product> => {
   return fetcher<Product>(`products/${id}`);
 };
 
-export const getProductsByCategory = async (categoryId: string): Promise<Product[]> => {
+export const getProductsByCategory = async (
+  categoryId: string
+): Promise<Product[]> => {
   return fetcher<Product[]>(`products/category/${categoryId}`, {
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
@@ -479,8 +512,8 @@ export interface Order {
 
 // Function to handle API errors
 const handleApiError = (error: any) => {
-  console.error('API error:', error);
-  
+  console.error("API error:", error);
+
   // Let the error propagate without the additional "Unauthorized: Please log in again"
   // This allows the calling function to decide how to handle auth issues
   throw error;
@@ -491,40 +524,42 @@ const fetcherAuth = async (url: string, options: RequestInit = {}) => {
   // Get token and add to headers
   const token = getToken();
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {})
+    "Content-Type": "application/json",
+    ...((options.headers as Record<string, string>) || {}),
   };
-  
+
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
-  
+
   const response = await fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // Include cookies for auth
+    credentials: "include", // Include cookies for auth
   });
-  
+
   if (!response.ok) {
-    const error: any = new Error(`API error: ${response.status} ${response.statusText}`);
+    const error: any = new Error(
+      `API error: ${response.status} ${response.statusText}`
+    );
     error.status = response.status;
-    
+
     // Try to parse error response as JSON, but don't fail if it's not valid JSON
     try {
       error.info = await response.json();
     } catch (jsonError) {
-      error.info = { message: 'Could not parse error response' };
-      error.responseText = await response.text().catch(() => '');
+      error.info = { message: "Could not parse error response" };
+      error.responseText = await response.text().catch(() => "");
     }
-    
+
     throw error;
   }
-  
+
   // For successful responses, safely parse JSON
   try {
     return await response.json();
   } catch (jsonError) {
-    console.warn('Response was not valid JSON:', jsonError);
+    console.warn("Response was not valid JSON:", jsonError);
     return {}; // Return empty object instead of failing
   }
 };
@@ -535,34 +570,36 @@ export async function getUserProducts(): Promise<Product[]> {
     // Try to get token from localStorage or cookie
     const token = getToken();
     if (!token) {
-      console.warn('No authentication token available for getUserProducts');
+      console.warn("No authentication token available for getUserProducts");
       return [];
     }
 
     // First attempt with current token
     try {
-      return await fetcherAuth('/api/products/user');
+      return await fetcherAuth("/api/products/user");
     } catch (error: any) {
       // If unauthorized, try to refresh token once before failing
       if (error.status === 401) {
-        console.log('Token expired, attempting refresh before retrying getUserProducts');
-        const { refreshToken } = await import('./frontend-auth');
+        console.log(
+          "Token expired, attempting refresh before retrying getUserProducts"
+        );
+        const { refreshToken } = await import("./frontend-auth");
         const refreshed = await refreshToken();
-        
+
         if (refreshed) {
           // Retry with new token
-          console.log('Token refreshed, retrying getUserProducts');
-          return await fetcherAuth('/api/products/user');
+          console.log("Token refreshed, retrying getUserProducts");
+          return await fetcherAuth("/api/products/user");
         } else {
           // Return empty array instead of triggering auth error
-          console.warn('Token refresh failed, returning empty products array');
+          console.warn("Token refresh failed, returning empty products array");
           return [];
         }
       }
       throw error; // Re-throw non-auth errors
     }
   } catch (error) {
-    console.error('Error fetching user products:', error);
+    console.error("Error fetching user products:", error);
     // Return empty array instead of error to prevent login loops
     return [];
   }
@@ -573,52 +610,63 @@ export async function getUserWonAuctions(): Promise<WonAuction[]> {
   try {
     // Fetch both types of auctions the user has won
     const [productAuctions, livestreamAuctions] = await Promise.all([
-      fetcherAuth('/api/auctions/won'),
-      fetcherAuth('/api/listings/won')
+      fetcherAuth("/api/auctions/won"),
+      fetcherAuth("/api/listings/won"),
     ]);
-    
+
     // Process regular auctions
     const processedProductAuctions = productAuctions.map((auction: any) => ({
       id: auction.id,
       auctionId: auction.id,
       productId: auction.product.id,
       productName: auction.product.title,
-      productImage: auction.product.media?.[0]?.url || 'https://via.placeholder.com/150',
+      productImage:
+        auction.product.media?.[0]?.url || "https://via.placeholder.com/150",
       winDate: new Date(auction.updatedAt).toISOString(),
       winningBid: auction.currentPrice,
       status: getAuctionStatus(auction.status),
       seller: {
         id: auction.product.userId,
-        name: auction.product.user?.name || auction.product.user?.username || 'Satıcı',
-        username: auction.product.user?.username || 'user'
+        name:
+          auction.product.user?.name ||
+          auction.product.user?.username ||
+          "Satıcı",
+        username: auction.product.user?.username || "user",
       },
       isPaid: auction.isPaid || false,
-      isLiveStream: false
+      isLiveStream: false,
     }));
-    
+
     // Process livestream auctions
-    const processedLivestreamAuctions = livestreamAuctions.map((listing: any) => ({
-      id: listing.id,
-      auctionId: listing.id,
-      productId: listing.product.id,
-      productName: listing.product.title,
-      productImage: listing.product.media?.[0]?.url || 'https://via.placeholder.com/150',
-      winDate: new Date(listing.updatedAt).toISOString(),
-      winningBid: listing.winningBid?.amount || listing.startPrice,
-      status: getListingStatus(listing.status),
-      seller: {
-        id: listing.product.userId,
-        name: listing.product.user?.name || listing.product.user?.username || 'Satıcı',
-        username: listing.product.user?.username || 'user'
-      },
-      isPaid: listing.isPaid || false,
-      isLiveStream: true,
-      streamId: listing.liveStreamId
-    }));
-    
+    const processedLivestreamAuctions = livestreamAuctions.map(
+      (listing: any) => ({
+        id: listing.id,
+        auctionId: listing.id,
+        productId: listing.product.id,
+        productName: listing.product.title,
+        productImage:
+          listing.product.media?.[0]?.url || "https://via.placeholder.com/150",
+        winDate: new Date(listing.updatedAt).toISOString(),
+        winningBid: listing.winningBid?.amount || listing.startPrice,
+        status: getListingStatus(listing.status),
+        seller: {
+          id: listing.product.userId,
+          name:
+            listing.product.user?.name ||
+            listing.product.user?.username ||
+            "Satıcı",
+          username: listing.product.user?.username || "user",
+        },
+        isPaid: listing.isPaid || false,
+        isLiveStream: true,
+        streamId: listing.liveStreamId,
+      })
+    );
+
     // Combine both types and sort by win date (newest first)
-    return [...processedProductAuctions, ...processedLivestreamAuctions]
-      .sort((a, b) => new Date(b.winDate).getTime() - new Date(a.winDate).getTime());
+    return [...processedProductAuctions, ...processedLivestreamAuctions].sort(
+      (a, b) => new Date(b.winDate).getTime() - new Date(a.winDate).getTime()
+    );
   } catch (error) {
     return handleApiError(error);
   }
@@ -629,13 +677,15 @@ export async function getUserOrders(): Promise<Order[]> {
   try {
     // Since we don't have a dedicated Orders table, we'll use winning bids as orders
     const wonAuctions = await getUserWonAuctions();
-    
+
     // Transform won auctions into orders format
     return wonAuctions
-      .filter(auction => auction.isPaid) // Only paid auctions are considered orders
+      .filter((auction) => auction.isPaid) // Only paid auctions are considered orders
       .map((auction, index) => ({
         id: auction.id,
-        orderNumber: `BP-${new Date().getFullYear()}-${String(index + 1).padStart(3, '0')}`,
+        orderNumber: `BP-${new Date().getFullYear()}-${String(
+          index + 1
+        ).padStart(3, "0")}`,
         date: auction.winDate,
         total: auction.winningBid,
         status: mapAuctionStatusToOrderStatus(auction.status),
@@ -645,9 +695,9 @@ export async function getUserOrders(): Promise<Order[]> {
             name: auction.productName,
             quantity: 1,
             price: auction.winningBid,
-            imageUrl: auction.productImage
-          }
-        ]
+            imageUrl: auction.productImage,
+          },
+        ],
       }));
   } catch (error) {
     return handleApiError(error);
@@ -657,32 +707,48 @@ export async function getUserOrders(): Promise<Order[]> {
 // Helper functions to map statuses
 function getAuctionStatus(status: string): string {
   switch (status) {
-    case 'COMPLETED': return 'Tamamlandı';
-    case 'ACTIVE': return 'İşleniyor';
-    case 'PENDING': return 'Beklemede';
-    case 'CANCELLED': return 'İptal Edildi';
-    default: return 'Beklemede';
+    case "COMPLETED":
+      return "Tamamlandı";
+    case "ACTIVE":
+      return "İşleniyor";
+    case "PENDING":
+      return "Beklemede";
+    case "CANCELLED":
+      return "İptal Edildi";
+    default:
+      return "Beklemede";
   }
 }
 
 function getListingStatus(status: string): string {
   switch (status) {
-    case 'COMPLETED': return 'Tamamlandı';
-    case 'ACTIVE': return 'İşleniyor';
-    case 'COUNTDOWN': return 'İşleniyor';
-    case 'PENDING': return 'Beklemede';
-    case 'CANCELLED': return 'İptal Edildi';
-    default: return 'Beklemede';
+    case "COMPLETED":
+      return "Tamamlandı";
+    case "ACTIVE":
+      return "İşleniyor";
+    case "COUNTDOWN":
+      return "İşleniyor";
+    case "PENDING":
+      return "Beklemede";
+    case "CANCELLED":
+      return "İptal Edildi";
+    default:
+      return "Beklemede";
   }
 }
 
 function mapAuctionStatusToOrderStatus(status: string): string {
   switch (status) {
-    case 'Tamamlandı': return 'Tamamlandı';
-    case 'İşleniyor': return 'Kargoda';
-    case 'Beklemede': return 'Beklemede';
-    case 'İptal Edildi': return 'İptal Edildi';
-    default: return 'Beklemede';
+    case "Tamamlandı":
+      return "Tamamlandı";
+    case "İşleniyor":
+      return "Kargoda";
+    case "Beklemede":
+      return "Beklemede";
+    case "İptal Edildi":
+      return "İptal Edildi";
+    default:
+      return "Beklemede";
   }
 }
 
@@ -691,7 +757,7 @@ export const getAllUsers = async (): Promise<User[]> => {
   return fetcher<User[]>(`users`, {
     requireAuth: true,
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
@@ -743,76 +809,73 @@ export const uploadProductImages = async (
   id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
-  logger.info('Uploading product images', { 
-    productId: id, 
+  logger.info("Uploading product images", {
+    productId: id,
     fileCount: files.length,
-    fileNames: files.map(f => f.name),
-    fileSizes: files.map(f => f.size)
+    fileNames: files.map((f) => f.name),
+    fileSizes: files.map((f) => f.size),
   });
 
   const token = getToken();
   if (!token) {
-    logger.error('Authentication required for image upload', { productId: id });
+    logger.error("Authentication required for image upload", { productId: id });
     throw new Error("Authentication required");
   }
 
   const formData = new FormData();
   files.forEach((file) => {
     formData.append("files", file);
-    logger.debug('Added file to form data', { 
-      fileName: file.name, 
-      fileSize: file.size, 
-      fileType: file.type 
+    logger.debug("Added file to form data", {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
     });
   });
 
   try {
-    logger.debug('Sending image upload request', { 
-      productId: id, 
-      endpoint: `${apiBaseUrl}/products/${id}/upload`
+    logger.debug("Sending image upload request", {
+      productId: id,
+      endpoint: `${apiBaseUrl}/products/${id}/upload`,
     });
-    
-    const response = await fetch(
-      `${apiBaseUrl}/products/${id}/upload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      }
-    );
 
-    logger.debug('Received upload response', { 
-      productId: id, 
+    const response = await fetch(`${apiBaseUrl}/products/${id}/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    logger.debug("Received upload response", {
+      productId: id,
       status: response.status,
       statusText: response.statusText,
-      contentType: response.headers.get('content-type')
+      contentType: response.headers.get("content-type"),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      logger.error('Failed to upload images', { 
-        productId: id, 
-        status: response.status, 
-        error: data.error 
+      logger.error("Failed to upload images", {
+        productId: id,
+        status: response.status,
+        error: data.error,
       });
       throw new Error(data.error || "Failed to upload images");
     }
 
-    logger.info('Images uploaded successfully', { 
-      productId: id, 
+    logger.info("Images uploaded successfully", {
+      productId: id,
       uploadedCount: data.length,
-      mediaIds: data.map((m: any) => m.id)
+      mediaIds: data.map((m: any) => m.id),
     });
 
     return data;
   } catch (error: any) {
-    logger.error('Error in uploadProductImages', { 
-      productId: id, 
+    logger.error("Error in uploadProductImages", {
+      productId: id,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -822,76 +885,73 @@ export const uploadProductVideos = async (
   id: string,
   files: File[]
 ): Promise<ProductMedia[]> => {
-  logger.info('Uploading product videos', { 
-    productId: id, 
+  logger.info("Uploading product videos", {
+    productId: id,
     fileCount: files.length,
-    fileNames: files.map(f => f.name),
-    fileSizes: files.map(f => f.size)
+    fileNames: files.map((f) => f.name),
+    fileSizes: files.map((f) => f.size),
   });
 
   const token = getToken();
   if (!token) {
-    logger.error('Authentication required for video upload', { productId: id });
+    logger.error("Authentication required for video upload", { productId: id });
     throw new Error("Authentication required");
   }
 
   const formData = new FormData();
   files.forEach((file) => {
     formData.append("files", file);
-    logger.debug('Added video to form data', { 
-      fileName: file.name, 
-      fileSize: file.size, 
-      fileType: file.type 
+    logger.debug("Added video to form data", {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
     });
   });
 
   try {
-    logger.debug('Sending video upload request', { 
-      productId: id, 
-      endpoint: `${apiBaseUrl}/products/${id}/upload`
+    logger.debug("Sending video upload request", {
+      productId: id,
+      endpoint: `${apiBaseUrl}/products/${id}/upload`,
     });
-    
-    const response = await fetch(
-      `${apiBaseUrl}/products/${id}/upload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      }
-    );
 
-    logger.debug('Received upload response', { 
-      productId: id, 
+    const response = await fetch(`${apiBaseUrl}/products/${id}/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    logger.debug("Received upload response", {
+      productId: id,
       status: response.status,
       statusText: response.statusText,
-      contentType: response.headers.get('content-type')
+      contentType: response.headers.get("content-type"),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      logger.error('Failed to upload videos', { 
-        productId: id, 
-        status: response.status, 
-        error: data.error 
+      logger.error("Failed to upload videos", {
+        productId: id,
+        status: response.status,
+        error: data.error,
       });
       throw new Error(data.error || "Failed to upload videos");
     }
 
-    logger.info('Videos uploaded successfully', { 
-      productId: id, 
+    logger.info("Videos uploaded successfully", {
+      productId: id,
       uploadedCount: data.length,
-      mediaIds: data.map((m: any) => m.id)
+      mediaIds: data.map((m: any) => m.id),
     });
 
     return data;
   } catch (error: any) {
-    logger.error('Error in uploadProductVideos', { 
-      productId: id, 
+    logger.error("Error in uploadProductVideos", {
+      productId: id,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -901,7 +961,7 @@ export const uploadProductVideos = async (
 export const getLiveStreams = async (): Promise<LiveStream[]> => {
   return fetcher<LiveStream[]>(`live-streams`, {
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
@@ -910,7 +970,9 @@ export const getLiveStreamById = async (id: string): Promise<LiveStream> => {
 };
 
 export const getUserLiveStreams = async (): Promise<LiveStream[]> => {
-  return fetcher<LiveStream[]>(`live-streams/user/streams`, { requireAuth: true });
+  return fetcher<LiveStream[]>(`live-streams/user/streams`, {
+    requireAuth: true,
+  });
 };
 
 export const createLiveStream = async (
@@ -924,10 +986,10 @@ export const createLiveStream = async (
 ): Promise<LiveStream> => {
   const authToken = token || getToken();
   if (!authToken) {
-    throw new Error('No authentication token available');
+    throw new Error("No authentication token available");
   }
   return fetcher(`live-streams`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(data),
     headers: {
       Authorization: `Bearer ${authToken}`,
@@ -950,38 +1012,38 @@ export const endLiveStream = async (
   id: string,
   token: string
 ): Promise<LiveStream> => {
-  try {
-    if (!token) {
-      throw new Error("Token is required to end a live stream");
-    }
+  return await fetcher(`${apiBaseUrl}/live-streams/${id}/end`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+};
 
-    // Always try to update stream status in the API server
-    return fetcher<LiveStream>(`live-streams/${id}/end`, {
-      method: "POST",
-      requireAuth: true,
-    });
-  } catch (error) {
-    console.error("Error ending stream:", error);
-    throw error;
+export const updateLiveStream = async (
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    thumbnailUrl?: string;
+    status?: "SCHEDULED" | "LIVE" | "ENDED";
   }
+): Promise<LiveStream> => {
+  return await fetcher(`${apiBaseUrl}/live-streams/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    requireAuth: true,
+  });
 };
 
 export const deleteLiveStream = async (id: string): Promise<void> => {
-  try {
-    console.log(`Attempting to delete stream with ID: ${id}`);
-
-    // Use the fetcher helper with relative path
-    await fetcher<void>(`live-streams/${id}`, {
-      method: "DELETE",
-      requireAuth: true // fetcher handles the token
-    });
-
-    console.log("Stream deleted successfully");
-
-  } catch (error) {
-    console.error("Error deleting live stream:", error);
-    throw error; // Re-throw the error for the caller to handle
-  }
+  await fetcher(`${apiBaseUrl}/live-streams/${id}`, {
+    method: "DELETE",
+    requireAuth: true,
+  });
 };
 
 export const addListingToLiveStream = async (
@@ -993,27 +1055,31 @@ export const addListingToLiveStream = async (
   },
   token: string
 ): Promise<AuctionListing> => {
-  return fetcher<AuctionListing>(
-    `live-streams/${liveStreamId}/listings`,
-    {
-      method: "POST",
-      body: data,
-      requireAuth: true // Ensure token is added by fetcher
-    }
-  );
+  return fetcher<AuctionListing>(`live-streams/${liveStreamId}/listings`, {
+    method: "POST",
+    body: data,
+    requireAuth: true, // Ensure token is added by fetcher
+  });
 };
 
-export const getStreamVideo = async (streamId: string): Promise<{
+export const getStreamVideo = async (
+  streamId: string
+): Promise<{
   message: string;
   streamId: string;
   status: string;
   wsEndpoint: string;
 }> => {
-  return fetcher<{ message: string; streamId: string; status: string; wsEndpoint: string; }>(
+  return fetcher<{
+    message: string;
+    streamId: string;
+    status: string;
+    wsEndpoint: string;
+  }>(
     `stream/${streamId}/video`, // Use relative path
     {
-      method: 'GET',
-      requireAuth: true
+      method: "GET",
+      requireAuth: true,
     }
   );
 };
@@ -1052,7 +1118,7 @@ export interface Message {
 export interface Notification {
   id: string;
   content: string;
-  type: 'MESSAGE' | 'BID_WON' | 'BID_OUTBID' | 'SYSTEM';
+  type: "MESSAGE" | "BID_WON" | "BID_OUTBID" | "SYSTEM";
   isRead: boolean;
   relatedId?: string;
   userId: string;
@@ -1063,16 +1129,16 @@ export interface Notification {
 // Message API functions
 export const getUserConversations = async (): Promise<Conversation[]> => {
   try {
-    console.log('Fetching user conversations...');
+    console.log("Fetching user conversations...");
     const result = await fetcher<Conversation[]>(`messages/conversations`, {
       requireAuth: true,
       returnEmptyOnError: true,
-      defaultValue: []
+      defaultValue: [],
     });
-    console.log('Fetched conversations result:', result);
+    console.log("Fetched conversations result:", result);
     return Array.isArray(result) ? result : [];
   } catch (error) {
-    console.error('Error fetching conversations:', error);
+    console.error("Error fetching conversations:", error);
     return [];
   }
 };
@@ -1091,13 +1157,17 @@ export const getConversationMessages = async (
 export const getOrCreateConversation = async (
   otherUserId: string
 ): Promise<Conversation> => {
-  return fetcher<Conversation>(`messages/conversations/${otherUserId}`, { requireAuth: true });
+  return fetcher<Conversation>(`messages/conversations/${otherUserId}`, {
+    requireAuth: true,
+  });
 };
 
 export const getConversationDetails = async (
   conversationId: string
 ): Promise<Conversation> => {
-  return fetcher<Conversation>(`messages/conversations/details/${conversationId}`);
+  return fetcher<Conversation>(
+    `messages/conversations/details/${conversationId}`
+  );
 };
 
 export const sendMessage = async (
@@ -1105,10 +1175,10 @@ export const sendMessage = async (
   content: string,
   receiverId: string
 ): Promise<Message> => {
-  return fetcher<Message>('messages/messages', {
-    method: 'POST',
+  return fetcher<Message>("messages/messages", {
+    method: "POST",
     body: { conversationId, content, receiverId },
-    requireAuth: true
+    requireAuth: true,
   });
 };
 
@@ -1118,7 +1188,7 @@ export const findUserByUsername = async (
   return fetcher<User | null>(`users/byUsername/${username}`, {
     requireAuth: true,
     returnEmptyOnError: true,
-    defaultValue: null
+    defaultValue: null,
   });
 };
 
@@ -1128,47 +1198,55 @@ export const getUserNotifications = async (): Promise<{
   unreadCount: number;
 }> => {
   try {
-    console.log('Fetching user notifications...');
-    const result = await fetcher<{ notifications: Notification[]; unreadCount: number; }>(`notifications`, {
+    console.log("Fetching user notifications...");
+    const result = await fetcher<{
+      notifications: Notification[];
+      unreadCount: number;
+    }>(`notifications`, {
       requireAuth: true,
       returnEmptyOnError: true,
-      defaultValue: { notifications: [], unreadCount: 0 }
+      defaultValue: { notifications: [], unreadCount: 0 },
     });
-    console.log('Fetched notifications result:', result);
-    
+    console.log("Fetched notifications result:", result);
+
     // Ensure we have a valid structure
-    if (!result || typeof result !== 'object') {
-      console.error('Invalid notifications result from API:', result);
+    if (!result || typeof result !== "object") {
+      console.error("Invalid notifications result from API:", result);
       return { notifications: [], unreadCount: 0 };
     }
-    
+
     // Ensure notifications is an array
-    const notifications = Array.isArray(result.notifications) ? result.notifications : [];
-    
+    const notifications = Array.isArray(result.notifications)
+      ? result.notifications
+      : [];
+
     // Ensure unreadCount is a number
-    const unreadCount = typeof result.unreadCount === 'number' ? result.unreadCount : 0;
-    
+    const unreadCount =
+      typeof result.unreadCount === "number" ? result.unreadCount : 0;
+
     return { notifications, unreadCount };
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    console.error("Error fetching notifications:", error);
     return { notifications: [], unreadCount: 0 };
   }
 };
 
-export const markNotificationsAsRead = async (): Promise<{ success: boolean }> => {
+export const markNotificationsAsRead = async (): Promise<{
+  success: boolean;
+}> => {
   return fetcher<{ success: boolean }>(`notifications/read`, {
-    method: 'POST',
+    method: "POST",
     requireAuth: true,
     returnEmptyOnError: true,
-    defaultValue: { success: false }
+    defaultValue: { success: false },
   });
 };
 
 // Health API functions
 export const healthCheck = async (): Promise<{ status: string }> => {
-  return fetcher<{ status: string }>('health', {
+  return fetcher<{ status: string }>("health", {
     returnEmptyOnError: true,
-    defaultValue: { status: 'error' }
+    defaultValue: { status: "error" },
   });
 };
 
@@ -1185,19 +1263,24 @@ export const detailedHealthCheck = async (): Promise<{
     uptime: number;
     memory: object;
     env: string;
-  }>('health/detailed');
+  }>("health/detailed");
 };
 
 export const socketHealthCheck = async (): Promise<{
   status: string;
   activeConnections: number;
 }> => {
-  return fetcher<{ status: string; activeConnections: number }>('health/socket');
+  return fetcher<{ status: string; activeConnections: number }>(
+    "health/socket"
+  );
 };
 
 // Diagnostics API functions
-export const diagnosticsHealth = async (): Promise<{ status: string; timestamp: string }> => {
-  return fetcher<{ status: string; timestamp: string }>('diagnostics/health'); // Use relative path
+export const diagnosticsHealth = async (): Promise<{
+  status: string;
+  timestamp: string;
+}> => {
+  return fetcher<{ status: string; timestamp: string }>("diagnostics/health"); // Use relative path
 };
 
 export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
@@ -1212,11 +1295,11 @@ export const testBandwidth = async (sizeKB: number = 100): Promise<Blob> => {
   const response = await fetch(url, {
     headers,
   });
-  
+
   if (!response.ok) {
-    throw new Error('Failed to perform bandwidth test');
+    throw new Error("Failed to perform bandwidth test");
   }
-  
+
   return response.blob();
 };
 
@@ -1237,7 +1320,7 @@ export const getConnectionStats = async (): Promise<{
       uptime: number;
     };
     timestamp: string;
-  }>('diagnostics/connection-stats'); // Use relative path
+  }>("diagnostics/connection-stats"); // Use relative path
 };
 
 export const getRateLimitStatus = async (): Promise<{
@@ -1255,7 +1338,7 @@ export const getRateLimitStatus = async (): Promise<{
     maxConnections: number;
     ipAddress: string;
     timestamp: string;
-  }>('diagnostics/rate-limit-status'); // Use relative path
+  }>("diagnostics/rate-limit-status"); // Use relative path
 };
 
 // Additional Auth API functions
@@ -1263,9 +1346,9 @@ export const requestVerificationCode = async (
   email: string
 ): Promise<{ message: string; userId: string; phoneNumber?: string }> => {
   return fetcher<{ message: string; userId: string; phoneNumber?: string }>(
-    'auth/request-verification', // Use relative path
+    "auth/request-verification", // Use relative path
     {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ email }),
     }
   );
@@ -1275,7 +1358,7 @@ export const requestVerificationCode = async (
 export const deleteProductMedia = async (mediaId: string): Promise<void> => {
   // Ensure relative path is correct
   return fetcher<void>(`products/media/${mediaId}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
 };
 
@@ -1283,13 +1366,17 @@ export const deleteProductMedia = async (mediaId: string): Promise<void> => {
 export const getActiveListing = async (
   liveStreamId: string
 ): Promise<AuctionListing | null> => {
-  return fetcher<AuctionListing | null>(`live-streams/${liveStreamId}/active-listing`);
+  return fetcher<AuctionListing | null>(
+    `live-streams/${liveStreamId}/active-listing`
+  );
 };
 
 export const checkIsStreamer = async (
   liveStreamId: string
 ): Promise<{ isStreamer: boolean }> => {
-  return fetcher<{ isStreamer: boolean }>(`live-streams/${liveStreamId}/check-streamer`);
+  return fetcher<{ isStreamer: boolean }>(
+    `live-streams/${liveStreamId}/check-streamer`
+  );
 };
 
 export const addBidToListing = async (
@@ -1297,7 +1384,7 @@ export const addBidToListing = async (
   amount: number
 ): Promise<Bid> => {
   return fetcher<Bid>(`live-streams/listings/${listingId}/bids`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ amount }),
     requireAuth: true,
   });
@@ -1316,7 +1403,7 @@ export const testSocketConnection = async (): Promise<{
     socketEnabled: boolean;
     path: string;
     timestamp: number;
-  }>('live-streams/socket-test');
+  }>("live-streams/socket-test");
 };
 
 export const addSimplifiedListingToLiveStream = async (
@@ -1327,21 +1414,26 @@ export const addSimplifiedListingToLiveStream = async (
     countdownTime?: number;
   }
 ): Promise<AuctionListing> => {
-  return fetcher<AuctionListing>(`live-streams/${liveStreamId}/listings/simplified`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+  return fetcher<AuctionListing>(
+    `live-streams/${liveStreamId}/listings/simplified`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
 };
 
 // Product Auction functions
 export const getProductAuctions = async (): Promise<ProductAuction[]> => {
-  return fetcher<ProductAuction[]>('product-auctions', {
+  return fetcher<ProductAuction[]>("product-auctions", {
     returnEmptyOnError: true,
-    defaultValue: []
+    defaultValue: [],
   });
 };
 
-export const getProductAuctionById = async (id: string): Promise<ProductAuction> => {
+export const getProductAuctionById = async (
+  id: string
+): Promise<ProductAuction> => {
   return fetcher<ProductAuction>(`product-auctions/${id}`);
 };
 
@@ -1371,7 +1463,9 @@ export const updateProductAuction = async (
   });
 };
 
-export const cancelProductAuction = async (id: string): Promise<ProductAuction> => {
+export const cancelProductAuction = async (
+  id: string
+): Promise<ProductAuction> => {
   return fetcher<ProductAuction>(`product-auctions/${id}/cancel`, {
     method: "POST",
     requireAuth: true,
@@ -1383,26 +1477,31 @@ export const addBidToProductAuction = async (
   amount: number
 ): Promise<Bid> => {
   return fetcher<Bid>(`product-auctions/${auctionId}/bids`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ amount }),
     requireAuth: true,
   });
 };
 
-export const getProductAuctionByProductId = async (productId: string): Promise<ProductAuction | null> => {
-  return fetcher<ProductAuction | null>(`product-auctions/by-product/${productId}`, {
-    returnEmptyOnError: true,
-    defaultValue: null
-  });
+export const getProductAuctionByProductId = async (
+  productId: string
+): Promise<ProductAuction | null> => {
+  return fetcher<ProductAuction | null>(
+    `product-auctions/by-product/${productId}`,
+    {
+      returnEmptyOnError: true,
+      defaultValue: null,
+    }
+  );
 };
 
 /**
  * HTTP methods for use with API requests
  */
 export const HttpMethod = {
-  GET: 'GET',
-  POST: 'POST',
-  PUT: 'PUT',
-  DELETE: 'DELETE',
-  PATCH: 'PATCH'
+  GET: "GET",
+  POST: "POST",
+  PUT: "PUT",
+  DELETE: "DELETE",
+  PATCH: "PATCH",
 } as const;

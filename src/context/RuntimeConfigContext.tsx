@@ -26,7 +26,7 @@ const defaultConfig: RuntimeConfig = {
   apiUrl: "/api",
   socketUrl:
     typeof window !== "undefined"
-      ? `http://${window.location.host}` // Changed from ws:// to http:// for Socket.IO
+      ? `http://${window.location.host}` // Use HTTP for Socket.IO, not WebSocket protocol
       : "http://localhost:3000",
   appUrl:
     typeof window !== "undefined"
@@ -186,59 +186,102 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({
       // Merge with default config to ensure all properties exist
       const newConfig = { ...defaultConfig, ...data };
 
-      // Validate URL fields to ensure all properties exist
-      if (
-        newConfig.apiUrl &&
-        !newConfig.apiUrl.startsWith("http") &&
-        !newConfig.apiUrl.startsWith("/")
-      ) {
-        newConfig.apiUrl = `/${newConfig.apiUrl}`;
+      // Validate and normalize URL formats
+      // ----------------------------------
+
+      // 1. API URL - ensure it starts with / if it's a relative path, or has http/https if absolute
+      if (newConfig.apiUrl) {
+        if (
+          !newConfig.apiUrl.startsWith("http") &&
+          !newConfig.apiUrl.startsWith("/")
+        ) {
+          newConfig.apiUrl = `/${newConfig.apiUrl}`;
+        }
       }
 
-      // Ensure socket URL starts with http:// or https:// (NOT ws:// or wss://) for Socket.IO
+      // 2. Socket.IO URL - Allow ws:// or wss:// protocols
       if (newConfig.socketUrl) {
-        // First check if it's a WebSocket URL and convert it
-        if (newConfig.socketUrl.startsWith("ws://")) {
-          newConfig.socketUrl = newConfig.socketUrl.replace("ws://", "http://");
+        if (
+          !newConfig.socketUrl.startsWith("http://") &&
+          !newConfig.socketUrl.startsWith("https://") &&
+          !newConfig.socketUrl.startsWith("ws://") &&
+          !newConfig.socketUrl.startsWith("wss://")
+        ) {
+          // If no recognized protocol, default to ws:// or http:// based on needs
+          // Forcing ws:// as per .env
+          newConfig.socketUrl = `ws://${newConfig.socketUrl}`;
           console.log(
-            "[RuntimeConfig] Converted WebSocket URL to HTTP for Socket.IO compatibility"
+            "[RuntimeConfig] Added ws:// protocol to Socket.IO URL as default"
           );
-        } else if (newConfig.socketUrl.startsWith("wss://")) {
-          newConfig.socketUrl = newConfig.socketUrl.replace(
+        }
+
+        // Remove trailing slash to avoid double slashes when combined with path
+        if (
+          newConfig.socketUrl.endsWith("/") &&
+          newConfig.wsUrl &&
+          newConfig.wsUrl.startsWith("/")
+        ) {
+          newConfig.socketUrl = newConfig.socketUrl.replace(/\/$/, "");
+          console.log(
+            "[RuntimeConfig] Removed trailing slash from Socket.IO URL to avoid path issues"
+          );
+        }
+      }
+
+      // 3. WebRTC Server URL - similar to Socket.IO, needs http:// or https://
+      if (newConfig.webrtcServer) {
+        if (newConfig.webrtcServer.startsWith("ws://")) {
+          newConfig.webrtcServer = newConfig.webrtcServer.replace(
+            "ws://",
+            "http://"
+          );
+          console.log("[RuntimeConfig] Converted WebRTC ws:// URL to http://");
+        } else if (newConfig.webrtcServer.startsWith("wss://")) {
+          newConfig.webrtcServer = newConfig.webrtcServer.replace(
             "wss://",
             "https://"
           );
           console.log(
-            "[RuntimeConfig] Converted Secure WebSocket URL to HTTPS for Socket.IO compatibility"
+            "[RuntimeConfig] Converted WebRTC wss:// URL to https://"
+          );
+        } else if (
+          !newConfig.webrtcServer.startsWith("http://") &&
+          !newConfig.webrtcServer.startsWith("https://")
+        ) {
+          // If no protocol, add http://
+          newConfig.webrtcServer = `http://${newConfig.webrtcServer}`;
+          console.log(
+            "[RuntimeConfig] Added HTTP protocol to WebRTC Server URL"
           );
         }
-        // Then ensure it has a protocol
-        else if (
-          !newConfig.socketUrl.startsWith("http://") &&
-          !newConfig.socketUrl.startsWith("https://")
-        ) {
-          newConfig.socketUrl = `http://${newConfig.socketUrl}`;
-          console.log("[RuntimeConfig] Added HTTP protocol to Socket.IO URL");
+
+        // Ensure trailing slash for WebRTC server
+        if (!newConfig.webrtcServer.endsWith("/")) {
+          newConfig.webrtcServer = `${newConfig.webrtcServer}/`;
+          console.log(
+            "[RuntimeConfig] Added trailing slash to WebRTC server URL"
+          );
         }
       }
 
-      // Ensure app URL starts with http:// or https://
+      // 4. App URL - ensure it has http:// or https:// prefix
       if (
         newConfig.appUrl &&
         !newConfig.appUrl.startsWith("http://") &&
         !newConfig.appUrl.startsWith("https://")
       ) {
         newConfig.appUrl = `http://${newConfig.appUrl}`;
+        console.log("[RuntimeConfig] Added HTTP protocol to App URL");
       }
 
-      // Ensure webRTC server URL starts with http:// or https://
-      if (
-        newConfig.webrtcServer &&
-        !newConfig.webrtcServer.startsWith("http://") &&
-        !newConfig.webrtcServer.startsWith("https://")
-      ) {
-        newConfig.webrtcServer = `http://${newConfig.webrtcServer}`;
+      // 5. WebSocket path - ensure it starts with a slash
+      if (newConfig.wsUrl && !newConfig.wsUrl.startsWith("/")) {
+        newConfig.wsUrl = `/${newConfig.wsUrl}`;
+        console.log("[RuntimeConfig] Added leading slash to WebSocket path");
       }
+
+      // Log normalized configuration
+      console.log("[RuntimeConfig] Normalized configuration:", newConfig);
 
       // Set the validated configuration
       setConfig(newConfig);

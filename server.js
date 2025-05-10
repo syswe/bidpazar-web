@@ -4,6 +4,8 @@ const { parse } = require("url");
 const next = require("next");
 const { join } = require("path");
 const fs = require("fs");
+const { Server: SocketIOServer } = require("socket.io");
+const cors = require("cors");
 
 // Important: Set Next.js runtime flags before loading anything else
 process.env.NODE_ENV = process.env.NODE_ENV || "development";
@@ -195,38 +197,45 @@ console.log(`Web and WebSocket server port: ${port}`);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Add WebSocket upgrade request handler
-const handleUpgrade = (req, socket, head) => {
-  const pathname = parse(req.url).pathname;
+// Don't enable CORS in production for security
+app.use(cors());
 
-  // Add debug logging for WebSocket upgrade requests
-  console.log(
-    `[Server] WebSocket upgrade request for: ${pathname || "unknown path"}`
-  );
-  console.log(
-    `[Server] Headers: ${JSON.stringify({
-      upgrade: req.headers.upgrade,
-      connection: req.headers.connection,
-      "sec-websocket-key": req.headers["sec-websocket-key"]
-        ? "present"
-        : "missing",
-    })}`
-  );
+// Create HTTP server
+const httpServer = createServer(app);
 
-  // Always let the Socket.IO server handle the upgrade
-  if (req.url.includes("/socket.io/")) {
-    console.log(`[Server] Detected Socket.IO upgrade request: ${req.url}`);
-    // The Socket.IO server instance will handle this
-    return;
+// WebSocket handling upgrade events directly
+httpServer.on("upgrade", (request, socket, head) => {
+  // Check if the request is for Socket.IO
+  const isSocketIORequest = request.url.startsWith("/socket.io/");
+
+  if (isSocketIORequest) {
+    // Let Socket.IO handle its own connections
+    // This will be handled by Socket.IO's internal handlers
+    logger.debug(`Socket.IO upgrade request: ${request.url}`);
+  } else {
+    // For raw WebSocket connections (not Socket.IO)
+    logger.info(`Raw WebSocket upgrade request for: ${request.url}`);
+
+    // Accept the connection for non-Socket.IO WebSocket requests
+    // This allows direct WebSocket connections to ws://localhost:3000/
+    socket.write(
+      "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
+        "Upgrade: WebSocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        "\r\n"
+    );
+
+    // Keep socket open for WebSocket communication
+    socket.pipe(socket); // Echo back for simple testing
   }
+});
 
-  // For other WebSocket routes (if any), handle them here
-  console.log(`[Server] Unhandled WebSocket upgrade request for: ${req.url}`);
-};
+// Initialize Socket.IO server
+console.log("Initializing Socket.IO server...");
 
 app
   .prepare()
-  .then(() => {
+  .then(async () => {
     // Create a single HTTP server for both Next.js and Socket.IO
     const httpServer = createServer(async (req, res) => {
       try {
@@ -269,13 +278,85 @@ app
       }
     });
 
-    // Add explicit event listener for WebSocket upgrade requests
-    httpServer.on("upgrade", handleUpgrade);
-
     // Initialize Socket.IO on the same server
     console.log("Initializing Socket.IO server...");
     try {
-      const io = initializeSocketIOServer(httpServer);
+      // Initialize Socket.IO with our enhanced error handling
+      const io = new SocketIOServer(httpServer, {
+        cors: {
+          origin: "*", // In production, restrict this to your domains
+          methods: ["GET", "POST"],
+          credentials: true,
+        },
+        // Allow all transports with WebSocket preferred
+        transports: ["websocket", "polling"],
+        allowUpgrades: true,
+        // Path and settings
+        path: "/socket.io/",
+        serveClient: false, // Don't serve client files to save bandwidth
+        connectTimeout: 45000, // 45 seconds (more than default 20s)
+        // Polling settings
+        pingTimeout: 30000,
+        pingInterval: 25000,
+        upgradeTimeout: 10000,
+        // WebSocket specific settings
+        maxHttpBufferSize: 1e8, // 100 MB max message size
+        // Explicit disable of trailing slash to fix compatibility with Next.js 13+
+        addTrailingSlash: false,
+        // Enable connection state recovery
+        connectionStateRecovery: {
+          // optional, see https://socket.io/docs/v4/connection-state-recovery/#options
+          maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+          skipMiddlewares: true, // RECOMMENDED
+        },
+        // Detailed logging
+        // @ts-ignore - logger option is available in socket.io
+        logger: {
+          debug: (...args) => logger.debug("[Socket.IO Debug]", ...args),
+          info: (...args) => logger.info("[Socket.IO Info]", ...args),
+          warn: (...args) => logger.warn("[Socket.IO Warning]", ...args),
+          error: (...args) => logger.error("[Socket.IO Error]", ...args),
+        },
+      });
+
+      // Enhanced error handling for Socket.IO
+      io.engine.on("connection_error", (err) => {
+        console.error("[Socket.IO] Connection error:", {
+          message: err.message,
+          type: err.type,
+          code: err.code,
+          transport: err.transport?.name || "unknown",
+          req: {
+            url: err.req?.url,
+            headers: err.req?.headers
+              ? {
+                  host: err.req.headers.host,
+                  connection: err.req.headers.connection,
+                  upgrade: err.req.headers.upgrade,
+                }
+              : "unavailable",
+          },
+        });
+        logger.error("[Socket.IO] Connection error:", {
+          message: err.message,
+          type: err.type,
+          code: err.code,
+        });
+      });
+
+      // Call the socketHandler initialization to set up WebRTC event handlers
+      if (initializeSocketIOServer) {
+        await initializeSocketIOServer(httpServer, io);
+        console.log(
+          "Socket.IO and WebRTC event handlers initialized successfully"
+        );
+      } else {
+        console.error(
+          "CRITICAL: initializeSocketIOServer function not available!"
+        );
+        throw new Error("initializeSocketIOServer not found");
+      }
+
       console.log("Socket.IO server initialized with config:", {
         path: io._opts.path,
         serveClient: io._opts.serveClient,
@@ -288,9 +369,12 @@ app
         console.log(`Active Socket.IO namespace: ${namespace}`);
       });
     } catch (err) {
-      console.error("Failed to initialize Socket.IO server:", err);
+      console.error(
+        "Failed to initialize Socket.IO server or its handlers:",
+        err
+      );
       if (logger) {
-        logger.error("Failed to initialize Socket.IO server:", {
+        logger.error("Failed to initialize Socket.IO server or its handlers:", {
           error:
             err instanceof Error
               ? {
@@ -301,7 +385,29 @@ app
               : String(err),
         });
       }
+      process.exit(1);
     }
+
+    // IMPORTANT CHANGE: Let Socket.IO handle its own upgrade requests
+    // No need to manually handle Socket.IO upgrades, as it automatically
+    // attaches its own event handlers to the HTTP server
+
+    // Only handle non-Socket.IO WebSocket upgrade requests
+    httpServer.on("upgrade", (req, socket, head) => {
+      // Log the request for debugging
+      console.log(`[Server] WebSocket upgrade request for: ${req.url}`);
+
+      // Only attempt to handle if it's NOT a Socket.IO request
+      // Socket.IO attaches its own handlers and will handle its own requests
+      if (!req.url.includes("/socket.io")) {
+        console.log(
+          `[Server] Unhandled WebSocket upgrade request for: ${req.url}`
+        );
+        // For non-Socket.IO connections, close the socket
+        socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+      }
+      // Otherwise, let Socket.IO's own handlers manage its requests
+    });
 
     // Start the server with enhanced error handling
     httpServer.listen(port, hostname, (err) => {

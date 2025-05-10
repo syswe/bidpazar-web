@@ -122,13 +122,10 @@ const nextConfig = {
   // Enhanced rewrites for Socket.IO and WebSocket paths
   async rewrites() {
     return [
+      // Explicit rewrites for Socket.IO paths
       {
         source: "/socket.io/:path*",
-        destination: "/api/socket/:path*",
-      },
-      {
-        source: "/api/socket/:path*",
-        destination: "/api/socket/:path*",
+        destination: "/socket.io/:path*",
       },
     ];
   },
@@ -141,8 +138,8 @@ const nextConfig = {
         permanent: true,
       },
       {
-        source: "/register",
-        destination: "/sign-up",
+        source: "/sign-up",
+        destination: "/register",
         permanent: true,
       },
       {
@@ -152,7 +149,7 @@ const nextConfig = {
       },
       {
         source: "/auth/register",
-        destination: "/sign-up",
+        destination: "/register",
         permanent: true,
       },
     ];
