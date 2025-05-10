@@ -197,11 +197,23 @@ console.log(`Web and WebSocket server port: ${port}`);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Don't enable CORS in production for security
-app.use(cors());
-
-// Create HTTP server
-const httpServer = createServer(app);
+// Create HTTP server with correct Next.js handling
+const httpServer = createServer((req, res) => {
+  // Apply CORS headers directly
+  if (dev) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+  }
+  
+  // Handle the request with Next.js
+  return handle(req, res);
+});
 
 // Helper function to detect loopback addresses
 const isLoopbackAddress = (address) => {
@@ -283,8 +295,10 @@ console.log("Initializing Socket.IO server...");
 app
   .prepare()
   .then(async () => {
-    // Create a single HTTP server for both Next.js and Socket.IO
-    const httpServer = createServer(async (req, res) => {
+    // Use the existing HTTP server instead of creating a new one
+    // Add request handler to the existing server
+    httpServer.removeAllListeners('request');
+    httpServer.on('request', async (req, res) => {
       try {
         // Special handling for Socket.IO requests
         const pathname = parse(req.url || "").pathname || "";

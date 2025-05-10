@@ -88,7 +88,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 
 # Install all required development dependencies
-RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-client ws
+RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-client ws cors
 
 # Copy MediaSoup from the builder stage after it's been built
 COPY --from=builder /app/node_modules/mediasoup ./node_modules/mediasoup
@@ -96,7 +96,7 @@ COPY --from=builder /app/node_modules/mediasoup ./node_modules/mediasoup
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public
 
-# Set up environment variables for BidPazar application
+# Default environment values - these will be overridden by docker-compose
 ENV APP_URL="http://localhost:3000"
 ENV API_URL="http://localhost:3000/api"
 ENV BACKEND_API_URL="http://localhost:3000/api"
