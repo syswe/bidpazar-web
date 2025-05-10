@@ -40,8 +40,19 @@ export async function middleware(request: NextRequest) {
     path.includes(".svg") ||
     path.includes(".ico") ||
     path.startsWith("/api/public/") ||
+    // Allow anonymous access to live-streams pages and their data
+    path.startsWith("/live-streams/") ||
+    // Allow public access to stream-related API endpoints
     (path.startsWith("/api/live-streams/") &&
-      (path.endsWith("/public") || path.includes("/public/")));
+      (path.endsWith("/public") ||
+        path.includes("/public/") ||
+        path.includes("/active-bid") ||
+        path.includes("/active-listing") ||
+        path.includes("/messages"))) ||
+    // Allow public access to product auctions API
+    path.startsWith("/api/product-auctions") ||
+    // Allow public access to messages (read-only) API for live streams
+    path.startsWith("/api/messages/streams/");
 
   // Special check for WebSocket and Socket.IO requests
   // Excluded from middleware processing to prevent connection issues

@@ -1,6 +1,6 @@
 {
-  "name": "web",
-  "version": "0.1.0",
+  "name": "bidpazar",
+  "version": "1.0",
   "private": true,
   "scripts": {
     "dev": "node server.js",
@@ -32,7 +32,8 @@
     "mediasoup:start": "node scripts/start-mediasoup.js",
     "mediasoup:simple": "node scripts/start-mediasoup-simple.js",
     "mediasoup:test-coturn": "node scripts/check-webrtc-connection.js",
-    "mediasoup:ports": "bash scripts/open-mediasoup-ports.sh"
+    "mediasoup:ports": "bash scripts/open-mediasoup-ports.sh",
+    "setup-webrtc": "node scripts/setup-webrtc-env.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

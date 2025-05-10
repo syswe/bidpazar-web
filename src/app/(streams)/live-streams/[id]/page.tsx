@@ -37,6 +37,8 @@ import {
   VolumeX,
   ChevronUp,
   Tv,
+  Globe,
+  Cpu,
 } from "lucide-react";
 import { StreamDiagnostics } from "./components/StreamDiagnostics";
 import WebRTCStreamManager from "./components/WebRTCStreamManager";
@@ -49,6 +51,45 @@ import ProductDisplay from "./components/ProductDisplay";
 import CreateProductForm from "./components/CreateProductForm";
 import Image from "next/image";
 import StreamControls from "./components/StreamControls";
+
+// Helper function to detect loopback addresses
+const isLoopbackAddress = (address?: string): boolean => {
+  if (!address) return false;
+
+  // Remove IPv6 brackets if present
+  if (address.startsWith("[") && address.endsWith("]")) {
+    address = address.substring(1, address.length - 1);
+  }
+
+  return (
+    address === "localhost" ||
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "0.0.0.0" ||
+    address === "::" ||
+    // Also check for full IPv6 localhost
+    address === "0:0:0:0:0:0:0:1"
+  );
+};
+
+// Check if current connection is likely a loopback
+const isLikelyLoopbackConnection = (): boolean => {
+  // Check hostname
+  const hostname = window.location.hostname;
+  if (isLoopbackAddress(hostname)) return true;
+
+  // Check for localhost variations
+  if (
+    hostname === "localhost" ||
+    hostname.startsWith("127.") ||
+    hostname === "[::1]" ||
+    hostname.includes(".local")
+  ) {
+    return true;
+  }
+
+  return false;
+};
 
 interface LiveStreamDetails {
   id: string;
@@ -408,7 +449,14 @@ export default function LiveStreamPage() {
     isConnected: boolean;
     isReconnecting: boolean;
     lastError: string | null;
-  }>({ isConnected: true, isReconnecting: false, lastError: null });
+    isLoopback?: boolean;
+    optimizedForLoopback?: boolean;
+  }>({
+    isConnected: true,
+    isReconnecting: false,
+    lastError: null,
+    isLoopback: isLikelyLoopbackConnection(),
+  });
   const [showBiddingInterface, setShowBiddingInterface] =
     useState<boolean>(false);
   const [activeProductBid, setActiveProductBid] = useState<ActiveBid | null>(
@@ -423,6 +471,13 @@ export default function LiveStreamPage() {
   const [webRtcKey, setWebRtcKey] = useState<string>(
     `webrtc-stream-${streamId}-${Date.now()}`
   );
+
+  // Track if we've optimized for loopback
+  const [optimizedForLoopback, setOptimizedForLoopback] =
+    useState<boolean>(false);
+
+  // Add this line near other useRef declarations
+  const reconnectWebRTCRef = useRef<(() => void) | null>(null);
 
   // Helper function to generate random ID for anonymous users
   const generateRandomId = () => {
@@ -526,6 +581,36 @@ export default function LiveStreamPage() {
     []
   );
 
+  // Add a handler for loopback connection detection from WebRTCStreamManager
+  const handleLoopbackDetected = useCallback(
+    (isLoopback: boolean) => {
+      logMessage(
+        `Loopback connection ${isLoopback ? "detected" : "not detected"}`,
+        isLoopback ? "warn" : "info"
+      );
+
+      setConnectionState((prev) => ({
+        ...prev,
+        isLoopback,
+        optimizedForLoopback: prev.optimizedForLoopback || isLoopback,
+      }));
+
+      if (isLoopback && !optimizedForLoopback) {
+        // Set a flag to avoid showing this message multiple times
+        setOptimizedForLoopback(true);
+
+        // Toast for loopback connections to inform users
+        toast.info(
+          "Local connection detected. WebRTC settings optimized for localhost.",
+          { duration: 5000 }
+        );
+
+        logMessage("Optimized WebRTC settings for loopback connection", "info");
+      }
+    },
+    [logMessage, optimizedForLoopback]
+  );
+
   const handleParticipantCount = useCallback(
     (count: number) => {
       logMessage(`Stream participants: ${count}`, "info");
@@ -547,6 +632,10 @@ export default function LiveStreamPage() {
           stunServer: runtimeConfig.stunServerUrl,
         }
       : { status: "loading or error" };
+
+    // Check for loopback connections
+    const isLoopback = isLikelyLoopbackConnection();
+    const host = window.location.hostname;
 
     const diag = {
       browser: {
@@ -581,7 +670,14 @@ export default function LiveStreamPage() {
       environment: {
         protocol: window.location.protocol,
         host: window.location.host,
+        hostname: window.location.hostname,
         pathname: window.location.pathname,
+        isLoopbackConnection: isLoopback,
+        connectionInfo: {
+          isLoopback,
+          host,
+          optimizedForLoopback,
+        },
         runtimeConfig: runtimeEnv,
       },
       timestamp: new Date().toISOString(),
@@ -589,7 +685,29 @@ export default function LiveStreamPage() {
 
     logMessage("System diagnostic information collected", "debug", diag);
     return diag;
-  }, [logMessage, runtimeConfig]);
+  }, [logMessage, runtimeConfig, optimizedForLoopback]);
+
+  // Log if we're likely in a loopback connection on mount
+  useEffect(() => {
+    const isLoopback = isLikelyLoopbackConnection();
+    if (isLoopback) {
+      logMessage(
+        "Detected potential loopback connection (localhost/127.0.0.1)",
+        "warn",
+        {
+          hostname: window.location.hostname,
+          host: window.location.host,
+          href: window.location.href,
+        }
+      );
+
+      // Set initial loopback status
+      setConnectionState((prev) => ({
+        ...prev,
+        isLoopback: true,
+      }));
+    }
+  }, [logMessage]);
 
   const fetchStreamDetails = useCallback(async () => {
     if (!streamId || isConfigLoading) return;
@@ -1228,16 +1346,26 @@ export default function LiveStreamPage() {
     router.push("/live-streams");
   };
 
+  // Add this handler to store the reconnection callback
+  const handleReconnectRequest = useCallback((callback: () => void) => {
+    reconnectWebRTCRef.current = callback;
+  }, []);
+
+  // Update the existing handleReconnect function
   const handleReconnect = () => {
     logMessage("Reconnecting to stream", "info");
-
-    // Clear any current errors
     setError(null);
 
-    // Force WebRTCStreamManager remount by changing its key
-    setWebRtcKey(`webrtc-stream-${streamId}-${Date.now()}`);
+    // Use the callback if available, otherwise fallback to remounting
+    if (reconnectWebRTCRef.current) {
+      reconnectWebRTCRef.current();
+      logMessage("Using WebRTC internal reconnection mechanism", "info");
+    } else {
+      // Force WebRTCStreamManager remount by changing its key
+      setWebRtcKey(`webrtc-stream-${streamId}-${Date.now()}`);
+      logMessage("Remounting WebRTC component for reconnection", "info");
+    }
 
-    // Also try to refresh stream details to ensure we have the latest state
     fetchStreamDetails().catch((err) => {
       logMessage(
         `Error fetching stream details during reconnect: ${err.message}`,
@@ -1261,14 +1389,38 @@ export default function LiveStreamPage() {
     message: string;
     canReconnect?: boolean; // Optional: manager can suggest if reconnect is viable
     details?: any; // Optional: additional context
+    isLoopback?: boolean; // Added to track if this is a loopback connection error
   }) => {
     logMessage(
       `[LiveStreamPage] WebRTC Connection Error: ${error.type} - ${error.message}`,
       "error",
-      { errorDetails: error.details, canReconnect: error.canReconnect }
+      {
+        errorDetails: error.details,
+        canReconnect: error.canReconnect,
+        isLoopback: error.isLoopback,
+      }
     );
 
-    const userFriendlyMessage = `Connection error (${error.type}): ${error.message}.`;
+    // Special handling for loopback-specific errors
+    const isLoopbackError =
+      error.isLoopback ||
+      connectionState.isLoopback ||
+      error.message.includes("loopback") ||
+      error.message.includes("localhost");
+
+    let userFriendlyMessage = `Connection error (${error.type}): ${error.message}.`;
+
+    // Customize message for loopback connections
+    if (isLoopbackError) {
+      if (error.type === "ice_connection_failure") {
+        userFriendlyMessage =
+          "Local connection issue: WebRTC can have problems with localhost. Try using a TURN server or a public IP.";
+      } else if (error.type === "transport_connect") {
+        userFriendlyMessage =
+          "Connection failed on same device. This is common with localhost WebRTC. Will try to reconnect with optimized settings.";
+      }
+    }
+
     setError(userFriendlyMessage); // Update main error display
     toast.error(userFriendlyMessage, { duration: 7000 }); // Show a toast
 
@@ -1277,17 +1429,32 @@ export default function LiveStreamPage() {
       isConnected: false,
       isReconnecting: error.canReconnect ?? false, // Use suggestion from manager
       lastError: userFriendlyMessage,
+      isLoopback: prev.isLoopback || isLoopbackError,
     }));
 
-    // Auto-reconnect if suggested and possible, or guide user
+    // Auto-reconnect with different strategy for loopback errors
     if (error.canReconnect) {
-      logMessage(
-        "[LiveStreamPage] Attempting auto-reconnect due to connection error...",
-        "warn"
-      );
+      let reconnectDelay = 3000; // 3 seconds for normal reconnect
+
+      if (isLoopbackError && !optimizedForLoopback) {
+        // Force loopback optimization on next connect
+        setOptimizedForLoopback(true);
+        reconnectDelay = 1000; // faster reconnect for loopback
+
+        logMessage(
+          "[LiveStreamPage] Loopback error detected, reconnecting with optimized settings...",
+          "warn"
+        );
+      } else {
+        logMessage(
+          "[LiveStreamPage] Attempting standard reconnect due to connection error...",
+          "warn"
+        );
+      }
+
       setTimeout(() => {
         handleReconnect(); // Your existing reconnect logic
-      }, 3000); // Delay before auto-reconnect
+      }, reconnectDelay);
     } else {
       logMessage(
         "[LiveStreamPage] Auto-reconnect not suggested for this error.",
@@ -1480,11 +1647,23 @@ export default function LiveStreamPage() {
                 onParticipantCount={handleParticipantCount}
                 onConnectionError={handleConnectionError}
                 onMediaError={handleMediaError}
-                isAnonymous={!user} // ADDED: Flag to indicate anonymous user
+                isAnonymous={!user}
+                onReconnectRequest={handleReconnectRequest}
+                isLoopbackConnection={connectionState.isLoopback}
+                optimizeForLoopback={optimizedForLoopback}
+                onLoopbackDetected={handleLoopbackDetected}
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-black">
                 <Loader2 className="h-8 w-8 animate-spin text-white" />
+              </div>
+            )}
+
+            {/* Show loopback connection indicator if detected */}
+            {connectionState.isLoopback && (
+              <div className="absolute top-20 right-4 bg-amber-500/80 text-white px-3 py-1 rounded-full text-xs flex items-center shadow-md z-50">
+                <Cpu className="h-3 w-3 mr-1" />
+                <span>Local Connection</span>
               </div>
             )}
 
@@ -1539,83 +1718,83 @@ export default function LiveStreamPage() {
                 </div>
               )}
 
-              {/* Product and controls - only show for authenticated users */}
-              {user && (
-                <div className="product-and-controls-row">
-                  <div className="product-container">
-                    {isCurrentUserStreamer ? (
-                      // Streamer view - always show product controls
-                      showCreateProduct ? (
-                        <CreateProductForm
-                          streamId={streamId}
-                          onCancel={() => setShowCreateProduct(false)}
-                          onSuccess={() => {
-                            setShowCreateProduct(false);
-                            // Refresh active bids after creating a new product
-                            fetchActiveBid();
-                          }}
-                        />
-                      ) : (
-                        <div className="flex flex-col space-y-2">
-                          <ProductDisplay
-                            streamId={streamId}
-                            className="pointer-events-auto"
-                            onBidClick={() => setShowBiddingInterface(true)}
-                          />
-                          <button
-                            onClick={handleCreateProduct}
-                            className="bg-[var(--primary)] text-[var(--primary-foreground)] px-4 py-2 rounded-md text-sm font-medium"
-                          >
-                            Create New Product Bid
-                          </button>
-                        </div>
-                      )
-                    ) : // Viewer view - only show product when there's an active bid
-                    activeProductBid?.isActive ? (
-                      <div className="relative">
+              {/* Product and controls - modify to show products to anonymous users */}
+              <div className="product-and-controls-row">
+                <div className="product-container">
+                  {isCurrentUserStreamer ? (
+                    // Streamer view - always show product controls
+                    showCreateProduct ? (
+                      <CreateProductForm
+                        streamId={streamId}
+                        onCancel={() => setShowCreateProduct(false)}
+                        onSuccess={() => {
+                          setShowCreateProduct(false);
+                          // Refresh active bids after creating a new product
+                          fetchActiveBid();
+                        }}
+                      />
+                    ) : (
+                      <div className="flex flex-col space-y-2">
                         <ProductDisplay
                           streamId={streamId}
                           className="pointer-events-auto"
                           onBidClick={() => setShowBiddingInterface(true)}
                         />
-                        {activeProductBid.timeRemaining > 0 && (
-                          <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs flex items-center">
-                            <Timer className="h-3 w-3 mr-1" />
-                            {activeProductBid.timeRemaining}s
-                          </div>
-                        )}
+                        <button
+                          onClick={handleCreateProduct}
+                          className="bg-[var(--primary)] text-[var(--primary-foreground)] px-4 py-2 rounded-md text-sm font-medium"
+                        >
+                          Create New Product Bid
+                        </button>
                       </div>
-                    ) : null}
-                  </div>
-
-                  {isCurrentUserStreamer && (
-                    <StreamControls
-                      streamId={streamId}
-                      isStreamer={isCurrentUserStreamer}
-                      streamStatus={currentStreamStatus}
-                      onStartStream={handleStartStream}
-                      onEndStream={handleEndStream}
-                      isLoading={isLoading}
-                      isCameraOn={isCameraOn}
-                      isMicrophoneOn={isMicrophoneOn}
-                      onCameraToggle={handleCameraToggle}
-                      onMicrophoneToggle={handleMicrophoneToggle}
-                    />
-                  )}
+                    )
+                  ) : // Viewer view (authenticated or anonymous) - show product when there's an active bid
+                  activeProductBid?.isActive ? (
+                    <div className="relative">
+                      <ProductDisplay
+                        streamId={streamId}
+                        className="pointer-events-auto"
+                        onBidClick={() =>
+                          user
+                            ? setShowBiddingInterface(true)
+                            : router.push("/login")
+                        }
+                      />
+                      {activeProductBid.timeRemaining > 0 && (
+                        <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs flex items-center">
+                          <Timer className="h-3 w-3 mr-1" />
+                          {activeProductBid.timeRemaining}s
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
-              )}
 
-              {/* Chat container - only show for authenticated users */}
-              {user && (
-                <div className="chat-container">
-                  <StreamChat
+                {isCurrentUserStreamer && (
+                  <StreamControls
                     streamId={streamId}
-                    currentUserId={userId || ""}
-                    currentUsername={username || ""}
-                    className="w-full h-full"
+                    isStreamer={isCurrentUserStreamer}
+                    streamStatus={currentStreamStatus}
+                    onStartStream={handleStartStream}
+                    onEndStream={handleEndStream}
+                    isLoading={isLoading}
+                    isCameraOn={isCameraOn}
+                    isMicrophoneOn={isMicrophoneOn}
+                    onCameraToggle={handleCameraToggle}
+                    onMicrophoneToggle={handleMicrophoneToggle}
                   />
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Chat container - allow both authenticated and anonymous users to view */}
+              <div className="chat-container">
+                <StreamChat
+                  streamId={streamId}
+                  currentUserId={userId || "anonymous"}
+                  currentUsername={username || "Anonymous Viewer"}
+                  className="w-full h-full"
+                />
+              </div>
 
               {/* Show login prompt for anonymous users */}
               {!user && (

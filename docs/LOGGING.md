@@ -1,90 +1,69 @@
+# BidPazar Logging Standards
 
-Ran tool
+This document outlines the logging standards and patterns for the BidPazar application.
 
-Ran tool
+## Logging Principles
 
-Ran tool
+- **Consistency**: Use the same logging format and patterns across the application
+- **Verbosity Control**: Implement different log levels (debug, info, warn, error)
+- **Context**: Include relevant context with each log entry
+- **Traceability**: Include request IDs or correlation IDs where possible
+- **Privacy**: Never log sensitive information (passwords, tokens, etc.)
 
-Ran tool
+## Logging Utility
 
-Ran tool
+We use a centralized logging utility (`src/lib/logger.ts`) to standardize logs across the application.
 
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-Ran tool
-
-
-
-
-Read file: src/app/api/route.ts
-
-Read file: src/app/api/live-streams/route.ts
-
-Read file: src/app/api/devices/route.ts
-
-Read file: src/app/api/categories/route.ts
-
-Read file: src/app/api/products/route.ts
-
-Read file: src/app/api/users/route.ts
-
-Read file: src/app/api/live-streams/[id]/route.ts
-To add "extreme" (detailed) logging to your API endpoints, you should log the following for every request:
-- HTTP method and URL
-- Request headers
-- Request body (if present)
-- Query parameters (if present)
-- Auth info (if present)
-- Response status and body (if possible, at least status)
-- Errors (with stack trace)
-
-### How to do this efficiently:
-1. **Create a logging utility** (e.g., `src/lib/logger.ts`) to standardize logs.
-2. **Add logging at the start of each API handler** (GET, POST, etc.) in your `route.ts` files.
-3. **Log errors in catch blocks** (you already do this in many places).
-
----
-
-### Example Logging Utility (`src/lib/logger.ts`)
 ```ts
+// src/lib/logger.ts
+export enum LogLevel {
+  TRACE = 0,
+  DEBUG = 1,
+  INFO = 2,
+  WARN = 3,
+  ERROR = 4,
+}
+
+const CURRENT_LOG_LEVEL =
+  process.env.NODE_ENV === "production" ? LogLevel.INFO : LogLevel.DEBUG;
+
+export function log(
+  level: LogLevel,
+  context: string,
+  message: string,
+  data?: any
+) {
+  if (level >= CURRENT_LOG_LEVEL) {
+    const timestamp = new Date().toISOString();
+    const levelString = LogLevel[level];
+    console.log(
+      `[${timestamp}] [${levelString}] [${context}] ${message}`,
+      data ? data : ""
+    );
+  }
+}
+
+export const logger = {
+  trace: (context: string, message: string, data?: any) =>
+    log(LogLevel.TRACE, context, message, data),
+  debug: (context: string, message: string, data?: any) =>
+    log(LogLevel.DEBUG, context, message, data),
+  info: (context: string, message: string, data?: any) =>
+    log(LogLevel.INFO, context, message, data),
+  warn: (context: string, message: string, data?: any) =>
+    log(LogLevel.WARN, context, message, data),
+  error: (context: string, message: string, data?: any) =>
+    log(LogLevel.ERROR, context, message, data),
+};
+```
+
+## API Request Logging
+
+For API endpoints, log the following for every request:
+
+```ts
+import { logger } from "@/lib/logger";
+
 export async function logApiRequest({
   method,
   url,
@@ -102,51 +81,99 @@ export async function logApiRequest({
   user?: any;
   extra?: any;
 }) {
-  console.log('[API REQUEST]', {
-    method,
-    url,
-    headers,
+  // Sanitize headers to remove sensitive info
+  const sanitizedHeaders = { ...headers };
+  if (sanitizedHeaders.authorization) {
+    sanitizedHeaders.authorization = "[REDACTED]";
+  }
+
+  logger.info("API", `${method} ${url}`, {
+    headers: sanitizedHeaders,
     body,
     query,
-    user,
+    userId: user?.id,
     ...extra,
   });
 }
 ```
 
----
+## WebRTC and Media Logging
 
-### Example Usage in an API Route
+For WebRTC and media components, implement enhanced logging:
 
 ```ts
-import { logApiRequest } from '@/lib/logger';
+// In WebRTCStreamManager.tsx or similar
+const log = (message: string, data?: any) => {
+  logger.debug("WebRTC", message, data);
+};
 
-export async function POST(request: Request) {
-  const url = request.url;
-  const method = 'POST';
-  const headers = Object.fromEntries(request.headers.entries());
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    body = undefined;
-  }
-  await logApiRequest({ method, url, headers, body });
+const logError = (message: string, error: any) => {
+  logger.error("WebRTC", message, {
+    error: error.message,
+    stack: error.stack,
+    // Add context specific to media
+    deviceId: selectedVideoDevice?.deviceId,
+    streamId,
+    connectionState,
+  });
+};
+```
 
-  // ...rest of your handler
+## Error Handling and Logging
+
+Always log errors with stack traces and context:
+
+```ts
+try {
+  // Operation that might fail
+} catch (error) {
+  logger.error("ContextName", "Operation failed", {
+    error: error.message,
+    stack: error.stack,
+    // Additional context
+    userId,
+    resourceId,
+    operation: "operationName",
+  });
+  // Then handle the error appropriately
 }
 ```
 
-- For GET requests, you can log `request.url` and parse query params from it.
-- For routes using `NextRequest`, you can use `req.nextUrl` for more info.
+## Production vs Development Logging
 
----
+- In development: More verbose logging with DEBUG or TRACE level
+- In production: Focus on INFO level and above, with structured JSON format if possible
 
-### Next Steps
+## MediaSoup Specific Logging
 
-Would you like me to:
-- Generate the logging utility file for you?
-- Inject this logging into a few representative API route files as a template for you to follow?
-- Or do you want this added to all your main `route.ts` files automatically?
+For MediaSoup debugging:
 
-Let me know your preference!
+```bash
+# Enable detailed MediaSoup logs
+DEBUG=mediasoup* npm run dev
+
+# Enable MediaSoup and Socket.IO logs
+DEBUG=mediasoup*,socket.io* npm run dev
+
+# More granular MediaSoup debugging
+DEBUG=mediasoup:WARNING* npm run dev
+```
+
+## Performance Considerations
+
+- Log asynchronously when possible to avoid blocking operations
+- Be mindful of logging volume in production environments
+- Consider implementing log rotation and archiving for production
+
+## Monitoring and Alerts
+
+- Set up alerts for ERROR level logs in production
+- Monitor frequency of WARNING logs
+- Implement health check logs at regular intervals
+
+## Next Steps for Logging Implementation
+
+1. Ensure logger utility is used consistently across the application
+2. Implement structured logging in production
+3. Set up log aggregation and monitoring
+4. Add request ID tracking for better traceability

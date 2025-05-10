@@ -19,12 +19,11 @@ services:
       - NEXT_PUBLIC_STUN_SERVER_URL=stun:localhost:3478
       - TURN_SERVER_URL=turn:localhost:3478
       - STUN_SERVER_URL=stun:localhost:3478
-    volumes:
-      - ./:/app
-      - /app/node_modules
-      - /app/.next
+      - MEDIASOUP_LISTEN_IP=0.0.0.0
+      - PYTHONUNBUFFERED=1
     depends_on:
       - coturn
+    command: node server.js
 
   coturn:
     image: coturn/coturn:latest

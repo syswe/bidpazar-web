@@ -12,8 +12,10 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 6. [Notifications & Messaging](#notifications--messaging)
 7. [API Endpoints & Components](#api-endpoints--components)
 8. [Technical Implementation](#technical-implementation)
-9. [Security Considerations](#security-considerations)
-10. [Implementation Checklist](#implementation-checklist)
+9. [Stream Quality & Performance](#stream-quality--performance)
+10. [Monitoring & Analytics](#monitoring--analytics)
+11. [Security Considerations](#security-considerations)
+12. [Implementation Checklist](#implementation-checklist)
 
 ## Feature Overview
 
@@ -43,18 +45,22 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 ## Live Auction Workflow
 
 1. **Start Broadcast**
+
    - Any member can start a live stream from the platform.
    - The seller interface includes controls for adding products, managing the broadcast, and viewing chat/bids.
 
 2. **Add Product During Live**
+
    - Seller adds a product with images, video, description, and starting price.
    - Product appears in the live stream product list for all viewers.
 
 3. **Bidding Phase**
+
    - Buyers can place bids as soon as a product is added, even before the countdown starts.
    - All bids are visible in real time to the seller and logged-in viewers.
 
 4. **Countdown & Winner Selection**
+
    - Seller starts a countdown timer (1-59 seconds) when bids approach their desired price.
    - At the end of the countdown, the top 3 bidders are matched:
      - 1st: Winner
@@ -62,6 +68,7 @@ This document details the live streaming auction system for Bidpazar.com, enabli
    - Seller can cancel the product before starting the countdown if bids are insufficient.
 
 5. **End of Broadcast**
+
    - Seller ends the broadcast.
    - Seller receives a report summarizing all products sold, buyers matched, and final prices.
    - Notifications and messages are sent to the seller and all relevant buyers.
@@ -100,6 +107,7 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 ### HTTP API Endpoints
 
 #### Live Stream Management
+
 - `POST /api/live-streams` — Create a new live stream.
 - `GET /api/live-streams` — Get a list of all live streams (filterable by status and userId).
 - `GET /api/live-streams/[id]` — Get details for a specific stream (includes user, listings, products, bids, chat messages).
@@ -110,6 +118,7 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 - `GET /api/live-streams/[id]/analytics` — Get detailed analytics for a stream (restricted to stream owner).
 
 #### Listing Management
+
 - `POST /api/live-streams/[id]/listings` — Add a product listing to the live stream.
 - `GET /api/live-streams/[id]/listings` — Get all listings for a specific stream.
 - `PUT /api/live-streams/[id]/listings/[listingId]` — Update a listing's status (ACTIVE, COUNTDOWN, COMPLETED, CANCELLED) or countdown time.
@@ -122,9 +131,11 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 The WebSocket server is initialized in `server.js` and the handler logic is implemented in `src/lib/socket/socketHandler.ts`.
 
 #### Connection
+
 - Clients connect to the Socket.IO server with query parameters: `streamId`, `userId`, `username`, and `isStreamer`.
 
 #### WebRTC Signaling Events
+
 - `getRouterRtpCapabilities`: Client requests Mediasoup router's capabilities.
 - `createWebRtcTransport`: Client requests to create a WebRTC transport on the server.
 - `connectTransport`: Client provides its DTLS parameters to connect the transport.
@@ -134,12 +145,14 @@ The WebSocket server is initialized in `server.js` and the handler logic is impl
 - `resumeConsumer`: Client requests to resume a paused consumer.
 
 #### Chat Events
+
 - `joinChatRoom`: Client joins a chat room.
 - `sendChatMessage`: Client sends a chat message.
 - `newChatMessage`: Server broadcasts a new chat message.
 - `leaveChatRoom`: Client leaves a chat room.
 
 #### Peer Management Events
+
 - `peerClosed`: Server notifies when a peer disconnects.
 
 ### Frontend Components
@@ -158,16 +171,19 @@ The WebSocket server is initialized in `server.js` and the handler logic is impl
 
 BidPazar uses MediaSoup, a powerful WebRTC Selective Forwarding Unit (SFU), for low-latency, high-quality streaming:
 
-1. **Server Integration**: 
+1. **Server Integration**:
+
    - MediaSoup is integrated directly with the Next.js application through a custom server (`server.js`).
    - WebRTC signaling is handled via Socket.IO on the same server.
 
 2. **Media Flow**:
+
    ```
    STREAMER (Producer) -> MEDIASOUP SERVER -> VIEWERS (Consumers)
    ```
 
 3. **Configuration Requirements**:
+
    - Server requires proper UDP port configuration (default: 40000-40100)
    - Server needs a correctly configured `MEDIASOUP_ANNOUNCED_IP` environment variable
    - STUN/TURN servers for NAT traversal in production environments
@@ -178,15 +194,118 @@ BidPazar uses MediaSoup, a powerful WebRTC Selective Forwarding Unit (SFU), for 
    - Client-to-server network connectivity must be verified
 
 For detailed technical setup, configuration, and troubleshooting:
+
 - See [MEDIASOUP-SETUP.md](./MEDIASOUP-SETUP.md) for configuration details.
 - See [WEBRTC-TROUBLESHOOTING.md](./WEBRTC-TROUBLESHOOTING.md) for troubleshooting steps.
 
-### Alternative Streaming Options (if WebRTC proves challenging)
+## Stream Quality & Performance
 
-If WebRTC streaming is causing significant implementation challenges, consider these alternatives:
+### Video Quality Management
 
-1. **Third-Party Streaming Services**:
-   - Agora.io - Managed WebRTC service with simplified API
+The platform includes adaptive bitrate handling to provide the best possible quality based on network conditions:
+
+1. **Resolution Tiers**:
+
+   - High: 720p (1280x720) at 1.5 Mbps
+   - Medium: 480p (854x480) at 800 Kbps
+   - Low: 360p (640x360) at 400 Kbps
+   - Mobile: 240p (426x240) at 250 Kbps
+
+2. **Automatic Quality Adaptation**:
+
+   - The system monitors available bandwidth and adjusts video quality in real-time
+   - Quality switches are smooth and do not interrupt the stream
+   - Initial quality is determined based on device capability and network speed
+
+3. **Client-Side Controls**:
+   - Viewers can manually select quality level if desired
+   - Automatic quality selection is the default
+
+### Audio Quality
+
+- Audio is prioritized over video during constrained bandwidth
+- Sample rate: 48 kHz for high-quality audio
+- Bitrate: 64-128 Kbps adaptive based on network conditions
+- Echo cancellation and noise suppression enabled
+
+### Latency Management
+
+The MediaSoup SFU architecture enables low-latency streaming:
+
+- Target end-to-end latency: 500ms - 2000ms
+- Optimized for interactivity and real-time bidding
+- Buffer management to reduce stalling and dropped frames
+
+### Device Optimization
+
+- Mobile-specific optimizations:
+  - Battery usage monitoring
+  - Thermal throttling detection
+  - Background mode handling (audio-only when app is not in foreground)
+- Desktop optimizations:
+  - Multi-core encoding/decoding where available
+  - Hardware acceleration support detection and utilization
+
+## Monitoring & Analytics
+
+### Real-Time Monitoring
+
+The system includes comprehensive monitoring for both streamer and admin use:
+
+1. **Stream Health Dashboard**:
+
+   - Real-time bandwidth usage
+   - Connected viewer count
+   - CPU/resource utilization
+   - Error rate monitoring
+
+2. **Viewer Experience Metrics**:
+
+   - Buffering events per minute
+   - Average quality level
+   - Join success rate
+   - Playback continuity score
+
+3. **Alerts and Notifications**:
+   - Automatic alerts for stream degradation
+   - Notifications for high error rates
+   - Connection status updates
+
+### Stream Analytics
+
+Post-stream analytics provide valuable insights:
+
+1. **Viewer Engagement Metrics**:
+
+   - Peak concurrent viewers
+   - Average watch time
+   - Viewer retention curve
+   - Drop-off points
+
+2. **Bidding Analytics**:
+
+   - Bids per minute
+   - Bid value distribution
+   - Correlation between stream quality and bidding activity
+   - Conversion rate (viewers to bidders)
+
+3. **Performance Reports**:
+   - Stream stability score
+   - Quality consistency rating
+   - Network performance summary
+   - Device compatibility report
+
+### Logging
+
+Comprehensive logging is implemented throughout the streaming system:
+
+- WebRTC connection events
+- Media track state changes
+- Transport statistics
+- ICE candidate gathering and selection
+- Error conditions with detailed context
+
+For more information on logging, see [LOGGING.md](./LOGGING.md).
 
 ## Security Considerations
 
@@ -196,6 +315,26 @@ If WebRTC streaming is causing significant implementation challenges, consider t
 - Real-time moderation tools for admins
 - Secure WebRTC and WebSocket connections
 - Rate limiting and abuse prevention
+- End-to-end encryption for WebRTC media when possible
+
+### Security Best Practices
+
+1. **Authentication and Authorization**:
+
+   - Validate session tokens for every WebSocket connection
+   - Verify stream ownership for all streamer operations
+   - Implement timeouts for inactive sessions
+
+2. **Data Protection**:
+
+   - Sanitize all user input for chat and product details
+   - Validate bid amounts and prevent bid spoofing
+   - Protect against cross-site WebSocket hijacking
+
+3. **Infrastructure Security**:
+   - Regular security audits of WebRTC implementation
+   - Production TURN server with proper credentials
+   - DDoS protection for WebSocket and media endpoints
 
 ## Implementation Checklist
 
@@ -211,10 +350,15 @@ If WebRTC streaming is causing significant implementation challenges, consider t
 - [x] Mobile-first, vertical UI (TikTok-style)
 - [x] Web vertical/centered view
 - [x] Admin moderation tools
-- [ ] Accessibility and localization (planned)
-- [ ] Automated abuse/spam detection (planned)
-- [ ] Analytics and reporting (planned)
+- [x] Stream quality monitoring and analytics
+- [ ] Adaptive bitrate streaming (in progress)
+- [ ] Advanced bandwidth management (in progress)
+- [ ] Accessibility features (planned)
+- [ ] Multi-language support (planned)
+- [ ] Automated content moderation (planned)
 
 ---
 
-*For more details on the platform structure, see `docs/STRUCTURE.md`.*
+_For more details on the platform structure, see `docs/STRUCTURE.md`._
+_For technical configuration of WebRTC, see `docs/MEDIASOUP-SETUP.md`._
+_For logging standards, see `docs/LOGGING.md`._

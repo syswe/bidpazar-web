@@ -1,379 +1,742 @@
-Okay, I'll perform an end-to-end check of your WebRTC streaming setup based on the files you've indicated and common WebRTC principles.
+# docs/STRUCTURE.md
 
-**Overall Goal:** Ensure that the client (`WebRTCStreamManager.tsx` and `page.tsx`) and server (`server.js`, `socketHandler.ts`) correctly perform the WebRTC signaling dance using Socket.IO, and that MediaSoup is configured and used properly for media transport. Environment and deployment configurations (`.env`, `docker-compose-prod.yaml`) are also critical.
+# Project Structure Overview
 
-Let's break this down:
+This document outlines the directory structure and key components of the BidPazar application, now a unified full-stack Next.js 15 application. A mobile application is planned for future development.
 
-**1. `server.js` (Custom Next.js Server)**
+## Full-Stack Application (Next.js 15 + TypeScript)
 
-- **Purpose**: Initializes the Next.js app, the HTTP server, and integrates the Socket.IO server.
-- **Review (based on previously provided code)**:
-  - Correctly handles different environments (dev/prod) for loading `socketHandler`.
-  - `initSocketIO` function creates a Socket.IO server instance. This instance is then passed to `initializeSocketIOServer` from `socketHandler.ts`. This is a valid approach, ensuring the main server file controls the initial Socket.IO server setup (like CORS, path) which is then augmented by `socketHandler.ts` with WebRTC specific logic.
-  - The `httpServer.on('upgrade', ...)` logic correctly defers Socket.IO upgrade requests to Socket.IO itself and handles non-Socket.IO upgrades by closing them. This is good.
-  - Graceful shutdown is implemented.
-- **Key Checks**:
-  - Ensure `process.env.PORT`, `process.env.HOST` are correctly used.
-  - The debug logging for file structure is helpful; ensure the paths for `socketHandler` and `logger` resolve correctly in both development (ts-node) and production (dist).
+The application provides both frontend and backend functionality in a single Next.js 15 codebase, including API routes, real-time features, and database access.
 
-**2. `socketHandler.ts` (Server-Side Socket Logic & MediaSoup)**
+```
+/                       # Project root
+├── .next/              # Next.js build cache and output
+├── node_modules/       # Project dependencies
+├── public/             # Static assets served directly (images, fonts, robots.txt, uploads/)
+│   └── uploads/        # Local storage for user-uploaded files
+├── prisma/             # Prisma ORM schema, migrations, and client generation
+│   ├── schema.prisma   # Main database schema definition
+│   ├── test-schema.prisma # Test database schema
+│   └── migrations/     # Prisma migration files
+├── src/                # Main source code directory
+│   ├── app/            # Next.js App Router: pages, layouts, API routes, route groups
+│   │   ├── api/        # API route handlers (REST endpoints, WebSocket, WebRTC, etc.)
+│   │   │   ├── auth/           # Authentication endpoints (register, login, logout, verify, etc.)
+│   │   │   ├── users/          # User management endpoints
+│   │   │   ├── products/       # Product management endpoints
+│   │   │   ├── categories/     # Category management endpoints
+│   │   │   ├── devices/        # Device management endpoints
+│   │   │   ├── messages/       # Messaging endpoints
+│   │   │   ├── rtc/            # Real-time communication (WebSocket, MediaSoup, etc.)
+│   │   │   ├── live-streams/   # Live stream management endpoints (REST API for stream lifecycle: create, start, end, fetch details).
+│   │   │   └── ...             # Additional API endpoints
+│   │   ├── (auth)/     # Route group for authentication pages (login, register, etc.)
+│   │   ├── (dashboard)/# Route group for user/admin dashboards
+│   │   ├── (streams)/  # Route group for live streams
+│   │   │   └── live-streams/[id]/ # Dynamic route for individual live stream pages
+│   │   │       ├── page.tsx    # Main page component for a live stream. Responsible for fetching stream details, rendering UI, managing user interactions (chat, bidding), and hosting the WebRTCStreamManager. It handles stream start/stop UI and passes relevant props (streamId, userId, isStreamer, media states) to WebRTCStreamManager.
+│   │   │       └── components/ # Components specific to the live stream page
+│   │   │           ├── WebRTCStreamManager.tsx # Core client-side component for WebRTC logic. Manages Socket.IO connection for signaling, MediaSoup device initialization, creation of send/receive transports, media track production (from camera/mic via getUserMedia) and consumption, and handles all WebRTC eventing.
+│   │   │           ├── StreamChat.tsx          # Component for handling live chat functionality.
+│   │   │           ├── BiddingInterface.tsx    # Component for product bidding during a stream.
+│   │   │           └── ...                     # Other stream-specific UI components (e.g., ProductDisplay, StreamControls).
+│   │   ├── (products)/ # Route group for product pages
+│   │   ├── (admin)/    # Route group for admin pages
+│   │   ├── (static)/   # Route group for static/informational pages
+│   │   ├── layout.tsx  # Root application layout
+│   │   └── page.tsx    # Root application page
+│   ├── components/     # Reusable React components (UI elements, forms, layouts, etc.)
+│   │   └── ui/         # Shared UI primitives and design system components
+│   ├── hooks/          # Custom React hooks (e.g., useAuth, useSimplePeer)
+│   ├── lib/            # Shared libraries, utilities, API clients, Prisma, auth, SMS, etc.
+│   │   ├── logger.ts   # Centralized logging utility.
+│   │   └── socket/     # Modules related to WebSocket and real-time communication.
+│   │       └── socketHandler.ts # Server-side module responsible for all Socket.IO event handling, WebRTC signaling logic, and MediaSoup integration. It manages MediaSoup workers, routers, transports, producers, and consumers. Key events handled include `getRouterRtpCapabilities`, `createProducerTransport`, `connectTransport`, `produce`, `consume`, `broadcaster_ready`, `viewer_ready`, and chat messages.
+│   ├── services/       # Business logic, streaming, and service modules
+│   ├── tests/          # Unit, integration, and E2E tests (setup, mocks, utils, etc.)
+│   ├── types/          # Custom TypeScript type definitions and interfaces
+│   └── middleware.ts   # Next.js middleware for route protection, CORS, etc. (Configured to bypass Socket.IO paths).
+├── .env                # Main environment variables for development. Contains settings for NEXT_PUBLIC_SOCKET_URL (e.g., ws://localhost:3000), MEDIASOUP_ANNOUNCED_IP (e.g., 127.0.0.1 or LAN IP), STUN/TURN server URLs.
+├── .env.local          # Local environment overrides (Gitignored).
+├── .env.prod           # Environment variables for production. Contains settings for NEXT_PUBLIC_SOCKET_URL (e.g., wss://yourdomain.com), MEDIASOUP_ANNOUNCED_IP (public IP of the server), STUN/TURN server URLs and credentials.
+├── .env.docker         # (If used) Environment variables specific to Docker deployment, often sourced by `docker-compose.yaml`.
+├── .gitignore          # Specifies intentionally untracked files that Git should ignore
+├── Dockerfile          # Instructions for building the Docker image. Includes steps to copy source code, install dependencies, build the Next.js app, and copy the `dist` and `server.js`.
+├── docker-compose.yaml # Docker Compose configuration for multi-container setups (e.g., app + db).
+├── docker-compose-prod.yaml # Docker Compose configuration for production, potentially including services like a CoTURN server and defining UDP port mappings for MediaSoup (e.g., 40000-40100).
+├── jest.config.js      # Configuration for the Jest testing framework
+├── next.config.ts      # Next.js configuration file
+├── package.json        # Node.js project manifest (dependencies, scripts, metadata)
+├── package-lock.json   # Records exact versions of dependencies
+├── postcss.config.js   # PostCSS configuration (used by Tailwind CSS)
+├── tailwind.config.js  # Tailwind CSS theme and plugin configuration
+├── tsconfig.json       # TypeScript compiler options
+├── server.js           # Custom Next.js server initialization file that integrates Socket.IO and MediaSoup.
+├── README.md           # Detailed project documentation
+└── docs/               # Additional documentation files
+    ├── STRUCTURE.md    # This document - project structure overview
+    ├── MEDIASOUP-SETUP.md # MediaSoup configuration and setup details
+    ├── WEBRTC-TROUBLESHOOTING.md # Guide for troubleshooting WebRTC issues
+    ├── LOGGING.md      # Logging standards and patterns
+    ├── LIVE-STREAM.md  # Live streaming feature documentation
+    ├── AUTH.md         # Authentication system documentation
+    ├── API.md          # API documentation guide
+    ├── ENV.md          # Environment variables documentation
+    ├── MIGRATION.md    # Migration guides for version updates
+    └── PRODUCTS.md     # Product management documentation
+```
 
-- **Purpose**: Manages all Socket.IO communication, WebRTC signaling, and MediaSoup anagement (workers, routers, transports, producers, consumers).
-- **Review (based on previously provided code)**:
-  - **MediaSoup Configuration**: `mediasoupAppConfig` uses environment variables. `MEDIASOUP_LISTEN_IP`, `MEDIASOUP_ANNOUNCED_IP`, and the port range (`MEDIASOUP_MIN_PORT`, `MEDIASOUP_MAX_PORT`) are critical.
-    - `MEDIASOUP_ANNOUNCED_IP` _must_ be the public IP of your server if clients are external, or the appropriate local/docker IP if clients are on the same network/host. If this is misconfigured, ICE negotiation will fail.
-  - **`initializeSocketIOServer`**: Correctly uses an existing Socket.IO instance if passed, or creates a new one. Initializes the MediaSoup worker.
-  - **Connection Handling (`io.on("connection", ...)`):**
-    - Client identification via `socket.handshake.query` looks standard.
-  - **WebRTC Signaling Events:**
-    - `getRouterRtpCapabilities`: Server provides its router's RTP capabilities. Client sends its own, which are stored on the `peer` object. This is correct.
-    - `createProducerTransport` / `createConsumerTransport`: Server creates MediaSoup WebRTC transports. Parameters are sent back to the client.
-    - `connectTransport`: Client provides DTLS parameters; server connects the transport.
-    - `produce`: Client indicates it wants to send media. Server creates a MediaSoup producer. If it's a streamer, a `new-producer` event is emitted to the room.
-    - `consume`: Client indicates it wants to receive media from a specific producer. Server creates a MediaSoup consumer.
-    - `broadcaster_ready`:
-      - When a broadcaster emits this, the server updates the peer's `isStreamer` status.
-      - It then emits `broadcaster_ready` _to the room_ (line 738 `io.to(\`stream:\${streamId}\`).emit("broadcaster_ready", ...)`), including a list of `activeProducers` from that broadcaster.
-      - **Potential Issue/Clarification**: The `activeProducers` are derived from `peer.producers` (lines 707-716). This map is populated when the client successfully calls the `produce` event. If the client emits `broadcaster_ready` _before_ its `produce` calls have successfully completed on the server, this list might be empty initially. The client-side logic in `WebRTCStreamManager.tsx` must ensure `produce` calls are made (and ideally acknowledged) before signaling `broadcaster_ready`, or there needs to be a robust way for viewers to fetch current producers (e.g., using the `getProducers` event which is present).
-    - `viewer_ready`: Server responds to the viewer with information about the current streamer and their active producers.
-  - **Room/Peer Management**: Logic for creating rooms, managing peers, and cleaning up inactive sessions/empty rooms is present. `ensureOnlyOneStreamerInRoom` enforces a single streamer.
-  - **Error Handling**: Seems fairly comprehensive with `formatError` and emitting error events.
-- **Key Checks**:
-  - The sequence of events expected from the client (especially the broadcaster) must align with how the server processes them. (e.g., `getRouterRtpCapabilities` -> `createProducerTransport` -> `connectTransport` -> `produce` (for each track) -> `broadcaster_ready`).
-  - Ensure `mediasoupWorker` creation is robust and worker `died` events are handled (attempting restart is good).
+## Key Components in Detail
 
-**3. `page.tsx` (Frontend Live Stream Page)**
+### 1. Custom Server (`server.js`)
 
-- **Purpose**: Renders the stream UI, fetches stream details, and hosts the `WebRTCStreamManager` component.
-- **Review (based on previously provided code)**:
-  - Correctly fetches stream details and determines if the current user is the streamer.
-  - Passes necessary props like `streamId`, `userId`, `username`, `isStreamer`, `isCameraOn`, `isMicrophoneOn`, `isAnonymous` to `WebRTCStreamManager`.
-  - Handles UI for starting/ending streams (via API calls), toggling camera/mic (updates local state passed as props).
-  - `handleReconnect` works by changing the `key` prop of `WebRTCStreamManager`, forcing a remount, which is a valid strategy for a hard reset of the WebRTC component.
-  - Provides good logging and an error display mechanism.
-- **Key Checks**:
-  - The `isCameraOn` and `isMicrophoneOn` states are managed here and passed as props. `WebRTCStreamManager` will need to react to changes in these props to (un)publish tracks.
-  - Anonymous user handling (`effectiveUserId`, `effectiveUsername`, `isAnonymous` prop) seems correct.
+This is the entry point for the application and handles:
 
-Given the user's problem description (stalling after `broadcaster_ready`, no `getRouterRtpCapabilities` completion or transport creation logs from the client, no media device logs), the primary area of concern will be `WebRTCStreamManager.tsx` and the environment configuration.
+- Next.js application initialization
+- HTTP server setup
+- Socket.IO server integration
+- MediaSoup initialization (via socketHandler)
+- Graceful shutdown handling
 
-I will now request the content of `WebRTCStreamManager.tsx`, `.env`, `.env.prod`, and `docker-compose-prod.yaml` to continue the end-to-end check.
+```javascript
+// Example server.js structure
+const { createServer } = require("http");
+const { Server } = require("socket.io");
+const { parse } = require("url");
+const next = require("next");
 
-First, let's look at `WebRTCStreamManager.tsx`. I'll use the `read_file` tool for this.
+const dev = process.env.NODE_ENV !== "production";
+const app = next({ dev });
+const handle = app.getRequestHandler();
 
-Read file: src/app/(streams)/live-streams/[id]/components/WebRTCStreamManager.tsx
-I have the content of `WebRTCStreamManager.tsx`. It's a very large file, so I'll focus on the key areas relevant to the user's problem: initialization, Socket.IO event handling, MediaSoup device loading, transport and producer/consumer creation, and media acquisition.
+// Import the socket handler dynamically based on environment
+const socketHandlerPath = dev
+  ? "./src/lib/socket/socketHandler"
+  : "./dist/lib/socket/socketHandler";
 
-**4. `WebRTCStreamManager.tsx` (Client-Side WebRTC Logic)**
+app.prepare().then(() => {
+  const httpServer = createServer((req, res) => {
+    const parsedUrl = parse(req.url, true);
+    handle(req, res, parsedUrl);
+  });
 
-- **Purpose**: Handles all client-side WebRTC operations: connects to Socket.IO, manages the MediaSoup device, creates transports, producers, and consumers, and handles media streams.
-- **Initial Review of Structure and Key Parts (based on outline and initial lines):**
+  // Initialize Socket.IO
+  const io = new Server(httpServer, {
+    path: "/socket.io/",
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+      credentials: true,
+    },
+  });
 
-  - **Logging**: Extensive custom logging system (`log`, `logError`, `logInfo`, etc.) is present. `CURRENT_LOG_LEVEL` is set to `TRACE`, which is good for debugging. It also includes `setupWebRTCDebugLogging` to capture native WebRTC logs.
-  - **State**: Uses `useState` and `useRef` for managing state like `socket`, `device` (mediasoup-client Device), `producerTransport`, `consumerTransport`, `videoProducer`, `audioProducer`, `consumers`, `localStream`, `remoteStreams`, `connectionState`, `selectedVideoDevice`, `selectedAudioDevice`, etc.
-  - **Props**: Receives `streamId`, `userId`, `username`, `isStreamer`, `isCameraOn`, `isMicrophoneOn`, `isAnonymous`, and callbacks like `onConnectionError`, `onMediaError`.
-  - **`useRuntimeConfig`**: Used to get `socketUrl`, `stunServerUrl`, `turnServerUrl`. This is crucial for connecting to the correct Socket.IO server and for ICE negotiation.
-  - **`useEffect` for Initialization (`attemptConnection`)**: This is likely the main effect hook that kicks off the connection process. It probably sets up the socket and then proceeds with WebRTC setup.
-  - **Socket Connection (`connectSocket` function, likely called by `attemptConnection`):**
-    - Establishes a Socket.IO connection. The URL should be derived from `runtimeConfig.socketUrl`.
-    - Passes `streamId`, `userId`, `username`, `isStreamer`, `isAnonymous` in `socket.io.opts.query`. This matches what `socketHandler.ts` expects.
-    - Sets up listeners for various socket events (`connect`, `disconnect`, `error`, `connection_established`, `broadcaster_ready`, `new-producer`, `consumerClosed`, etc.).
-  - **MediaSoup Device Initialization (`loadDevice` function):**
-    - After socket connection, it should emit `getRouterRtpCapabilities` to the server.
-    - On receiving the router's RTP capabilities, it calls `device.load({ routerRtpCapabilities })`. This is a critical step. **The user's log indicates this might not be completing.**
-  - **Transport Creation (`setupProducerTransport`, `setupConsumerTransport`):**
-    - For `producerTransport`: Emits `createProducerTransport` to the server. Gets params, creates local transport using `device.createSendTransport(params)`.
-    - Sets up `connect` and `produce` event listeners on the transport.
-  - **Producing Media (`publish` or similar function, often called after `producerTransport` is ready):**
-    - Acquires local media (`getUserMedia`). **The user's log indicates no camera/mic access logs.** This step needs to be checked carefully for permissions and errors.
-    - For each track (audio, video), calls `producerTransport.produce({ track, ... })`.
-    - The `appData` in `produce` can be used to pass metadata.
-  - **`broadcaster_ready` Emission**: After producers are set up, if `isStreamer`, it should emit `broadcaster_ready` to the server. The timing of this relative to `transport.produce()` calls is important.
-  - **Consuming Media (for viewers, or for broadcaster to see their own stream if loopback is implemented):**
-    - Listens for `new-producer` from the server (or gets producers from `broadcaster_ready` event).
-    - For each new producer, calls `setupConsumerTransport` (if not already done).
-    - Emits `consume` to the server with its `rtpCapabilities` and the `producerId`.
-    - Gets consumer params, calls `consumerTransport.consume(params)`.
-    - Gets the track from the consumer and adds it to a remote stream.
-    - Emits `resumeConsumer` to the server.
-  - **Error Handling**: Uses `onConnectionError` and `onMediaError` props. Internal retries and state updates.
-  - **`DeviceSelector` Component**: Allows users to choose camera/microphone. Changes here should trigger re-acquiring media and potentially re-publishing.
-  - **`getIceServers` function**: (lines 322+) Constructs ICE server configuration using `stunServerUrl` and `turnServerUrl` from `runtimeConfig`. Includes TURN credentials if available.
+  // Initialize the socket handler with the IO instance
+  const { initializeSocketIOServer } = require(socketHandlerPath);
+  initializeSocketIOServer(io);
 
-- **Addressing User's Specific Problem Points (Stalling after `broadcaster_ready`, no `getRouterRtpCapabilities` client logs, no media device logs):**
-  1.  **`getRouterRtpCapabilities` not completing**:
-      - Search for `socket.emit("getRouterRtpCapabilities", ...)` or a `socketPromise` wrapper around it.
-      - Check the callback/promise resolution. Are there logs _before_ this emit and _after_ its response?
-      - Is `device.load()` called immediately after? Are there logs around `device.load()`?
-      - A failure here (e.g., socket not truly connected, server not responding, or `device.load()` throwing an error) would halt the entire WebRTC setup.
-  2.  **No media device initialization logs**:
-      - Look for `navigator.mediaDevices.getUserMedia(...)`.
-      - Check `try...catch` blocks around it. Is `onMediaError` called?
-      - This usually happens _before_ `producerTransport.produce()`. If `getUserMedia` fails (permissions, no devices), producers cannot be created.
-  3.  **Incomplete signaling after `broadcaster_ready`**:
-      - If `getRouterRtpCapabilities` or `device.load()` fails, then `createProducerTransport` and subsequent steps won't happen.
-      - If `getUserMedia` fails, `produce` won't happen.
-      - The client-side `broadcaster_ready` emission should ideally occur _after_ local tracks are successfully produced and acknowledged by the server. If it's emitted too early, the server won't know about the producers.
+  // Handle WebSocket upgrade requests
+  httpServer.on("upgrade", (request, socket, head) => {
+    const { pathname } = parse(request.url);
 
-Let's proceed to get the environment files and Docker configuration to check STUN/TURN and MediaSoup IP/port settings.
-
-Read file: docker-compose-prod.yaml
-Okay, I have the `docker-compose-prod.yaml`.
-
-**5. `docker-compose-prod.yaml` (Production Deployment)**
-
-- **`web` service (Your Next.js/MediaSoup App):**
-  - `image: arcanteus/bidpazar-web:0.2`
-  - `ports`:
-    - `"3000:3000"`: Standard HTTP port, looks correct.
-    - `"40000-40100:40000-40100/udp"`: This maps the UDP port range for MediaSoup WebRTC transports. This range must match `MEDIASOUP_MIN_PORT` and `MEDIASOUP_MAX_PORT` in your environment variables and be open on the host machine's firewall. The current range (101 ports) is reasonable.
-  - `env_file: - ./bidpazar-web/.env.docker`: Critical! The contents of this file will define `MEDIASOUP_ANNOUNCED_IP`, STUN/TURN URLs, etc., for the production container.
-  - `volumes: - ./uploads:/app/public/uploads`: For file uploads, not directly related to WebRTC.
-  - `depends_on: - coturn`: Ensures CoTURN starts before your app.
-- **`coturn` service (TURN Server):**
-  - `image: coturn/coturn:latest`
-  - `ports`:
-    - `"3478:3478"` and `"3478:3478/udp"`: Standard STUN/TURN port.
-    - `"5349:5349"` and `"5349:5349/udp"`: Standard STUN/TURN over TLS/DTLS (though your command disables TLS/DTLS).
-    - `"49160-49200:49160-49200/udp"`: Relay ports for TURN. This range should be sufficient for a moderate number of concurrent users.
-  - `environment`:
-    - `TURN_USERNAME=bidpazar`
-    - `TURN_PASSWORD=bidpazarpass`
-    - `TURN_REALM=bidpazar.com`
-    - `EXTERNAL_IP=45.147.46.183`: **This is extremely important.** This IP _must_ be the public, static IP address of the host machine where Docker is running. If it's incorrect, TURN will not work. The user previously mentioned `turn:45.147.46.183:3478`, so this IP seems consistent.
-  - `command`:
-    - `--no-tls --no-dtls`: You are running TURN without encryption (TLS for TCP, DTLS for UDP). This is simpler to set up but less secure. For production, enabling TLS/DTLS with proper certificates is recommended. If you use `turn:` (not `turns:`) in your client, this is fine.
-    - `--realm=bidpazar.com`
-    - `--user=bidpazar:bidpazarpass`
-- **Key Checks**:
-  - The MediaSoup UDP port range `40000-40100` on the `web` service must align with the `MEDIASOUP_MIN_PORT` and `MEDIASOUP_MAX_PORT` environment variables set in `.env.docker`.
-  - The host machine running Docker must have UDP ports `40000-40100` (for MediaSoup) and `3478`, `49160-49200` (for CoTURN) open in its firewall.
-  - The `EXTERNAL_IP` for CoTURN is correctly set to the public IP of the server.
-
-Now, let's get the environment variable files. I'll start with `.env` (typically for development) and then `.env.prod` (which might be a template, as `.env.docker` is used by Docker Compose).
-
-Read file: .env.prod
-Okay, I have `.env.prod`.
-
-**6. `.env.prod` (Production Environment Variables)**
-
-- **URLs**:
-  - `NEXT_PUBLIC_APP_URL=https://bidpazar.com`
-  - `NEXT_PUBLIC_API_URL=https://bidpazar.com/api`
-  - These are client-side.
-- **Socket.IO**:
-  - `NEXT_PUBLIC_SOCKET_URL=wss://bidpazar.com`: This is the URL the client will use to connect to Socket.IO. `wss://` implies secure WebSockets, so your server (likely via a reverse proxy like Nginx/Caddy/Cloudflare) must be configured for SSL/TLS termination for this path.
-  - `SOCKET_URL=wss://bidpazar.com/`: Server-side, likely not directly used by `socket.io-client` if `NEXT_PUBLIC_SOCKET_URL` is primary.
-  - `NEXT_PUBLIC_WS_URL=/socket.io/`: This should be the _path_ for Socket.IO, not a full URL. `WebRTCStreamManager` will likely combine `NEXT_PUBLIC_SOCKET_URL` and this path. If `NEXT_PUBLIC_SOCKET_URL` already includes the path (it doesn't here), then this might be redundant or used differently. The `socket.io-client` typically takes a URL and an optional `path` option. It seems like `NEXT_PUBLIC_SOCKET_URL` is the base, and `/socket.io/` is the path.
-- **MediaSoup Server Config**:
-  - `MEDIASOUP_LISTEN_IP=0.0.0.0`: Correct for Docker.
-  - `MEDIASOUP_ANNOUNCED_IP=45.147.46.183`: This is the public IP. **Crucial, and it matches the CoTURN `EXTERNAL_IP` and user's provided TURN URI.** This is good.
-  - `MEDIASOUP_MIN_PORT=40000`
-  - `MEDIASOUP_MAX_PORT=40100`: These match the `docker-compose-prod.yaml` port mapping. This is good.
-- **STUN/TURN Configuration**:
-
-  - `NEXT_PUBLIC_STUN_SERVER_URL=stun:stun.l.google.com:19302`: Standard Google STUN server.
-  - `NEXT_PUBLIC_TURN_SERVER_URL=turn:global.turn.twilio.com:3478`: This points to Twilio's TURN server.
-  - `NEXT_PUBLIC_TURN_USERNAME=bidpazar`
-  - `NEXT_PUBLIC_TURN_PASSWORD=bidpazarpass`
-  - Then, there's a server-side section:
-    - `STUN_SERVER_URL=stun:stun.l.google.com:19302`
-    - `TURN_SERVER_URL=turn:45.147.46.183:3478`: **This is important.** This `TURN_SERVER_URL` is configured to use your own CoTURN server (`45.147.46.183:3478`), which is good. The `docker-compose-prod.yaml` sets up this CoTURN server.
-    - `TURN_USERNAME=bidpazar`
-    - `TURN_PASSWORD=bidpazarpass`: These credentials must match those in the `coturn` service command in `docker-compose-prod.yaml`. They do (`--user=bidpazar:bidpazarpass`).
-
-- **Discrepancy/Clarification**:
-  - The client-facing TURN configuration (`NEXT_PUBLIC_TURN_SERVER_URL`) points to Twilio's TURN (`turn:global.turn.twilio.com:3478`).
-  - The server-side (and presumably the one intended for actual use by clients via `WebRTCStreamManager` if it uses the `NEXT_PUBLIC_` vars) `TURN_SERVER_URL` in the _latter half_ of the STUN/TURN section correctly points to your self-hosted CoTURN server (`turn:45.147.46.183:3478`).
-  - **It's crucial that `WebRTCStreamManager.tsx` uses `turn:45.147.46.183:3478` (your CoTURN server) and the associated credentials (`bidpazar`/`bidpazarpass`) for production.** Using Twilio's TURN servers with generic credentials might not be reliable or intended for direct production use without a proper Twilio account and specific credentials generated by Twilio.
-  - **Recommendation**: Ensure `WebRTCStreamManager` (via `useRuntimeConfig`) picks up `NEXT_PUBLIC_STUN_SERVER_URL=stun:stun.l.google.com:19302` and for TURN, it should use values that point to your `45.147.46.183:3478` server with `bidpazar`/`bidpazarpass`. If `NEXT_PUBLIC_TURN_SERVER_URL` is indeed `turn:global.turn.twilio.com:3478`, this might be an issue if you intend to use your self-hosted TURN. If the `WebRTCStreamManager` is using the `NEXT_PUBLIC_TURN_SERVER_URL`, `NEXT_PUBLIC_TURN_USERNAME`, `NEXT_PUBLIC_TURN_PASSWORD` that point to Twilio, it won't be using your self-hosted CoTURN server correctly unless those credentials are valid Twilio credentials.
-  - Given the `coturn` service setup in `docker-compose-prod.yaml` and the server-side `TURN_SERVER_URL=turn:45.147.46.183:3478`, it's highly probable the intent is to use the self-hosted CoTURN.
-  - The `getIceServers` function in `WebRTCStreamManager.tsx` (line 322 of its outline) will be constructing the `iceServers` array. We need to see exactly which environment variables it uses for STUN/TURN.
-
-This file `.env.prod` seems like it _could_ be the source for `.env.docker` or used directly if not in Docker for production. The critical part is what `WebRTCStreamManager.tsx` consumes via `useRuntimeConfig`.
-
-Let's get `.env` for development settings.
-
-Read file: .env
-Okay, I have the `.env` file for development.
-
-**7. `.env` (Development Environment Variables)**
-
-- **URLs**: All point to `http://localhost:3000`.
-- **Socket.IO**:
-  - `NEXT_PUBLIC_SOCKET_URL=ws://localhost:3000`: Correct for local development (`ws://` for non-secure).
-  - `NEXT_PUBLIC_WS_URL=/socket.io/`: Correct path.
-- **MediaSoup Server Config**:
-  - `MEDIASOUP_LISTEN_IP=0.0.0.0`: Correct.
-  - `MEDIASOUP_ANNOUNCED_IP=127.0.0.1`: **This is a common point of failure for local development if your client is on a different device or a virtual machine/emulator.** If the client is on the _same machine_ and accesses via `localhost` or `127.0.0.1`, this _might_ work. However, if the client is on another device on the same LAN, `MEDIASOUP_ANNOUNCED_IP` should be your machine's LAN IP (e.g., `192.168.1.x`). If the client is on an emulator or a different network setup, this IP needs to be reachable by that client. The comment `# ⚠️ IMPORTANT: Replace with your actual local machine IP address` is good, but the value is still `127.0.0.1`.
-  - `MEDIASOUP_MIN_PORT=40000`, `MEDIASOUP_MAX_PORT=40100`: Standard.
-- **STUN/TURN Configuration (Development)**:
-  - `NEXT_PUBLIC_STUN_SERVER_URL=stun:45.147.46.183:3478`
-  - `NEXT_PUBLIC_TURN_SERVER_URL=turn:45.147.46.183:3478`
-  - `NEXT_PUBLIC_TURN_USERNAME=bidpazar`
-  - `NEXT_PUBLIC_TURN_PASSWORD=bidpazarpass`
-  - **Observation**: In development, you are configured to use the _production_ STUN/TURN server (`45.147.46.183:3478`). This is generally fine for testing connectivity, assuming that server is reachable from your development environment. It means your local development setup relies on the deployed CoTURN server. If that server is down or not reachable, NAT traversal might fail even in development. Using a public STUN server like `stun:stun.l.google.com:19302` as a primary or fallback STUN for development is also common if you don't have a local TURN server.
-- **Key Check for Development**:
-  - The `MEDIASOUP_ANNOUNCED_IP=127.0.0.1` is the most likely source of issues if testing from a device that isn't the server machine itself or isn't resolving `127.0.0.1` as the server machine (e.g., mobile device on same Wi-Fi).
-
-Now I'll review `api.ts` and `middleware.ts`. Since they were listed by the user but are less likely to be the _direct_ cause of WebRTC negotiation failure (which is usually signaling, ICE, or DTLS related), I'll do a quicker check for obvious interferences.
-
-Read file: src/middleware.ts
-**8. `middleware.ts`**
-
-- **Purpose**: Handles authentication and authorization for Next.js routes.
-- **Review**:
-
-  - It correctly identifies public paths and exempts them from auth checks.
-  - **Crucially, it has logic to skip middleware processing for WebSocket and Socket.IO paths**:
-
-    ```javascript
-    const isSocketPath =
-      path.includes("/socket.io") ||
-      path.startsWith("/api/socket") || // ...
-
-    const isWebSocketRequest =
-      request.headers.get("upgrade")?.toLowerCase() === "websocket" || // ...
-      request.nextUrl.searchParams.has("EIO") || // ...
-
-    if (isSocketPath || isWebSocketRequest) {
-      console.log(
-        `[Middleware] Skipping middleware for Socket/WebSocket path: ${path}`
-      );
-      return NextResponse.next();
+    if (pathname.startsWith("/socket.io/")) {
+      io.engine.handleUpgrade(request, socket, head);
+    } else {
+      socket.destroy();
     }
-    ```
+  });
 
-  - The `config.matcher` also attempts to exclude `socket.io` paths and websocket upgrade requests.
+  // Start the server
+  const PORT = process.env.PORT || 3000;
+  httpServer.listen(PORT, () => {
+    console.log(`> Server listening on port ${PORT}`);
+  });
+});
+```
 
-- **Conclusion**: The middleware seems correctly configured to _avoid interfering_ with Socket.IO connections, which is essential. It should not be the cause of the WebRTC issues.
+### 2. Socket Handler (`src/lib/socket/socketHandler.ts`)
 
-Now, I'll request `api.ts`.
+This module is responsible for all real-time communication and WebRTC functionality:
 
-Read file: src/lib/api.ts
-**9. `api.ts` (Client-Side API Utility)**
+- Socket.IO event handling
+- MediaSoup worker management
+- WebRTC signaling
+- Room and peer management
+- Producer and consumer handling for audio/video streams
+- Chat message relay
 
-- **Purpose**: Provides functions to interact with the backend API.
-- **Review**:
-  - Defines various interfaces for data models (`LiveStream`, `Product`, `User`, etc.).
-  - Includes a `fetcher` function for making API calls.
-  - Exports functions like `getLiveStreamById`, `startLiveStream`, `endLiveStream`. These are used by `page.tsx` to manage the stream's lifecycle in the database.
-  - At the top, it has code to enable `socket.io-client` and `mediasoup-client` debug logs in development by setting `localStorage.debug`. This is a good practice for client-side debugging.
-  - `apiBaseUrl` is set to `"/api"`, which is standard for Next.js API routes.
-- **Relevance to WebRTC Issue**: Unlikely to be a direct cause of WebRTC connection failures, as these are standard REST API calls. However, if `getLiveStreamById` failed, `page.tsx` might not render `WebRTCStreamManager` or pass correct props. The user's log implies the page and initial socket connection happen, so this is probably not the root cause of the WebRTC stall.
+Key sections include:
 
-**Summary of Findings So Far & Next Steps:**
+```typescript
+// MediaSoup configuration setup
+const mediasoupAppConfig = {
+  worker: {
+    rtcMinPort: Number(process.env.MEDIASOUP_MIN_PORT) || 40000,
+    rtcMaxPort: Number(process.env.MEDIASOUP_MAX_PORT) || 40100,
+    logLevel: process.env.MEDIASOUP_LOG_LEVEL || "warn",
+    logTags: process.env.MEDIASOUP_LOG_TAGS?.split(",") || ["info"],
+  },
+  router: {
+    mediaCodecs: [
+      // Video codecs
+      {
+        kind: "video",
+        mimeType: "video/VP8",
+        clockRate: 90000,
+        parameters: {},
+      },
+      {
+        kind: "video",
+        mimeType: "video/H264",
+        clockRate: 90000,
+        parameters: {},
+      },
+      // Audio codecs
+      { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 },
+    ],
+  },
+  webRtcTransport: {
+    listenIps: [
+      {
+        ip: process.env.MEDIASOUP_LISTEN_IP || "0.0.0.0",
+        announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP,
+      },
+    ],
+    enableUdp: true,
+    enableTcp: true,
+    preferUdp: true,
+    initialAvailableOutgoingBitrate: 800000,
+    minimumAvailableOutgoingBitrate: 100000,
+    maxSctpMessageSize: 262144,
+  },
+};
 
-1.  **`server.js`**: Appears largely correct.
-2.  **`socketHandler.ts`**: Core signaling logic is present. The timing of `broadcaster_ready` emission by the client relative to its `produce` calls could be a factor. The server-side logic for handling these events seems plausible.
-3.  **`page.tsx`**: Correctly passes props to `WebRTCStreamManager`. Handles UI and stream lifecycle API calls.
-4.  **`WebRTCStreamManager.tsx`**: **This is the most critical file to examine in detail now.** The user's description (stalling after `broadcaster_ready`, no client-side logs for `getRouterRtpCapabilities` or media device access) strongly points to an issue within this component's initialization or early-stage WebRTC setup logic.
-5.  **`docker-compose-prod.yaml`**: Looks reasonable. MediaSoup UDP ports are mapped. CoTURN is configured. `EXTERNAL_IP` for CoTURN matches other configs.
-6.  **`.env.prod`**:
-    - `MEDIASOUP_ANNOUNCED_IP` is correctly set to the public IP.
-    - STUN/TURN: There's a mix-up. `NEXT_PUBLIC_TURN_SERVER_URL` points to Twilio, while `TURN_SERVER_URL` points to the self-hosted CoTURN. **It's vital that `WebRTCStreamManager.tsx` uses the self-hosted CoTURN (45.147.46.183:3478) with credentials `bidpazar`/`bidpazarpass` in production.** This needs to be verified in `WebRTCStreamManager.tsx`'s `getIceServers` or equivalent logic.
-7.  **`.env` (Development)**:
-    - `MEDIASOUP_ANNOUNCED_IP=127.0.0.1`: Potential issue if client isn't on the same host or can't resolve it correctly.
-    - STUN/TURN points to the production CoTURN server, which is acceptable for dev testing if the server is up.
-8.  **`middleware.ts`**: Correctly skips Socket.IO paths. Not a likely cause.
-9.  **`api.ts`**: Standard API client. Not a likely cause of WebRTC negotiation failure.
+// Initialize the MediaSoup worker
+let mediasoupWorker;
 
-**Deep Dive into `WebRTCStreamManager.tsx` is required.**
+export function initializeSocketIOServer(providedIo) {
+  // Use provided IO or create a new one
+  io = providedIo || createSocketIOServer();
 
-Based on the provided outline of `WebRTCStreamManager.tsx` and the user's problem description:
+  // Start the MediaSoup worker
+  startMediasoupWorker().catch((error) => {
+    logger.error("[MediaSoup] Failed to start worker", error);
+    process.exit(1);
+  });
 
-- **Focus on `attemptConnection` (or similar initial connection function):**
-  - Trace the logic: `connectSocket` -> `socket.on('connect', ...)` -> `loadDevice`.
-- **Focus on `loadDevice`:**
-  - It should emit `getRouterRtpCapabilities`. Are there logs immediately before this emit?
-  - In the callback/promise resolution for `getRouterRtpCapabilities`, does it call `device.load({ routerRtpCapabilities })`? Are there logs immediately before and after this? Any `try...catch`?
-  - The user mentioned "no logs showing getRouterRtpCapabilities completion". This is a major red flag.
-- **Focus on `getUserMedia` (likely in a `publish` or `startLocalMedia` function):**
-  - This is called _before_ `producerTransport.produce()`.
-  - Are there logs before attempting `getUserMedia`?
-  - How are errors from `getUserMedia` (e.g., `NotFoundError`, `NotAllowedError`) handled? Is `onMediaError` called?
-  - The user mentioned "No media device initialization". This is another major red flag.
+  // Handle socket connections
+  io.on("connection", async (socket) => {
+    // Extract data from connection query
+    const { streamId, userId, username, isStreamer, isAnonymous } =
+      socket.handshake.query;
 
-Let's now formulate the detailed check and advice for `WebRTCStreamManager.tsx`.
+    // Handle various WebRTC signaling events
+    socket.on("getRouterRtpCapabilities", async (callback) => {
+      // Send mediasoup router RTP capabilities to the client
+    });
 
----
+    socket.on("createProducerTransport", async (callback) => {
+      // Create a WebRTC transport for producing media
+    });
 
-**End-to-End Analysis and Recommendations:**
+    socket.on("createConsumerTransport", async (callback) => {
+      // Create a WebRTC transport for consuming media
+    });
 
-Based on the review of the provided files and your description of the problem (WebRTC connection stalling after `broadcaster_ready`, missing client-side logs for `getRouterRtpCapabilities` completion and media device initialization), here's an analysis:
+    socket.on("connectTransport", async (data, callback) => {
+      // Connect a WebRTC transport with client DTLS parameters
+    });
 
-**Server-Side (`server.js`, `socketHandler.ts`):**
+    socket.on("produce", async (data, callback) => {
+      // Handle media production (audio/video tracks)
+    });
 
-- **Generally Sound**: The server-side setup for Socket.IO and MediaSoup seems robust. Event handlers for the WebRTC lifecycle are present.
-- **`broadcaster_ready` Timing**: As noted, the client (`WebRTCStreamManager.tsx`) should ensure it has successfully created producers (i.e., called `socket.emit('produce', ...)` and ideally received an acknowledgment) _before_ it emits `broadcaster_ready`. If `broadcaster_ready` is sent too early, viewers might not get the initial list of active producers. However, `socketHandler.ts` does have a `getProducers` event that viewers can call.
+    socket.on("consume", async (data, callback) => {
+      // Handle media consumption
+    });
 
-**Environment and Deployment (`.env`, `.env.prod`, `docker-compose-prod.yaml`):**
+    socket.on("broadcaster_ready", async (data) => {
+      // Handle when a broadcaster is ready to stream
+    });
 
-- **Production (`.env.prod`, `docker-compose-prod.yaml`):**
-  - `MEDIASOUP_ANNOUNCED_IP` (`45.147.46.183`) is correctly set and matches CoTURN's `EXTERNAL_IP`.
-  - MediaSoup UDP port range (`40000-40100`) matches between `.env.prod` and `docker-compose-prod.yaml`. Ensure these are open on the host firewall.
-  - CoTURN UDP ports (`3478`, `49160-49200`) need to be open on the host firewall.
-  - **STUN/TURN Configuration Mismatch**:
-    - `NEXT_PUBLIC_TURN_SERVER_URL` in `.env.prod` is `turn:global.turn.twilio.com:3478`.
-    - Your CoTURN server is `turn:45.147.46.183:3478` with user `bidpazar` and password `bidpazarpass`.
-    - **Crucial**: `WebRTCStreamManager.tsx` (via `useRuntimeConfig`) **must use your self-hosted CoTURN server details in production.** Verify that `NEXT_PUBLIC_TURN_SERVER_URL`, `NEXT_PUBLIC_TURN_USERNAME`, and `NEXT_PUBLIC_TURN_PASSWORD` in the `.env.docker` file (which `docker-compose-prod.yaml` uses) are set to `turn:45.147.46.183:3478`, `bidpazar`, and `bidpazarpass` respectively. If `WebRTCStreamManager.tsx` uses the Twilio URL, it won't be leveraging your CoTURN setup.
-- **Development (`.env`):**
-  - `MEDIASOUP_ANNOUNCED_IP=127.0.0.1`: This will only work if your client device (browser, mobile app) is running on the exact same machine as the server AND accesses the server via `127.0.0.1` or `localhost`. If testing from another device on your LAN (e.g., a phone), this IP needs to be your computer's LAN IP (e.g., `192.168.x.x`).
-  - STUN/TURN in dev uses the production CoTURN server (`45.147.46.183:3478`). This is fine for testing if it's reachable.
+    socket.on("viewer_ready", async () => {
+      // Handle when a viewer is ready to receive media
+    });
 
-**Frontend (`page.tsx`, `WebRTCStreamManager.tsx`):**
+    // Chat and other events
+    socket.on("chat_message", (message) => {
+      // Relay chat messages to the room
+    });
 
-This is where the primary issues likely lie, given your log description.
+    // Handle disconnection and cleanup
+    socket.on("disconnect", () => {
+      // Clean up resources when a peer disconnects
+    });
+  });
 
-- **`page.tsx`**: Seems fine in how it sets up and passes props to `WebRTCStreamManager`.
-- **`WebRTCStreamManager.tsx` (Hypothesized Issues based on symptoms and outline):**
-  1.  **Failure in `getRouterRtpCapabilities` or `device.load()`:**
-      - **Symptom**: User reports "no logs showing getRouterRtpCapabilities completion."
-      - **Likely Cause**: The call to `socket.emit('getRouterRtpCapabilities', ...)` might be failing (network, server error), the promise/callback might not be handled correctly, or `device.load({ routerRtpCapabilities })` might be throwing an unhandled error. Without `device.load()` succeeding, no transports can be created.
-      - **Action**:
-        - Ensure robust logging around `socket.emit("getRouterRtpCapabilities", ...)`: log before sending, log the raw response from the server, log any errors.
-        - Ensure robust logging around `device.load(...)`: log before calling, log success, log any errors in a `try...catch`.
-        - Check the browser's network tab to see if the `getRouterRtpCapabilities` message is actually sent and if a response is received over the WebSocket.
-  2.  **Failure in Media Device Acquisition (`getUserMedia`):**
-      - **Symptom**: User reports "No media device initialization logs" and "no logs showing camera/microphone access success or failure."
-      - **Likely Cause**: `navigator.mediaDevices.getUserMedia(...)` is failing silently or its errors are not being propagated/logged correctly. This could be due to browser permissions (user denied access, or no prompt appeared), no camera/microphone available, or other hardware issues.
-      - **Action**:
-        - Ensure `getUserMedia` is wrapped in a `try...catch`.
-        - Log the success (with stream object) or error (with error object) explicitly.
-        - Call the `onMediaError` prop callback with detailed error information.
-        - This step must succeed before `producerTransport.produce()` can be called.
-  3.  **Incorrect Signaling Order or Missing Steps for Broadcaster:**
-      - The typical broadcaster flow is:
-        1.  Connect socket.
-        2.  `getRouterRtpCapabilities` -> `device.load()`.
-        3.  `createProducerTransport` -> `transport.on('connect')`, `transport.on('produce')`.
-        4.  `getUserMedia` to get local media tracks.
-        5.  `producerTransport.produce({ track })` for each track. This involves the client signaling `produce` to the server via the transport's event.
-        6.  _After_ producers are successfully created and acknowledged by the server, emit `broadcaster_ready` to the server.
-      - **If `broadcaster_ready` is emitted before server-side producers are established, viewers (and the server's `broadcaster_ready` event to the room) won't know about the media tracks.**
-  4.  **Client-Side STUN/TURN Configuration:**
-      - The `getIceServers` function (outlined at line 322) needs to correctly use the STUN/TURN URLs and credentials from `useRuntimeConfig`. **Verify it's using your self-hosted CoTURN server details in production.**
+  return io;
+}
+```
 
-**Recommendations for `WebRTCStreamManager.tsx`:**
+### 3. WebRTC Stream Manager (`src/app/(streams)/live-streams/[id]/components/WebRTCStreamManager.tsx`)
 
-1.  **Aggressively Log Critical Path**: Add detailed logs (using your `logTrace`, `logDebug`, `logError` functions) at every step of the connection and media setup process:
-    - Socket connection attempt, success, error.
-    - Emitting `getRouterRtpCapabilities`, receiving response, any errors.
-    - Calling `device.load()`, success, any errors.
-    - Attempting `getUserMedia()`, success (log the stream/tracks), any errors (log the error object).
-    - Emitting `createProducerTransport`, receiving response, any errors.
-    - Producer transport `connect` event: emitting DTLS params, server acknowledgment.
-    - Producer transport `produce` event: for each track, parameters sent, server acknowledgment (producer ID).
-    - Emitting `broadcaster_ready`.
-2.  **Robust Error Handling for `getUserMedia`**:
-    - Wrap `navigator.mediaDevices.getUserMedia(...)` in a `try...catch`.
-    - In the `catch` block, log the error type and message. Call `onMediaError` with specific details. Inform the user via UI if permissions are denied or no devices are found.
-3.  **Verify STUN/TURN Usage**:
-    - Inside your `getIceServers` function (or wherever you configure `iceServers` for `device.createSendTransport` / `device.createRecvTransport`), log the exact STUN and TURN server URLs and credentials being used. Ensure these match your `.env.docker` (for production) or `.env` (for development) and that they point to your CoTURN server for TURN.
-4.  **Sequential Flow**: Ensure operations are chained correctly using promises or async/await:
-    - Socket must be connected before `getRouterRtpCapabilities`.
-    - `device.load()` must succeed before creating transports.
-    - `getUserMedia()` must succeed before calling `producerTransport.produce()`.
-    - `producerTransport.produce()` should ideally be acknowledged by the server before the client emits `broadcaster_ready`.
+This React component handles all client-side WebRTC operations:
 
-By adding these logs and checks, you should be able to pinpoint where the process is stalling in `WebRTCStreamManager.tsx`. The most likely culprits, given your description, are an early failure in the `device.load()` sequence or an issue with `getUserMedia()`. The STUN/TURN configuration, especially for production, also needs careful verification.
+- Media device selection and access
+- Socket.IO connection for signaling
+- MediaSoup device initialization
+- Transport creation and connection
+- Media track production and consumption
+- UI rendering for video/audio elements
+- Error handling and reconnection logic
+
+Key features include:
+
+```tsx
+// Component structure
+const WebRTCStreamManager: React.FC<WebRTCStreamManagerProps> = ({
+  streamId,
+  userId,
+  username,
+  isStreamer,
+  isCameraOn,
+  isMicrophoneOn,
+  isAnonymous,
+  onConnectionError,
+  onMediaError,
+}) => {
+  // State for WebRTC and media
+  const [socket, setSocket] = useState<SocketIOClient.Socket | null>(null);
+  const [device, setDevice] = useState<MediasoupClient.Device | null>(null);
+  const [producerTransport, setProducerTransport] =
+    useState<MediasoupClient.Transport | null>(null);
+  const [consumerTransport, setConsumerTransport] =
+    useState<MediasoupClient.Transport | null>(null);
+  const [videoProducer, setVideoProducer] =
+    useState<MediasoupClient.Producer | null>(null);
+  const [audioProducer, setAudioProducer] =
+    useState<MediasoupClient.Producer | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<{
+    [id: string]: MediaStream;
+  }>({});
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("disconnected");
+
+  // Effect for initiating connection
+  useEffect(() => {
+    attemptConnection();
+    return () => {
+      cleanup();
+    };
+  }, [streamId, userId, isStreamer]);
+
+  // Socket connection function
+  const connectSocket = () => {
+    // Connect to Socket.IO with stream and user info
+  };
+
+  // MediaSoup device loading
+  const loadDevice = async () => {
+    // Load MediaSoup device with router capabilities
+  };
+
+  // Media acquisition
+  const getMedia = async () => {
+    // Get user media (camera/microphone)
+  };
+
+  // Transport setup functions
+  const setupProducerTransport = async () => {
+    // Create and set up producer transport
+  };
+
+  const setupConsumerTransport = async () => {
+    // Create and set up consumer transport
+  };
+
+  // Producing media
+  const publishTracks = async () => {
+    // Publish audio and video tracks
+  };
+
+  // Consuming media
+  const subscribeToTracks = async (producerId: string) => {
+    // Subscribe to remote tracks
+  };
+
+  // Render function
+  return (
+    <div className="webrtc-stream-manager">
+      {/* Local video */}
+      {isStreamer && localStream && (
+        <video
+          ref={(ref) => {
+            if (ref) ref.srcObject = localStream;
+          }}
+          autoPlay
+          muted
+          playsInline
+        />
+      )}
+
+      {/* Remote videos */}
+      {Object.entries(remoteStreams).map(([id, stream]) => (
+        <video
+          key={id}
+          ref={(ref) => {
+            if (ref) ref.srcObject = stream;
+          }}
+          autoPlay
+          playsInline
+        />
+      ))}
+
+      {/* Device selection UI */}
+      {isStreamer && (
+        <DeviceSelector
+          onVideoDeviceSelected={(deviceId) => {
+            // Handle video device selection
+          }}
+          onAudioDeviceSelected={(deviceId) => {
+            // Handle audio device selection
+          }}
+        />
+      )}
+
+      {/* Connection state UI */}
+      <ConnectionStatus state={connectionState} />
+    </div>
+  );
+};
+```
+
+### 4. Live Stream Page (`src/app/(streams)/live-streams/[id]/page.tsx`)
+
+This page component is responsible for:
+
+- Fetching stream details from the backend
+- Managing stream lifecycle (start/stop)
+- Handling user interactions
+- Rendering the WebRTCStreamManager and other components
+- Managing UI state for camera, microphone, etc.
+
+Structure:
+
+```tsx
+export default function LiveStreamPage({ params }: { params: { id: string } }) {
+  const { id } = params;
+  const [stream, setStream] = useState(null);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isMicrophoneOn, setIsMicrophoneOn] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const { user } = useAuth();
+  const isStreamer = stream?.userId === user?.id;
+
+  // Fetch stream details
+  useEffect(() => {
+    fetchStreamDetails(id)
+      .then((data) => {
+        setStream(data);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        setError(err);
+        setIsLoading(false);
+      });
+  }, [id]);
+
+  // Start stream
+  const handleStartStream = async () => {
+    try {
+      await startStream(id);
+      fetchStreamDetails(id).then(setStream);
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  // End stream
+  const handleEndStream = async () => {
+    try {
+      await endStream(id);
+      fetchStreamDetails(id).then(setStream);
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  // Toggle camera
+  const handleToggleCamera = () => {
+    setIsCameraOn((prev) => !prev);
+  };
+
+  // Toggle microphone
+  const handleToggleMicrophone = () => {
+    setIsMicrophoneOn((prev) => !prev);
+  };
+
+  // Handle WebRTC errors
+  const handleConnectionError = (error) => {
+    console.error("WebRTC connection error:", error);
+    setError(error);
+  };
+
+  return (
+    <div className="live-stream-page">
+      {isLoading ? (
+        <LoadingSpinner />
+      ) : error ? (
+        <ErrorDisplay error={error} />
+      ) : (
+        <>
+          <StreamHeader
+            title={stream.title}
+            streamer={stream.user.username}
+            status={stream.status}
+          />
+
+          <WebRTCStreamManager
+            streamId={id}
+            userId={user?.id}
+            username={user?.username}
+            isStreamer={isStreamer}
+            isCameraOn={isCameraOn}
+            isMicrophoneOn={isMicrophoneOn}
+            isAnonymous={!user}
+            onConnectionError={handleConnectionError}
+          />
+
+          {isStreamer && (
+            <StreamControls
+              isLive={stream.status === "LIVE"}
+              onStartStream={handleStartStream}
+              onEndStream={handleEndStream}
+              onToggleCamera={handleToggleCamera}
+              onToggleMicrophone={handleToggleMicrophone}
+              isCameraOn={isCameraOn}
+              isMicrophoneOn={isMicrophoneOn}
+            />
+          )}
+
+          <ProductListing
+            streamId={id}
+            isStreamer={isStreamer}
+            products={stream.products}
+          />
+
+          <StreamChat
+            streamId={id}
+            userId={user?.id}
+            username={user?.username}
+            isAnonymous={!user}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+### 5. Database Models (Prisma Schema)
+
+The main entities for the live streaming feature include:
+
+```prisma
+// Live Stream model
+model LiveStream {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  status      StreamStatus @default(PENDING)
+  startTime   DateTime?
+  endTime     DateTime?
+  thumbnailUrl String?
+  userId      String      // Streamer's user ID
+  user        User        @relation(fields: [userId], references: [id])
+  products    Product[]
+  listings    Listing[]   // Products listed during the stream
+  bids        Bid[]
+  messages    Message[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// Listing model (products being auctioned during stream)
+model Listing {
+  id          String      @id @default(cuid())
+  streamId    String
+  stream      LiveStream  @relation(fields: [streamId], references: [id])
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id])
+  startPrice  Float
+  status      ListingStatus @default(ACTIVE)
+  countdownDuration Int?   // In seconds
+  countdownStartTime DateTime?
+  countdownEndTime   DateTime?
+  winnerId    String?
+  winner      User?       @relation("WinningBids", fields: [winnerId], references: [id])
+  backupBuyer1Id String?
+  backupBuyer1 User?      @relation("BackupBids1", fields: [backupBuyer1Id], references: [id])
+  backupBuyer2Id String?
+  backupBuyer2 User?      @relation("BackupBids2", fields: [backupBuyer2Id], references: [id])
+  bids        Bid[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// Bid model
+model Bid {
+  id          String      @id @default(cuid())
+  amount      Float
+  streamId    String
+  stream      LiveStream  @relation(fields: [streamId], references: [id])
+  listingId   String
+  listing     Listing     @relation(fields: [listingId], references: [id])
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  createdAt   DateTime    @default(now())
+}
+
+// StreamStatus enum
+enum StreamStatus {
+  PENDING
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+// ListingStatus enum
+enum ListingStatus {
+  ACTIVE
+  COUNTDOWN
+  COMPLETED
+  CANCELLED
+}
+```
+
+### 6. Logging System (`src/lib/logger.ts`)
+
+The application uses a centralized logging system to ensure consistent logging across all components:
+
+```typescript
+// Logging levels
+export enum LogLevel {
+  TRACE = 0,
+  DEBUG = 1,
+  INFO = 2,
+  WARN = 3,
+  ERROR = 4,
+}
+
+// Current log level from environment or default based on environment
+const CURRENT_LOG_LEVEL =
+  process.env.NODE_ENV === "production" ? LogLevel.INFO : LogLevel.DEBUG;
+
+// Main logging function
+export function log(
+  level: LogLevel,
+  context: string,
+  message: string,
+  data?: any
+) {
+  if (level >= CURRENT_LOG_LEVEL) {
+    const timestamp = new Date().toISOString();
+    const levelString = LogLevel[level];
+    console.log(
+      `[${timestamp}] [${levelString}] [${context}] ${message}`,
+      data ? data : ""
+    );
+  }
+}
+
+// Logger object with convenience methods
+export const logger = {
+  trace: (context: string, message: string, data?: any) =>
+    log(LogLevel.TRACE, context, message, data),
+  debug: (context: string, message: string, data?: any) =>
+    log(LogLevel.DEBUG, context, message, data),
+  info: (context: string, message: string, data?: any) =>
+    log(LogLevel.INFO, context, message, data),
+  warn: (context: string, message: string, data?: any) =>
+    log(LogLevel.WARN, context, message, data),
+  error: (context: string, message: string, data?: any) =>
+    log(LogLevel.ERROR, context, message, data),
+};
+```
+
+## Architecture Diagram
+
+```
+                    HTTP/REST API
+User Interface <----------------> Next.js API Routes <-------> Database (MySQL/PostgreSQL)
+     |                                  |                           |
+     |                                  |                           |
+     |          WebSocket (Socket.IO)   |                           |
+     |<---------------------------> Socket Handler                  |
+     |                               |                              |
+     |          WebRTC Media         |                              |
+     |<---------------------------> MediaSoup <-----------------> Storage
+                                     |
+                                TURN Server
+                           (for NAT traversal)
+```
+
+## Development Workflow
+
+1. **Local Development**:
+
+   ```bash
+   # Install dependencies
+   npm install
+
+   # Set up environment variables
+   cp .env.example .env.local
+   # Edit .env.local with your local configuration
+
+   # Run database migrations
+   npx prisma migrate dev
+
+   # Start the development server
+   npm run dev
+   ```
+
+2. **Testing**:
+
+   ```bash
+   # Run unit tests
+   npm test
+
+   # Run E2E tests
+   npm run test:e2e
+   ```
+
+3. **Production Deployment**:
+
+   ```bash
+   # Build the application
+   npm run build
+
+   # Start the production server
+   npm start
+   ```
+
+## Documentation
+
+Comprehensive documentation is maintained in the `docs/` directory:
+
+- `STRUCTURE.md` - This document detailing project structure
+- `MEDIASOUP-SETUP.md` - MediaSoup configuration and troubleshooting
+- `WEBRTC-TROUBLESHOOTING.md` - WebRTC specific troubleshooting guide
+- `LOGGING.md` - Logging standards and best practices
+- `LIVE-STREAM.md` - Live streaming feature documentation
+- `AUTH.md` - Authentication flow and implementation details
+- `API.md` - API documentation and usage examples
+- `ENV.md` - Environment variables reference
+- `MIGRATION.md` - Guides for version migrations
+- `PRODUCTS.md` - Product management documentation
+
+## Conclusion
+
+The BidPazar application follows a modern full-stack architecture using Next.js 15 with App Router, integrating real-time features through Socket.IO and WebRTC (MediaSoup). The codebase is organized to maintain clear separation of concerns while enabling seamless integration between frontend and backend functionality.

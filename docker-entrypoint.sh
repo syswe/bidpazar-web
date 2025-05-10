@@ -1,7 +1,9 @@
 #!/bin/sh
 set -e
 
-# --- Set default values if variables are not provided by Docker/Compose ---
+echo "Starting entrypoint script..."
+
+# --- Set environment variables ---
 export APP_URL="${APP_URL:-http://localhost:3000}"
 export API_URL="${API_URL:-http://localhost:3000/api}"
 export BACKEND_API_URL="${BACKEND_API_URL:-http://localhost:3000/api}"
@@ -15,7 +17,7 @@ export TURN_USERNAME="${TURN_USERNAME:-bidpazar}"
 export TURN_PASSWORD="${TURN_PASSWORD:-bidpazarpass}"
 export STUN_SERVER_URL="${STUN_SERVER_URL:-stun:localhost:3478}"
 
-# Set defaults specific to production environment if NODE_ENV is production
+# Set specific environment variables for production
 if [ "$NODE_ENV" = "production" ]; then
   export APP_URL="${APP_URL:-https://bidpazar.com}"
   export API_URL="${API_URL:-https://bidpazar.com/api}"
@@ -27,9 +29,7 @@ if [ "$NODE_ENV" = "production" ]; then
   export WS_URL="${WS_URL:-/socket.io/}"
 fi
 
-# --- Ensure NEXT_PUBLIC_ versions exist for client build-time access (if needed) ---
-# Note: For runtime client config, we'll use an API route, but these
-# might be useful for initial values or components not needing runtime updates.
+# --- Setup NEXT_PUBLIC_ variables ---
 export NEXT_PUBLIC_APP_URL="${APP_URL}"
 export NEXT_PUBLIC_API_URL="${API_URL}"
 export NEXT_PUBLIC_SOCKET_URL="${SOCKET_URL}"
@@ -40,20 +40,24 @@ export NEXT_PUBLIC_TURN_USERNAME="${TURN_USERNAME}"
 export NEXT_PUBLIC_TURN_PASSWORD="${TURN_PASSWORD}"
 export NEXT_PUBLIC_STUN_SERVER_URL="${STUN_SERVER_URL}"
 
-# Log the final environment variables the server will use
-echo "--- Starting Next.js with effective environment variables ---"
+# Log environment variables
+echo "--- Environment variables ---"
 env | grep -E '^(APP_URL|API_URL|BACKEND_API_URL|SOCKET_URL|WEBRTC_SERVER|WS_URL|TURN_|STUN_|NODE_ENV|NEXT_PUBLIC_|DATABASE_URL|JWT_SECRET|NEXTAUTH_|PORT|SMS_|MEDIASOUP_)' | sort
-echo "-------------------------------------------------------------"
+echo "-------------------------"
 
-# Check if server.js exists
-if [ ! -f "./server.js" ]; then
-  echo "ERROR: server.js not found. Check the Next.js build ('standalone' output)."
-  echo "Files in current directory:"
-  ls -la
+# Install required development dependencies if they don't exist
+if [ ! -d "/app/node_modules/ts-node" ]; then
+  echo "Installing ts-node and related development dependencies..."
+  npm install --no-save ts-node typescript @types/node
+fi
+
+# Check for server.js
+if [ ! -f "/app/server.js" ]; then
+  echo "ERROR: server.js not found!"
+  ls -la /app
   exit 1
 fi
 
-# Execute the Next.js server
-# No need to pass env vars via 'env' command, Node.js inherits them automatically
-echo "Starting custom server with WebSocket support on ports ${PORT} and ${PORT_SOCKET}..."
+# Start the server
+echo "Starting Next.js server on ports ${PORT} and ${PORT_SOCKET}..."
 exec node server.js 

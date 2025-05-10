@@ -5,6 +5,39 @@ import * as mediasoup from "mediasoup";
 import { types as MediasoupTypes } from "mediasoup";
 import { logger } from "@/lib/logger";
 
+// Enhanced structured logging for WebRTC events
+const logEvent = (
+  event: string,
+  socketId: string,
+  data: Record<string, any> = {}
+) => {
+  logger.info(`[WebRTC:${event}]`, {
+    socketId,
+    timestamp: new Date().toISOString(),
+    ...data,
+  });
+};
+
+// Helper function to detect loopback addresses
+const isLoopbackAddress = (address?: string): boolean => {
+  if (!address) return false;
+
+  // Remove IPv6 brackets if present
+  if (address.startsWith("[") && address.endsWith("]")) {
+    address = address.substring(1, address.length - 1);
+  }
+
+  return (
+    address === "localhost" ||
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "0.0.0.0" ||
+    address === "::" ||
+    // Also check for full IPv6 localhost
+    address === "0:0:0:0:0:0:0:1"
+  );
+};
+
 // Configuration
 const mediasoupAppConfig = {
   router: {
@@ -53,6 +86,57 @@ const mediasoupAppConfig = {
   },
 };
 
+// Function to determine appropriate ICE servers based on connection type
+const getAppropriateIceConfiguration = (
+  socket: Socket
+): MediasoupTypes.WebRtcTransportOptions => {
+  const baseConfig = { ...mediasoupAppConfig.webRtcTransport };
+
+  // Check if this is a loopback connection
+  const clientIP =
+    socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
+  const host = socket.handshake.headers.host;
+  const isLoopback =
+    socket.data?.isLoopback ||
+    isLoopbackAddress(clientIP as string) ||
+    isLoopbackAddress(host?.split(":")[0]);
+
+  // For loopback connections, adjust the configuration to be more reliable
+  if (isLoopback) {
+    logger.info(
+      `Using optimized WebRTC transport config for loopback connection: ${socket.id}`
+    );
+
+    // When connecting from the same machine, we need to use the ANNOUNCED_IP
+    // more carefully to avoid ICE connectivity issues
+    const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP || "127.0.0.1";
+
+    return {
+      ...baseConfig,
+      listenIps: [
+        {
+          ip: process.env.MEDIASOUP_LISTEN_IP || "0.0.0.0",
+          announcedIp: announcedIp,
+        },
+      ],
+      // For localhost testing, these settings help with connection reliability
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: false, // On loopback, TCP can be more reliable
+      initialAvailableOutgoingBitrate: 1000000, // 1 Mbps
+    };
+  }
+
+  // Regular configuration for non-loopback connections
+  return {
+    ...baseConfig,
+    enableUdp: true,
+    enableTcp: true,
+    preferUdp: true,
+    initialAvailableOutgoingBitrate: baseConfig.initialAvailableOutgoingBitrate,
+  };
+};
+
 // Global state
 export interface ExtendedHttpServer extends HttpServer {
   io?: SocketIOServer;
@@ -89,6 +173,7 @@ type Peer = {
   consumers: Map<string, mediasoup.types.Consumer>;
   lastActivity: number;
   rtpCapabilities?: mediasoup.types.RtpCapabilities;
+  connectionType?: string; // Added to track loopback connections
 };
 
 interface Room {
@@ -494,6 +579,23 @@ export async function initializeSocketIOServer(
       const clientIp =
         socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
 
+      // Check for loopback connections
+      const host = socket.handshake.headers.host;
+      const isLoopback =
+        isLoopbackAddress(clientIp as string) ||
+        isLoopbackAddress(host?.split(":")[0]);
+
+      // Store connection type information
+      socket.data.connectionType = isLoopback ? "loopback" : "standard";
+
+      if (isLoopback) {
+        logger.info(`[Socket.IO] Loopback connection detected for WebRTC`, {
+          socketId: socket.id,
+          clientIp,
+          host,
+        });
+      }
+
       // Generate a unique session ID for this connection combining timestamp, socket ID, and random string
       const randomStr = Math.random().toString(36).substring(2, 15);
       const sessionId = `${Date.now()}-${randomStr}-${Math.floor(
@@ -516,6 +618,7 @@ export async function initializeSocketIOServer(
         isAnonymous: isAnonymousUser,
         ip: clientIp,
         transport: socket.conn.transport.name,
+        isLoopback,
         query: socket.handshake.query,
       });
 
@@ -525,6 +628,7 @@ export async function initializeSocketIOServer(
         sessionId,
         serverTime: new Date().toISOString(),
         message: "Successfully connected to BidPazar WebSocket server",
+        isLoopback: isLoopback,
       });
 
       // Connection tracking for diagnostics
@@ -555,6 +659,12 @@ export async function initializeSocketIOServer(
         const { streamId } = roomData;
         if (!streamId) return;
 
+        logEvent("joinChatRoom", socket.id, {
+          streamId,
+          userId,
+          username: username || "Anonymous",
+        });
+
         socket.join(`chat:${streamId}`);
         logger.info(`[Socket.IO] Client joined chat room: chat:${streamId}`, {
           socketId: socket.id,
@@ -575,6 +685,12 @@ export async function initializeSocketIOServer(
         const { streamId } = roomData;
         if (!streamId) return;
 
+        logEvent("leaveChatRoom", socket.id, {
+          streamId,
+          userId,
+          username: username || "Anonymous",
+        });
+
         socket.leave(`chat:${streamId}`);
         logger.info(`[Socket.IO] Client left chat room: chat:${streamId}`, {
           socketId: socket.id,
@@ -585,6 +701,13 @@ export async function initializeSocketIOServer(
       socket.on("sendChatMessage", (messageData) => {
         const { streamId, content } = messageData;
         if (!streamId || !content || !userId) return;
+
+        logEvent("sendChatMessage", socket.id, {
+          streamId,
+          userId,
+          username: username || "Anonymous",
+          messageLength: content.length,
+        });
 
         // Create message object
         const message: ChatMessage = {
@@ -625,6 +748,12 @@ export async function initializeSocketIOServer(
       socket.on("rtc_signal", (data) => {
         const { targetSocketId, signal, type } = data;
 
+        logEvent("rtc_signal", socket.id, {
+          targetSocketId,
+          streamId,
+          type,
+        });
+
         if (targetSocketId && signal) {
           // Forward signaling data to the target socket
           socket.to(targetSocketId).emit("rtc_signal", {
@@ -653,9 +782,10 @@ export async function initializeSocketIOServer(
             return;
           }
 
-          logger.info(`[WebRTC] Broadcaster ready for stream: ${streamId}`, {
-            socketId: socket.id,
+          logEvent("broadcaster_ready", socket.id, {
+            streamId,
             sessionId: data.sessionId || sessionId,
+            userId,
           });
 
           // Get the room
@@ -837,9 +967,10 @@ export async function initializeSocketIOServer(
             return;
           }
 
-          logger.info(`[WebRTC] Viewer ready for stream: ${streamId}`, {
-            socketId: socket.id,
+          logEvent("viewer_ready", socket.id, {
+            streamId,
             sessionId: data.sessionId || sessionId,
+            userId,
           });
 
           // Get the room
@@ -925,12 +1056,11 @@ export async function initializeSocketIOServer(
 
       // Handle client disconnect
       socket.on("disconnect", async (reason) => {
-        logger.info(`[Socket.IO] Client disconnected`, {
-          socketId: socket.id,
-          sessionId,
+        logEvent("disconnect", socket.id, {
           streamId: streamId || "no-stream",
           userId: userId || "anonymous",
           reason,
+          isStreamer: socket.data?.isBroadcaster || false,
         });
 
         // Clean up WebRTC resources if the stream exists
@@ -982,10 +1112,9 @@ export async function initializeSocketIOServer(
 
       // Handle WebRTC errors
       socket.on("webrtc_error", (data) => {
-        logger.error(`[WebRTC] Client reported WebRTC error`, {
-          socketId: socket.id,
-          sessionId,
+        logEvent("client_error", socket.id, {
           streamId: streamId || "no-stream",
+          sessionId,
           error: data.error,
           details: data.details || {},
         });
@@ -999,10 +1128,9 @@ export async function initializeSocketIOServer(
 
       // Debug route
       socket.on("debug", (data) => {
-        logger.debug(`[Socket.IO] Debug message from client`, {
-          socketId: socket.id,
-          sessionId,
+        logEvent("debug", socket.id, {
           ...data,
+          sessionId,
         });
 
         // Send back server stats
@@ -1022,13 +1150,12 @@ export async function initializeSocketIOServer(
             return callback({ error: "No streamId provided" });
           }
 
-          logger.info(
-            `[WebRTC] Getting router capabilities for stream: ${streamId}`,
-            {
-              socketId: socket.id,
-              sessionId: data.sessionId || sessionId,
-            }
-          );
+          logEvent("getRouterRtpCapabilities", socket.id, {
+            streamId,
+            sessionId: data.sessionId || sessionId,
+            userId,
+            connectionType: socket.data.connectionType,
+          });
 
           const room = await getOrCreateRoom(streamId);
 
@@ -1078,6 +1205,7 @@ export async function initializeSocketIOServer(
               streamId,
               userId,
               isStreamer: isStreamerUser,
+              connectionType: socket.data.connectionType,
             });
 
             // Create a new peer for this connection - THIS IS CRITICAL
@@ -1092,6 +1220,7 @@ export async function initializeSocketIOServer(
               consumers: new Map(),
               lastActivity: Date.now(),
               rtpCapabilities: data.rtpCapabilities, // Store client RTP capabilities if provided
+              connectionType: socket.data.connectionType, // Store the connection type
             };
 
             // Add the peer to the room
@@ -1102,6 +1231,7 @@ export async function initializeSocketIOServer(
               streamId,
               userId,
               isStreamer: isStreamerUser,
+              connectionType: socket.data.connectionType,
             });
           } else {
             // Update existing peer
@@ -1109,10 +1239,12 @@ export async function initializeSocketIOServer(
               streamId,
               userId,
               isStreamer: isStreamerUser,
+              connectionType: socket.data.connectionType,
             });
 
-            // Update last activity timestamp and RTP capabilities
+            // Update last activity timestamp, connection type, and RTP capabilities
             peer.lastActivity = Date.now();
+            peer.connectionType = socket.data.connectionType;
             if (data.rtpCapabilities) {
               peer.rtpCapabilities = data.rtpCapabilities;
             }
@@ -1131,35 +1263,37 @@ export async function initializeSocketIOServer(
             sessionCount: room.activeSessions.size,
           });
 
-          // Return the router capabilities
+          // Return the router capabilities with loopback flag
           callback({
             rtpCapabilities: room.router.rtpCapabilities,
             duplicateConnection,
             existingSocketId,
+            isLoopback: socket.data.connectionType === "loopback",
           });
         } catch (err) {
           logger.error("[WebRTC] Error getting router capabilities", {
             error: formatError(err),
             socketId: socket.id,
             streamId,
+            connectionType: socket.data.connectionType,
           });
           callback({ error: formatError(err) });
         }
       });
 
-      // Handle createProducerTransport
+      // Handle createProducerTransport with enhanced loopback detection
       socket.on("createProducerTransport", async (data, callback) => {
         try {
           if (!streamId) {
             return callback({ error: "No streamId provided" });
           }
 
-          logger.info(
-            `[WebRTC] Creating producer transport for stream: ${streamId}`,
-            {
-              socketId: socket.id,
-            }
-          );
+          logEvent("createProducerTransport", socket.id, {
+            streamId,
+            userId,
+            isStreamer: isStreamerUser,
+            connectionType: socket.data.connectionType,
+          });
 
           const room = await getOrCreateRoom(streamId);
 
@@ -1167,21 +1301,34 @@ export async function initializeSocketIOServer(
           const peer = room.peers.get(socket.id);
           if (peer) {
             peer.lastActivity = Date.now();
+            peer.connectionType = socket.data.connectionType;
           } else {
             return callback({ error: "Peer not found" });
           }
 
+          // Get appropriate WebRTC transport config based on connection type (loopback or standard)
+          const transportConfig = getAppropriateIceConfiguration(socket);
+
           // Create a WebRTC transport
-          const transport = await room.router.createWebRtcTransport({
-            ...mediasoupAppConfig.webRtcTransport,
-            enableUdp: true,
-            enableTcp: true,
-            preferUdp: true,
-            enableSctp: true,
-          });
+          const transport = await room.router.createWebRtcTransport(
+            transportConfig
+          );
 
           // Store the transport
           peer.transports.set(transport.id, transport);
+
+          // Monitor ICE connection state for loopback connections
+          transport.on("icestatechange", (iceState) => {
+            logger.info(
+              `[WebRTC] ICE state changed to ${iceState} for transport`,
+              {
+                transportId: transport.id,
+                socketId: socket.id,
+                isLoopback: socket.data.connectionType === "loopback",
+                streamId,
+              }
+            );
+          });
 
           // Set up transport close handler
           transport.on("routerclose", () => {
@@ -1195,6 +1342,8 @@ export async function initializeSocketIOServer(
             iceParameters: transport.iceParameters,
             iceCandidates: transport.iceCandidates,
             dtlsParameters: transport.dtlsParameters,
+            // For loopback connections, provide additional guidance
+            isLoopback: socket.data.connectionType === "loopback",
           });
 
           // If this is a streamer, enforce only one streamer per room
@@ -1206,25 +1355,25 @@ export async function initializeSocketIOServer(
             error,
             streamId,
             socketId: socket.id,
+            isLoopback: socket.data.connectionType === "loopback",
           });
           callback({ error: "Error creating producer transport" });
         }
       });
 
-      // Handle createConsumerTransport
+      // Handle createConsumerTransport with enhanced loopback detection
       socket.on("createConsumerTransport", async (data, callback) => {
         try {
           if (!streamId) {
             return callback({ error: "No streamId provided" });
           }
 
-          logger.info(
-            `[WebRTC] Creating consumer transport for stream: ${streamId}`,
-            {
-              socketId: socket.id,
-              sessionId: data.sessionId || sessionId,
-            }
-          );
+          logEvent("createConsumerTransport", socket.id, {
+            streamId,
+            sessionId: data.sessionId || sessionId,
+            userId,
+            connectionType: socket.data.connectionType,
+          });
 
           const room = await getOrCreateRoom(streamId);
           const peer = room.peers.get(socket.id);
@@ -1233,22 +1382,30 @@ export async function initializeSocketIOServer(
             throw new Error("Peer not found, please reconnect");
           }
 
-          // Update peer activity timestamp
+          // Update peer activity timestamp and connection type
           peer.lastActivity = Date.now();
+          peer.connectionType = socket.data.connectionType;
+
+          // Get appropriate WebRTC transport config based on connection type
+          const transportConfig = getAppropriateIceConfiguration(socket);
 
           // Create a new WebRTC transport on the server
-          const transport = await room.router.createWebRtcTransport({
-            listenIps: mediasoupAppConfig.webRtcTransport.listenIps,
-            enableUdp: true,
-            enableTcp: true,
-            preferUdp: true,
-            initialAvailableOutgoingBitrate:
-              mediasoupAppConfig.webRtcTransport
-                .initialAvailableOutgoingBitrate,
-          });
+          const transport = await room.router.createWebRtcTransport(
+            transportConfig
+          );
 
           // Store the transport
           peer.transports.set(transport.id, transport);
+
+          // Monitor ICE connection state for loopback connections
+          transport.on("icestatechange", (iceState) => {
+            logger.info(`[WebRTC] Consumer ICE state changed to ${iceState}`, {
+              transportId: transport.id,
+              socketId: socket.id,
+              isLoopback: socket.data.connectionType === "loopback",
+              streamId,
+            });
+          });
 
           // Return transport parameters to the client
           callback({
@@ -1256,12 +1413,14 @@ export async function initializeSocketIOServer(
             iceParameters: transport.iceParameters,
             iceCandidates: transport.iceCandidates,
             dtlsParameters: transport.dtlsParameters,
+            isLoopback: socket.data.connectionType === "loopback",
           });
         } catch (err) {
           logger.error("[WebRTC] Error creating consumer transport", {
             error: formatError(err),
             socketId: socket.id,
             streamId,
+            isLoopback: socket.data.connectionType === "loopback",
           });
           callback({ error: formatError(err) });
         }
@@ -1274,9 +1433,10 @@ export async function initializeSocketIOServer(
             return callback({ error: "Missing required parameters" });
           }
 
-          logger.info(`[WebRTC] Connecting transport for stream: ${streamId}`, {
+          logEvent("connectTransport", socket.id, {
+            streamId,
             transportId: data.transportId,
-            socketId: socket.id,
+            userId,
           });
 
           const room = await getOrCreateRoom(streamId);
@@ -1327,13 +1487,13 @@ export async function initializeSocketIOServer(
             return callback({ error: "Missing required parameters" });
           }
 
-          logger.info(
-            `[WebRTC] Producing ${data.kind} media for stream: ${streamId}`,
-            {
-              transportId: data.transportId,
-              socketId: socket.id,
-            }
-          );
+          logEvent("produce", socket.id, {
+            streamId,
+            transportId: data.transportId,
+            kind: data.kind,
+            userId,
+            isStreamer: isStreamerUser,
+          });
 
           const room = await getOrCreateRoom(streamId);
 
@@ -1400,8 +1560,9 @@ export async function initializeSocketIOServer(
             return callback({ error: "No streamId provided" });
           }
 
-          logger.info(`[WebRTC] Getting producers for stream: ${streamId}`, {
-            socketId: socket.id,
+          logEvent("getProducers", socket.id, {
+            streamId,
+            userId,
           });
 
           const room = await getOrCreateRoom(streamId);
@@ -1453,10 +1614,11 @@ export async function initializeSocketIOServer(
             return callback({ error: "No streamId provided" });
           }
 
-          logger.info(`[WebRTC] Consume request for stream: ${streamId}`, {
-            socketId: socket.id,
+          logEvent("consume", socket.id, {
+            streamId,
             producerId: data.producerId,
             transportId: data.transportId,
+            userId,
           });
 
           const room = await getOrCreateRoom(streamId);
@@ -1558,9 +1720,10 @@ export async function initializeSocketIOServer(
             return callback({ error: "Missing required parameters" });
           }
 
-          logger.info(`[WebRTC] Resuming consumer: ${data.consumerId}`, {
-            socketId: socket.id,
+          logEvent("resumeConsumer", socket.id, {
             streamId,
+            consumerId: data.consumerId,
+            userId,
           });
 
           const room = await getOrCreateRoom(streamId);
@@ -1599,12 +1762,70 @@ export async function initializeSocketIOServer(
             return callback({ success: false, error: "No streamId provided" });
           }
 
-          logger.info(
-            `[WebRTC] Saving RTP capabilities for ${socket.id} in stream ${streamId}`
-          );
+          logEvent("connectRtpCapabilities", socket.id, {
+            streamId,
+            userId,
+            isStreamer: isStreamerUser,
+            hasRtpCapabilities: !!data.rtpCapabilities,
+            isReconnection: !!data.isReconnection,
+          });
 
           const room = await getOrCreateRoom(streamId);
           let peer = room.peers.get(socket.id);
+
+          // Handle reconnection scenario
+          const isReconnection = !!data.isReconnection;
+          let previousSessionFound = false;
+
+          if (isReconnection && data.sessionId) {
+            logger.info(
+              `[WebRTC] Processing reconnection with session recovery`,
+              {
+                streamId,
+                userId,
+                sessionId: data.sessionId,
+              }
+            );
+
+            // Check if the provided session ID is associated with an active socket
+            const existingSocketId = room.activeSessions.get(data.sessionId);
+            if (existingSocketId && existingSocketId !== socket.id) {
+              const existingPeer = room.peers.get(existingSocketId);
+
+              if (existingPeer) {
+                logger.info(
+                  `[WebRTC] Found existing peer for session during reconnection`,
+                  {
+                    streamId,
+                    userId,
+                    sessionId: data.sessionId,
+                    existingSocketId,
+                  }
+                );
+
+                // Transfer information from the old peer to the new one if needed
+                previousSessionFound = true;
+
+                // If old peer exists but is inactive, clean it up
+                if (Date.now() - existingPeer.lastActivity > 30000) {
+                  // 30 seconds
+                  logger.info(
+                    `[WebRTC] Removing stale peer during reconnection`,
+                    {
+                      streamId,
+                      userId,
+                      sessionId: data.sessionId,
+                      existingSocketId,
+                    }
+                  );
+
+                  removeExistingPeer(room, existingSocketId);
+                  room.activeSessions.delete(data.sessionId);
+                  room.activeSessions.set(data.sessionId, socket.id);
+                }
+              }
+            }
+          }
 
           if (!peer) {
             logger.warn(
@@ -1612,6 +1833,7 @@ export async function initializeSocketIOServer(
               {
                 streamId,
                 peers: Array.from(room.peers.keys()),
+                isReconnection,
               }
             );
 
@@ -1620,18 +1842,20 @@ export async function initializeSocketIOServer(
               socketId: socket.id,
               userId: userId as string,
               username: username as string,
-              sessionId: sessionId,
+              sessionId:
+                isReconnection && data.sessionId ? data.sessionId : sessionId,
               isStreamer: isStreamerUser,
               transports: new Map(),
               producers: new Map(),
               consumers: new Map(),
               lastActivity: Date.now(),
               rtpCapabilities: data.rtpCapabilities,
+              connectionType: socket.data.connectionType, // Store the connection type
             };
 
             // Add the peer to the room
             room.peers.set(socket.id, peer);
-            room.activeSessions.set(sessionId, socket.id);
+            room.activeSessions.set(peer.sessionId, socket.id);
 
             logger.info(
               `[WebRTC] Added new peer for RTP capabilities: ${socket.id}`,
@@ -1639,12 +1863,14 @@ export async function initializeSocketIOServer(
                 streamId,
                 userId,
                 isStreamer: isStreamerUser,
+                isReconnection,
               }
             );
           } else {
             // Store the client's RTP capabilities
             peer.rtpCapabilities = data.rtpCapabilities;
             peer.lastActivity = Date.now();
+            peer.connectionType = socket.data.connectionType;
 
             logger.info(
               `[WebRTC] Updated RTP capabilities for existing peer: ${socket.id}`

@@ -203,10 +203,57 @@ app.use(cors());
 // Create HTTP server
 const httpServer = createServer(app);
 
+// Helper function to detect loopback addresses
+const isLoopbackAddress = (address) => {
+  if (!address) return false;
+
+  // Remove IPv6 brackets if present
+  if (address.startsWith("[") && address.endsWith("]")) {
+    address = address.substring(1, address.length - 1);
+  }
+
+  return (
+    address === "localhost" ||
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "0.0.0.0" ||
+    address === "::" ||
+    // Also check for full IPv6 localhost
+    address === "0:0:0:0:0:0:0:1"
+  );
+};
+
 // WebSocket handling upgrade events directly
 httpServer.on("upgrade", (request, socket, head) => {
   // Check if the request is for Socket.IO
   const isSocketIORequest = request.url.startsWith("/socket.io/");
+  const clientIP =
+    request.headers["x-forwarded-for"] || request.connection.remoteAddress;
+  const host = request.headers.host;
+
+  // Log the connection with additional client info
+  logger.debug(`WebSocket upgrade request: ${request.url}`, {
+    isSocketIO: isSocketIORequest,
+    clientIP,
+    host,
+    headers: {
+      origin: request.headers.origin,
+      host: request.headers.host,
+      "user-agent": request.headers["user-agent"],
+    },
+  });
+
+  // Check for potential loopback issues
+  const isLoopback =
+    isLoopbackAddress(clientIP) || isLoopbackAddress(host?.split(":")[0]);
+
+  if (isLoopback && process.env.NODE_ENV === "production") {
+    logger.warn(`Potential loopback connection detected: ${request.url}`, {
+      clientIP,
+      host,
+    });
+    // In production we might want to add additional validation here
+  }
 
   if (isSocketIORequest) {
     // Let Socket.IO handle its own connections
@@ -319,6 +366,35 @@ app
         },
       });
 
+      // Add loopback protection middleware for Socket.IO
+      io.use((socket, next) => {
+        const clientIP =
+          socket.handshake.headers["x-forwarded-for"] ||
+          socket.handshake.address;
+        const host = socket.handshake.headers.host;
+
+        // Store connection details in socket data for diagnostics
+        socket.data.clientIP = clientIP;
+        socket.data.host = host;
+        socket.data.isLoopback =
+          isLoopbackAddress(clientIP) || isLoopbackAddress(host?.split(":")[0]);
+
+        // Log potential loopback connections
+        if (socket.data.isLoopback) {
+          logger.info(`Socket.IO loopback connection detected`, {
+            clientIP,
+            host,
+            id: socket.id,
+            transportName: socket.conn?.transport?.name,
+          });
+
+          // Set a flag to handle loopback connections differently
+          socket.data.connectionType = "loopback";
+        }
+
+        next();
+      });
+
       // Enhanced error handling for Socket.IO
       io.engine.on("connection_error", (err) => {
         console.error("[Socket.IO] Connection error:", {
@@ -396,6 +472,19 @@ app
     httpServer.on("upgrade", (req, socket, head) => {
       // Log the request for debugging
       console.log(`[Server] WebSocket upgrade request for: ${req.url}`);
+
+      // Detect and handle loopback connections
+      const clientIP =
+        req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+      const host = req.headers.host;
+      const isLoopback =
+        isLoopbackAddress(clientIP) || isLoopbackAddress(host?.split(":")[0]);
+
+      if (isLoopback) {
+        logger.info(
+          `[Server] Loopback WebSocket connection from ${clientIP} for ${req.url}`
+        );
+      }
 
       // Only attempt to handle if it's NOT a Socket.IO request
       // Socket.IO attaches its own handlers and will handle its own requests
