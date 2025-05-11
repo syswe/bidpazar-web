@@ -279,6 +279,40 @@ async function startMediasoupWorker() {
   }
   try {
     logger.info("[MediaSoup] Creating Mediasoup worker...");
+    
+    // Debug output to help diagnose worker issues
+    try {
+      const { execSync } = require('child_process');
+      const fs = require('fs');
+      
+      // Check if mediasoup module exists
+      if (fs.existsSync('./node_modules/mediasoup')) {
+        logger.info("[MediaSoup] MediaSoup module found in node_modules");
+        
+        // Check if worker path exists
+        const workerPath = require.resolve('mediasoup/worker/out/Release/mediasoup-worker');
+        logger.info(`[MediaSoup] Worker resolved path: ${workerPath}`);
+        
+        // Check if executable exists and has correct permissions
+        const stats = fs.statSync(workerPath);
+        logger.info(`[MediaSoup] Worker file stats: ${JSON.stringify({
+          size: stats.size,
+          mode: stats.mode.toString(8),
+          isExecutable: !!(stats.mode & 0o111)
+        })}`);
+        
+        // Make sure it's executable
+        if (!(stats.mode & 0o111)) {
+          logger.info("[MediaSoup] Making worker executable");
+          fs.chmodSync(workerPath, stats.mode | 0o111);
+        }
+      } else {
+        logger.error("[MediaSoup] MediaSoup module not found in node_modules!");
+      }
+    } catch (debugErr) {
+      logger.error("[MediaSoup] Error during worker path debugging:", debugErr);
+    }
+    
     mediasoupWorker = await mediasoup.createWorker({
       logLevel: mediasoupAppConfig.worker.logLevel,
       logTags: mediasoupAppConfig.worker.logTags,
@@ -1957,32 +1991,118 @@ async function createMediasoupWorker(): Promise<MediasoupTypes.Worker> {
   const { worker: workerConfig } = mediasoupAppConfig;
 
   logger.info("[MediaSoup] Creating MediaSoup worker");
-  const worker = await mediasoup.createWorker({
-    logLevel: workerConfig.logLevel as MediasoupTypes.WorkerLogLevel,
-    logTags: workerConfig.logTags as MediasoupTypes.WorkerLogTag[],
-    rtcMinPort: workerConfig.rtcMinPort,
-    rtcMaxPort: workerConfig.rtcMaxPort,
-  });
-
-  worker.on("died", (error) => {
-    logger.error(
-      "[MediaSoup] MediaSoup worker died unexpectedly, attempting restart",
-      { error: error?.toString() }
-    );
-    // Attempt to create a new worker
-    setTimeout(async () => {
-      try {
-        mediasoupWorker = await createMediasoupWorker();
-        // @ts-ignore
-        global.mediasoupWorker = mediasoupWorker;
-        logger.info("[MediaSoup] MediaSoup worker restarted successfully");
-      } catch (e) {
-        logger.error("[MediaSoup] Failed to restart MediaSoup worker", {
-          error: e,
-        });
+  
+  // Debug worker path
+  try {
+    const { execSync } = require('child_process');
+    const fs = require('fs');
+    
+    logger.info("[MediaSoup] Checking MediaSoup installation status");
+    
+    // Check node_modules structure
+    if (fs.existsSync('./node_modules/mediasoup')) {
+      const files = fs.readdirSync('./node_modules/mediasoup');
+      logger.info(`[MediaSoup] Files in mediasoup dir: ${files.join(', ')}`);
+      
+      if (fs.existsSync('./node_modules/mediasoup/worker')) {
+        const workerFiles = fs.readdirSync('./node_modules/mediasoup/worker');
+        logger.info(`[MediaSoup] Files in worker dir: ${workerFiles.join(', ')}`);
+        
+        // Check worker binary
+        const workerPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
+        if (fs.existsSync(workerPath)) {
+          logger.info(`[MediaSoup] Worker binary exists at ${workerPath}`);
+          
+          // Make sure it's executable
+          try {
+            fs.chmodSync(workerPath, 0o755);
+            logger.info("[MediaSoup] Made worker binary executable");
+          } catch (chmodErr) {
+            logger.error("[MediaSoup] Error making worker executable:", chmodErr);
+          }
+        } else {
+          logger.error(`[MediaSoup] Worker binary NOT found at expected path: ${workerPath}`);
+        }
       }
-    }, 2000);
-  });
+    } else {
+      logger.error("[MediaSoup] MediaSoup module directory not found!");
+    }
+  } catch (debugErr) {
+    logger.error("[MediaSoup] Error debugging mediasoup installation:", debugErr);
+  }
+  
+  try {
+    const worker = await mediasoup.createWorker({
+      logLevel: workerConfig.logLevel as MediasoupTypes.WorkerLogLevel,
+      logTags: workerConfig.logTags as MediasoupTypes.WorkerLogTag[],
+      rtcMinPort: workerConfig.rtcMinPort,
+      rtcMaxPort: workerConfig.rtcMaxPort,
+    });
 
-  return worker;
+    worker.on("died", (error) => {
+      logger.error(
+        "[MediaSoup] MediaSoup worker died unexpectedly, attempting restart",
+        { error: error?.toString() }
+      );
+      // Attempt to create a new worker
+      setTimeout(async () => {
+        try {
+          mediasoupWorker = await createMediasoupWorker();
+          // @ts-ignore
+          global.mediasoupWorker = mediasoupWorker;
+          logger.info("[MediaSoup] MediaSoup worker restarted successfully");
+        } catch (e) {
+          logger.error("[MediaSoup] Failed to restart MediaSoup worker", {
+            error: e,
+          });
+        }
+      }, 2000);
+    });
+
+    return worker;
+  } catch (error) {
+    logger.error("[MediaSoup] Failed to create worker with config:", {
+      error,
+      config: {
+        rtcMinPort: workerConfig.rtcMinPort,
+        rtcMaxPort: workerConfig.rtcMaxPort,
+        logLevel: workerConfig.logLevel,
+      }
+    });
+    
+    // Try to find mediasoup worker binary with more detailed paths
+    try {
+      const path = require('path');
+      const fs = require('fs');
+      
+      const possiblePaths = [
+        './node_modules/mediasoup/worker/out/Release/mediasoup-worker',
+        '/app/node_modules/mediasoup/worker/out/Release/mediasoup-worker',
+        path.resolve('./node_modules/mediasoup/worker/out/Release/mediasoup-worker')
+      ];
+      
+      logger.info("[MediaSoup] Searching for worker binary in possible locations:");
+      possiblePaths.forEach(p => {
+        logger.info(`  - ${p}: ${fs.existsSync(p) ? 'EXISTS' : 'NOT FOUND'}`);
+      });
+      
+      // Try to reinstall mediasoup as a last resort
+      logger.info("[MediaSoup] Emergency: Trying to reinstall mediasoup");
+      const { execSync } = require('child_process');
+      execSync('npm install mediasoup@3', { stdio: 'inherit' });
+      
+      // Check if that fixed it
+      const reinstallPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
+      if (fs.existsSync(reinstallPath)) {
+        logger.info("[MediaSoup] Successfully reinstalled mediasoup, binary now exists");
+        fs.chmodSync(reinstallPath, 0o755);
+      } else {
+        logger.error("[MediaSoup] Reinstall failed, binary still missing");
+      }
+    } catch (searchErr) {
+      logger.error("[MediaSoup] Error during emergency recovery:", searchErr);
+    }
+    
+    throw error;
+  }
 }

@@ -1,0 +1,48 @@
+version: '3'
+services:
+  web:
+    image: bidpazar:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+      # Range of ports for MediaSoup WebRTC
+      - "40000-40100:40000-40100/udp"
+    cap_add:
+      - SYS_NICE  # Allows the container to set process priorities
+    env_file:
+      - .env
+    environment:
+      # Environment variables for MediaSoup
+      - NODE_ENV=production
+      - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
+      - MEDIASOUP_LISTEN_IP=0.0.0.0
+      - MEDIASOUP_MIN_PORT=40000
+      - MEDIASOUP_MAX_PORT=40100
+      # Required environment variables for the app
+      - DATABASE_URL=${DATABASE_URL}
+      - SOCKET_URL=${SOCKET_URL}
+      - APP_URL=${APP_URL}
+      - API_URL=${API_URL}
+      - BACKEND_API_URL=${BACKEND_API_URL}
+      - WEBRTC_SERVER=${WEBRTC_SERVER}
+      - TURN_SERVER_URL=${TURN_SERVER_URL}
+      - TURN_USERNAME=${TURN_USERNAME}
+      - TURN_PASSWORD=${TURN_PASSWORD}
+      - STUN_SERVER_URL=${STUN_SERVER_URL}
+      - REDIS_URL=${REDIS_URL}
+      - WS_URL=${WS_URL:-/socket.io}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    volumes:
+      - ./public/uploads:/app/public/uploads
+      - ./public/profile:/app/public/profile
+      - ./logs:/app/logs
+    depends_on:
+      - db
+    networks:
+      - app-network

@@ -6,6 +6,8 @@ const { join } = require("path");
 const fs = require("fs");
 const { Server: SocketIOServer } = require("socket.io");
 const cors = require("cors");
+const path = require('path');
+const { execSync } = require('child_process');
 
 // Important: Set Next.js runtime flags before loading anything else
 process.env.NODE_ENV = process.env.NODE_ENV || "development";
@@ -640,3 +642,35 @@ app
     }
     process.exit(1);
   });
+
+// Check and fix MediaSoup worker binary permissions
+function ensureMediasoupWorkerExecutable() {
+  try {
+    const mediasoupPath = require.resolve('mediasoup');
+    const workerPath = path.join(path.dirname(mediasoupPath), '..', 'worker', 'out', 'Release', 'mediasoup-worker');
+    
+    if (fs.existsSync(workerPath)) {
+      const stats = fs.statSync(workerPath);
+      // Make sure it's executable
+      if (!(stats.mode & 0o111)) {
+        console.log("Making MediaSoup worker executable:", workerPath);
+        fs.chmodSync(workerPath, stats.mode | 0o111);
+      }
+    } else {
+      console.error("MediaSoup worker binary not found at:", workerPath);
+      
+      // Try rebuilding as a last resort
+      try {
+        console.log("Attempting to rebuild MediaSoup...");
+        execSync('npm install --no-save mediasoup@3', { stdio: 'inherit' });
+      } catch (rebuildErr) {
+        console.error("Failed to rebuild MediaSoup:", rebuildErr.message);
+      }
+    }
+  } catch (error) {
+    console.error("Error ensuring MediaSoup worker executable:", error.message);
+  }
+}
+
+// Ensure MediaSoup worker is executable
+ensureMediasoupWorkerExecutable();

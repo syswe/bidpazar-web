@@ -27,6 +27,15 @@ RUN npm install --no-save ts-node typescript @types/node
 # Install Node.js dependencies
 RUN npm ci
 
+# Explicitly install mediasoup and build its worker
+RUN apt-get update && apt-get install -y python3 make g++ pkg-config libssl-dev \
+    && npm install mediasoup@3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify the mediasoup binary was built
+RUN ls -la ./node_modules/mediasoup/worker/out/Release/ || echo "MediaSoup worker not built correctly"
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
@@ -87,11 +96,23 @@ COPY --from=builder /app/dist ./dist
 # Copy module-alias package which is required by server.js
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 
+# Install required dependencies including mediasoup
+RUN apt-get update && apt-get install -y \
+    python3 make g++ pkg-config libssl-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install all required development dependencies
 RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-client ws cors
 
-# Copy MediaSoup from the builder stage after it's been built
+# Install mediasoup in the runner stage to ensure its binary is properly built
+RUN npm install mediasoup@3
+
+# Copy MediaSoup from the builder stage as backup (but we've already installed it above)
 COPY --from=builder /app/node_modules/mediasoup ./node_modules/mediasoup
+
+# Verify the mediasoup binary exists
+RUN ls -la ./node_modules/mediasoup/worker/out/Release/ || echo "MediaSoup worker binary missing in final image"
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public
