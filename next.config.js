@@ -117,6 +117,27 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: "/socket.io",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PUT, DELETE, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "X-Requested-With, Content-Type, Authorization",
+          },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
+          },
+        ],
+      },
     ];
   },
   // Enhanced rewrites for Socket.IO and WebSocket paths
@@ -126,6 +147,11 @@ const nextConfig = {
       {
         source: "/socket.io/:path*",
         destination: "/socket.io/:path*",
+      },
+      // Add support for Socket.IO with query parameters (no trailing slash)
+      {
+        source: "/socket.io",
+        destination: "/socket.io",
       },
     ];
   },

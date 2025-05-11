@@ -57,7 +57,9 @@ export async function middleware(request: NextRequest) {
   // Special check for WebSocket and Socket.IO requests
   // Excluded from middleware processing to prevent connection issues
   const isSocketPath =
-    path.includes("/socket.io") ||
+    path === "/socket.io" ||
+    path.startsWith("/socket.io/") ||
+    path.startsWith("/socket.io?") ||
     path.startsWith("/api/socket") ||
     path.startsWith("/sockets/") ||
     path.includes("/__nextjs_original-stack-frame") ||
@@ -72,7 +74,9 @@ export async function middleware(request: NextRequest) {
     // Include EIO parameter which is used by Socket.IO
     request.nextUrl.searchParams.has("EIO") ||
     // Socket.IO polling transport should also bypass middleware
-    (request.nextUrl.pathname.includes("/socket.io") &&
+    ((path === "/socket.io" || 
+      path.startsWith("/socket.io/") || 
+      path.startsWith("/socket.io?")) &&
       (request.nextUrl.searchParams.has("transport") ||
         request.nextUrl.searchParams.has("sid")));
 
@@ -148,7 +152,7 @@ export const config = {
      */
     {
       source:
-        "/((?!_next/static|_next/image|socket\\.io|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets).*)",
+        "/((?!_next/static|_next/image|socket\\.io|socket\\.io/|socket\\.io\\?|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets).*)",
       missing: [
         { type: "header", key: "upgrade", value: "websocket" },
         { type: "query", key: "EIO" },

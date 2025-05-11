@@ -514,8 +514,8 @@ export async function initializeSocketIOServer(
         // Allow all transports with WebSocket preferred
         transports: ["websocket", "polling"],
         allowUpgrades: true,
-        // Path and settings
-        path: "/socket.io/",
+        // Path and settings - make sure it's consistent with server.js
+        path: "/socket.io", // No trailing slash
         serveClient: false, // Don't serve client files to save bandwidth
         connectTimeout: 45000, // 45 seconds (more than default 20s)
         // Polling settings

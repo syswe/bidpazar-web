@@ -36,7 +36,7 @@ const defaultConfig: RuntimeConfig = {
     typeof window !== "undefined"
       ? window.location.origin
       : "http://localhost:3000",
-  wsUrl: "/socket.io",
+  wsUrl: "/socket.io", // No trailing slash to match server configuration
   stunServerUrl: "stun:stun.l.google.com:19302",
 };
 

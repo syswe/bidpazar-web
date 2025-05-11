@@ -919,7 +919,7 @@ export default function WebRTCStreamManager({
     const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "";
     const locationOrigin = window.location.origin;
 
-    const wsPath = runtimeConfig?.wsUrl || "/socket.io/";
+    const wsPath = runtimeConfig?.wsUrl || "/socket.io"; // No trailing slash
 
     logInfo("Signaling server connection details", {
       effectiveSocketUrl,
@@ -943,7 +943,7 @@ export default function WebRTCStreamManager({
 
     // Improved configuration with exponential backoff
     const socket = io(effectiveSocketUrl, {
-      path: wsPath,
+      path: wsPath, // Using the path without trailing slash
       query: {
         streamId,
         userId: effectiveUserId,
@@ -1489,7 +1489,7 @@ export default function WebRTCStreamManager({
         const currentAttemptUrl =
           attemptCount === 1
             ? baseUrl
-            : `${baseUrl}/socket.io/?EIO=4&transport=websocket`;
+            : `${baseUrl}/socket.io?EIO=4&transport=websocket`;
 
         logInfo(
           `[WebRTCManager] WS Connection attempt ${attemptCount}/${maxAttempts} to: ${currentAttemptUrl}`
@@ -3464,7 +3464,6 @@ export default function WebRTCStreamManager({
         transportRef.current.consumer.close();
         transportRef.current.consumer = null;
       }
-
       // Stop local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -3626,6 +3625,7 @@ export default function WebRTCStreamManager({
     try {
       // Get socket URL from config
       const socketUrl = runtimeConfig?.socketUrl || window.location.origin;
+      const wsPath = runtimeConfig?.wsUrl || "/socket.io"; // No trailing slash
 
       const isLoopback =
         detectedLoopback ||
@@ -3635,11 +3635,13 @@ export default function WebRTCStreamManager({
 
       logInfo("Connecting to Socket.IO server", {
         socketUrl,
+        wsPath,
         isLoopback,
       });
 
       // Configure socket connection with loopback info
       const socket = io(socketUrl, {
+        path: wsPath, // Explicitly set the path without trailing slash
         transports: isLoopback
           ? ["polling", "websocket"]
           : ["websocket", "polling"],
@@ -3657,6 +3659,8 @@ export default function WebRTCStreamManager({
           sessionId,
           isLoopback: isLoopback ? "true" : "false", // Send loopback info to server
         },
+        // Fix for trailing slash issues in Next.js 13+
+        addTrailingSlash: false,
       });
 
       // Rest of existing socket connection code...
@@ -4832,3 +4836,4 @@ declare module "mediasoup-client" {
     }
   }
 }
+

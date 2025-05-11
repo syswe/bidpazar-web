@@ -117,7 +117,7 @@ export default function BiddingInterface({
       auth: {
         token
       },
-      path: "/socket.io/",
+      path: "/socket.io",
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000

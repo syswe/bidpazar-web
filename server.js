@@ -238,7 +238,12 @@ const isLoopbackAddress = (address) => {
 // WebSocket handling upgrade events directly
 httpServer.on("upgrade", (request, socket, head) => {
   // Check if the request is for Socket.IO
-  const isSocketIORequest = request.url.startsWith("/socket.io/");
+  // Update detection to handle both /socket.io/ and /socket.io? patterns
+  const isSocketIORequest = 
+    request.url.startsWith("/socket.io/") || 
+    request.url.startsWith("/socket.io?") || 
+    request.url === "/socket.io";
+  
   const clientIP =
     request.headers["x-forwarded-for"] || request.connection.remoteAddress;
   const host = request.headers.host;
@@ -353,7 +358,7 @@ app
         transports: ["websocket", "polling"],
         allowUpgrades: true,
         // Path and settings
-        path: "/socket.io/",
+        path: "/socket.io", // Ensure no trailing slash
         serveClient: false, // Don't serve client files to save bandwidth
         connectTimeout: 45000, // 45 seconds (more than default 20s)
         // Polling settings
@@ -373,10 +378,10 @@ app
         // Detailed logging
         // @ts-ignore - logger option is available in socket.io
         logger: {
-          debug: (...args) => logger.debug("[Socket.IO Debug]", ...args),
-          info: (...args) => logger.info("[Socket.IO Info]", ...args),
-          warn: (...args) => logger.warn("[Socket.IO Warning]", ...args),
-          error: (...args) => logger.error("[Socket.IO Error]", ...args),
+          debug: (...args) => logger.debug("[Socket.IO] Debug", ...args),
+          info: (...args) => logger.info("[Socket.IO] Info", ...args),
+          warn: (...args) => logger.warn("[Socket.IO] Warning", ...args),
+          error: (...args) => logger.error("[Socket.IO] Error", ...args),
         },
       });
 
@@ -502,7 +507,8 @@ app
 
       // Only attempt to handle if it's NOT a Socket.IO request
       // Socket.IO attaches its own handlers and will handle its own requests
-      if (!req.url.includes("/socket.io")) {
+      // Use the same improved detection logic
+      if (!req.url.startsWith("/socket.io") && !req.url.includes("/socket.io?")) {
         console.log(
           `[Server] Unhandled WebSocket upgrade request for: ${req.url}`
         );
@@ -531,7 +537,7 @@ app
         process.exit(1);
       }
       console.log(`> Server ready on http://${hostname}:${port}`);
-      console.log(`> Socket.IO path: /socket.io/`);
+      console.log(`> Socket.IO path: /socket.io`);
     });
 
     httpServer.on("error", (err) => {

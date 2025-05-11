@@ -104,7 +104,7 @@ export default function WebRTCDiagnosticTool({
       }
 
       socketRef.current = io(socketUrl, {
-        path: process.env.NEXT_PUBLIC_WS_URL || "/socket.io/",
+        path: process.env.NEXT_PUBLIC_WS_URL || "/socket.io",
         transports: isLoopback
           ? ["polling", "websocket"]
           : ["websocket", "polling"],
