@@ -138,6 +138,14 @@ export default function WebRTCStreamManager({
     }
   }, []);
   
+  // Handle connection errors
+  const handleConnectionError = useCallback((error: { type: string; message: string; canReconnect: boolean; details?: any }) => {
+    setError(error.message);
+    if (onConnectionError) {
+      onConnectionError(error);
+    }
+  }, [onConnectionError]);
+  
   // Set up MediaSoup device
   const { 
     deviceRef, 
@@ -184,7 +192,7 @@ export default function WebRTCStreamManager({
         onParticipantCount(count);
       }
     },
-    onConnectionError,
+    onConnectionError: handleConnectionError,
     isLoopbackConnection,
     optimizeForLoopback,
     onLoopbackDetected
@@ -393,14 +401,6 @@ export default function WebRTCStreamManager({
       }
     };
   }, [streamId, isStreamer, componentInstanceId, isLoopbackConnection]);
-  
-  // Handle connection errors
-  const handleConnectionError = useCallback((error: { type: string; message: string; canReconnect: boolean; details?: any }) => {
-    setError(error.message);
-    if (onConnectionError) {
-      onConnectionError(error);
-    }
-  }, [onConnectionError]);
 
   return (
     <div

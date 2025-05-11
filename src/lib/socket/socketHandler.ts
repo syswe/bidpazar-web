@@ -1182,20 +1182,21 @@ export async function initializeSocketIOServer(
             });
             
             // Handle different invalid states appropriately
-            if (streamValidation.actualState === "ENDED" || 
-                streamValidation.actualState === "CANCELLED") {
+            if (streamValidation.actualState === "ENDED") {
               // Don't allow reactivating ended streams - force user to create a new one
               socket.emit("error", { 
-                message: "This stream has already ended. Please create a new stream.", 
-                code: "STREAM_ENDED"
+                message: streamValidation.error || "This stream has already ended. Please create a new stream using the 'New Stream' button.", 
+                code: "STREAM_ENDED",
+                canCreateNewStream: true
               });
               return;
             } else if (streamValidation.actualState === "LIVE") {
               // Allow to continue if already live - might be reconnecting
               logger.info(`[WebRTC] Stream ${streamId} is already in LIVE state - possible reconnection`);
-            } else if (streamValidation.actualState === "FAILED_TO_START") {
-              // Allow retry from FAILED_TO_START state
-              logger.info(`[WebRTC] Retrying stream ${streamId} that previously failed to start`);
+            } else if (streamValidation.actualState === "FAILED_TO_START" || 
+                      streamValidation.actualState === "INTERRUPTED") {
+              // Allow retry from FAILED_TO_START or INTERRUPTED state
+              logger.info(`[WebRTC] Retrying stream ${streamId} that previously was in ${streamValidation.actualState} state`);
               // Update to STARTING state
               await updateDatabaseStreamState(streamId, "STARTING", userId as string);
             } else {

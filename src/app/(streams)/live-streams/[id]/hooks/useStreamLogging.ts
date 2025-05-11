@@ -150,6 +150,7 @@ export function useStreamLogging(streamId: string) {
       message: string;
       canReconnect: boolean;
       isLoopback?: boolean;
+      canCreateNewStream?: boolean;
       details?: any;
     }) => {
       logMessage(`Connection error: ${error.type} - ${error.message}`, 'error', error.details);

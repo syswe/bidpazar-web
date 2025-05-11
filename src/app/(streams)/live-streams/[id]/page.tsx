@@ -75,6 +75,7 @@ export default function LiveStreamPage() {
   const [isLiked, setIsLiked] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
   const [isDeviceSetupComplete, setIsDeviceSetupComplete] = useState<boolean>(false);
+  const [isCurrentUserStreamer, setIsCurrentUserStreamer] = useState<boolean>(false);
 
   // Initialize custom hooks
   const { 
@@ -82,8 +83,7 @@ export default function LiveStreamPage() {
     logMessage, 
     connectionState, 
     optimizedForLoopback,
-    handleLoopbackDetected, 
-    handleConnectionError 
+    handleLoopbackDetected
   } = useStreamLogging(streamId);
 
   const { 
@@ -99,8 +99,14 @@ export default function LiveStreamPage() {
     isConfigLoading
   });
 
-  // Determine if current user is the streamer (before other hooks)
-  const isCurrentUserStreamer = userId === streamDetails?.creatorId;
+  // Update isCurrentUserStreamer when stream details are loaded
+  useEffect(() => {
+    if (streamDetails) {
+      const isStreamer = userId === streamDetails.creatorId;
+      setIsCurrentUserStreamer(isStreamer);
+      logMessage("Streamer status updated", "info", { isStreamer, userId, creatorId: streamDetails.creatorId });
+    }
+  }, [streamDetails, userId, logMessage]);
 
   // Define helper function for media errors
   const handleMediaError = useCallback((errorType: string, errorMessage: string, details?: any) => {
@@ -158,19 +164,17 @@ export default function LiveStreamPage() {
         isCurrentUserStreamerValue: isCurrentUserStreamer
       });
       
-      // Mark device setup as complete only when at least one media type is available
-      if (isCurrentUserStreamer && (hasVideo || hasAudio)) {
+      // Mark device setup as complete when media is available
+      if (hasVideo || hasAudio) {
         setIsDeviceSetupComplete(true);
         logMessage("Device setup marked as complete.", "info", { isCurrentUserStreamer, hasVideo, hasAudio });
-      } else if (isCurrentUserStreamer && !hasVideo && !hasAudio) {
+      } else {
         // If no media tracks are available, show an error
         handleMediaError(
           "setup", 
           "No camera or microphone detected. Please ensure at least one device is enabled.",
           { missingMedia: true }
         );
-      } else {
-        logMessage("Device setup NOT marked as complete.", "warn", { isCurrentUserStreamer, hasVideo, hasAudio });
       }
     },
     isStreamer: isCurrentUserStreamer,
@@ -180,11 +184,61 @@ export default function LiveStreamPage() {
     }
   });
 
+  // Reinitialize media when streamer status changes
+  useEffect(() => {
+    if (!isStreamDetailsLoading && streamDetails) {
+      reinitialize();
+    }
+  }, [isStreamDetailsLoading, streamDetails, reinitialize]);
+
   // Handle device selection
   const handleDeviceSelect = useCallback((kind: 'audio' | 'video', deviceId: string) => {
     selectDevice(kind, deviceId);
     logMessage(`Selected ${kind} device: ${deviceId}`, "info");
   }, [selectDevice, logMessage]);
+
+  // Handle connection errors
+  const handleConnectionError = useCallback((errorData: {
+    type: string;
+    message: string;
+    canReconnect: boolean;
+    isLoopback?: boolean;
+    canCreateNewStream?: boolean;
+    details?: any;
+  }) => {
+    // Create an enhanced message for stream ended errors
+    let errorMessage = errorData.message;
+    
+    // For stream ended errors, add guidance on creating a new stream
+    if (errorData.type === 'STREAM_ENDED' || errorMessage.includes('stream has already ended')) {
+      if (isCurrentUserStreamer) {
+        errorMessage = 'This stream has ended. To start a new stream, please go to your dashboard and click "Start New Stream".';
+      } else {
+        errorMessage = 'This stream has ended. Please check for other available streams.';
+      }
+    }
+    
+    // Log the error with context
+    logMessage(
+      `Connection error: ${errorData.type} - ${errorMessage}`,
+      'error',
+      { 
+        originalMessage: errorData.message,
+        canReconnect: errorData.canReconnect,
+        isLoopback: errorData.isLoopback,
+        canCreateNewStream: errorData.canCreateNewStream,
+        details: errorData.details
+      }
+    );
+    
+    // Show a toast with the error message
+    toast.error(errorMessage, { duration: 7000 });
+    
+    // Set the connection state (if we have a connectionState object)
+    if (connectionState) {
+      connectionState.lastError = errorMessage;
+    }
+  }, [logMessage, connectionState, isCurrentUserStreamer]);
 
   // Reconnection hook
   const {

@@ -158,7 +158,7 @@ export function useMedia({
     }
   }, []);
 
-  // Initialize or update media stream
+  // Initialize media stream
   const initializeMediaStream = useCallback(async (forceReinitialize = false) => {
     // Don't initialize for non-streamers to conserve resources
     if (!isStreamer && hasInitializedRef.current && !forceReinitialize) {
@@ -228,7 +228,7 @@ export function useMedia({
         throw new Error(webrtcInit.errorMessage || 'Failed to initialize WebRTC environment');
       }
       
-      // Update device lists
+      // Update device lists first
       setState(prev => ({
         ...prev,
         devices: webrtcInit.devices,
@@ -256,6 +256,7 @@ export function useMedia({
       streamRef.current = stream;
       hasInitializedRef.current = true;
       
+      // Update state with stream
       setState(prev => ({
         ...prev,
         stream,
@@ -289,7 +290,7 @@ export function useMedia({
       activeInitializations.delete(instanceId);
       releaseStateLock(instanceId);
     }
-  }, [state, isStreamer, onMediaError, onMediaReady, cleanupStream]);
+  }, [state.isCameraOn, state.isMicrophoneOn, isStreamer, onMediaError, onMediaReady, cleanupStream]);
 
   // Update camera toggle to persist state globally
   const toggleCamera = useCallback(() => {
@@ -403,34 +404,18 @@ export function useMedia({
             audio: devices.filter(d => d.kind === 'audioinput')
           }
         }));
-        
-        // Check if selected devices still exist
-        const videoExists = devices.some(
-          d => d.kind === 'videoinput' && d.deviceId === state.selectedDevices.videoId
-        );
-        
-        const audioExists = devices.some(
-          d => d.kind === 'audioinput' && d.deviceId === state.selectedDevices.audioId
-        );
-        
-        // If a selected device was disconnected, reinitialize with available devices
-        if ((state.selectedDevices.videoId && !videoExists) || 
-            (state.selectedDevices.audioId && !audioExists)) {
-          console.log(`[useMedia-${instanceId}] Selected device no longer available, reinitializing...`);
-          initializeMediaStream(true);
-        }
-      } catch (err) {
-        console.error(`[useMedia-${instanceId}] Error handling device change:`, err);
+      } catch (error) {
+        console.error(`[useMedia-${instanceId}] Error updating device list:`, error);
       }
     };
-    
-    // Listen for device changes
+
+    // Add device change listener
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
     
     return () => {
       navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
-  }, [state.selectedDevices, initializeMediaStream]);
+  }, []);
 
   // Store the state on unmount
   useEffect(() => {
@@ -442,6 +427,13 @@ export function useMedia({
       });
     };
   }, [instanceId, state.isCameraOn, state.isMicrophoneOn]);
+
+  // Add reinitialize function
+  const reinitialize = useCallback(() => {
+    console.debug(`[useMedia-${instanceId}] Reinitializing media stream`);
+    hasInitializedRef.current = false;
+    initializeMediaStream(true);
+  }, [initializeMediaStream]);
 
   // Return state and actions
   return {
@@ -455,6 +447,6 @@ export function useMedia({
     toggleCamera,
     toggleMicrophone,
     selectDevice,
-    reinitialize: () => initializeMediaStream(true)
+    reinitialize
   };
 } 

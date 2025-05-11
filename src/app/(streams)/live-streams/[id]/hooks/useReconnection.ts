@@ -51,9 +51,20 @@ export function useReconnection({
     type: string;
     message: string;
     canReconnect: boolean;
+    canCreateNewStream?: boolean;
     details?: any;
   }) => {
     logMessage(`Reconnect requested: ${error.type} - ${error.message}`, 'warn', error.details);
+    
+    // Specific handling for "stream ended" errors which can't be reconnected
+    if (error.type === 'STREAM_ENDED') {
+      logMessage('Stream has ended permanently, cannot reconnect', 'error', error.details);
+      setConnectionError(`${error.message}`);
+      
+      // Stop reconnection attempts for ended streams
+      recoveryAllowedRef.current = false;
+      return;
+    }
     
     // Do not attempt to reconnect if too many errors recently
     if (errorsSinceSuccess.current >= maxAutoReconnects) {

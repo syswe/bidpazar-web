@@ -177,15 +177,37 @@ export async function validateStreamState(
     
     // Handle array of valid states
     if (Array.isArray(expectedState)) {
+      const isValid = expectedState.includes(actualState);
+      
+      // Provide more helpful error message for ended streams
+      if (!isValid && actualState === "ENDED") {
+        return { 
+          isValid: false,
+          actualState,
+          error: "This stream has already ended. Please create a new stream using the 'New Stream' button."
+        };
+      }
+      
       return { 
-        isValid: expectedState.includes(actualState),
+        isValid,
         actualState
       };
     }
     
     // Check if state matches expected
+    const isValid = actualState === expectedState;
+    
+    // Provide more helpful error message for ended streams
+    if (!isValid && actualState === "ENDED") {
+      return { 
+        isValid: false,
+        actualState,
+        error: "This stream has already ended. Please create a new stream using the 'New Stream' button."
+      };
+    }
+    
     return { 
-      isValid: actualState === expectedState,
+      isValid,
       actualState
     };
   } catch (error: unknown) {

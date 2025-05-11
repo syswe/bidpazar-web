@@ -26,6 +26,7 @@ interface UseSocketConnectionProps {
     message: string;
     canReconnect: boolean;
     isLoopback?: boolean;
+    canCreateNewStream?: boolean;
     details?: any;
   }) => void;
   deviceRef: React.MutableRefObject<MediasoupDevice | null>;
@@ -482,6 +483,7 @@ export function useSocketConnection({
         code?: string;
         details?: any;
         canReconnect?: boolean;
+        canCreateNewStream?: boolean;
       }) => {
         if (!mountedRef.current) return;
 
@@ -489,6 +491,7 @@ export function useSocketConnection({
           code: data.code,
           details: data.details,
           canReconnect: data.canReconnect,
+          canCreateNewStream: data.canCreateNewStream
         });
 
         // Set the error message for the user
@@ -514,6 +517,7 @@ export function useSocketConnection({
             type: data.code || "SERVER_ERROR",
             message: data.message,
             canReconnect: !!data.canReconnect,
+            canCreateNewStream: !!data.canCreateNewStream
           });
         }
       }
