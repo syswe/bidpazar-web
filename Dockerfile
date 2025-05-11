@@ -36,6 +36,16 @@ RUN apt-get update && apt-get install -y python3 make g++ pkg-config libssl-dev 
 # Verify the mediasoup binary was built
 RUN ls -la ./node_modules/mediasoup/worker/out/Release/ || echo "MediaSoup worker not built correctly"
 
+# Create correct directory structure for mediasoup
+RUN mkdir -p ./node_modules/mediasoup/node/worker/out/Release/ \
+    && mkdir -p /worker/out/Release/ \
+    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker ./node_modules/mediasoup/node/worker/out/Release/ \
+    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker /worker/out/Release/ \
+    && chmod +x ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
+    && chmod +x /worker/out/Release/mediasoup-worker \
+    && ls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
+    && ls -la /worker/out/Release/mediasoup-worker
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
@@ -108,11 +118,24 @@ RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-cli
 # Install mediasoup in the runner stage to ensure its binary is properly built
 RUN npm install mediasoup@3
 
-# Copy MediaSoup from the builder stage as backup (but we've already installed it above)
+# Copy MediaSoup from the builder stage as backup
 COPY --from=builder /app/node_modules/mediasoup ./node_modules/mediasoup
 
-# Verify the mediasoup binary exists
-RUN ls -la ./node_modules/mediasoup/worker/out/Release/ || echo "MediaSoup worker binary missing in final image"
+# Create correct directory structure for mediasoup in the runner stage
+RUN mkdir -p ./node_modules/mediasoup/node/worker/out/Release/ \
+    && mkdir -p /worker/out/Release/ \
+    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker ./node_modules/mediasoup/node/worker/out/Release/ \
+    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker /worker/out/Release/ \
+    && chmod +x ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
+    && chmod +x /worker/out/Release/mediasoup-worker
+
+# Verify mediasoup binaries exist and are executable
+RUN ls -la ./node_modules/mediasoup/worker/out/Release/mediasoup-worker && \
+    ls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker && \
+    ls -la /worker/out/Release/mediasoup-worker
+
+# Create debugging script for mediasoup paths
+RUN echo '#!/bin/bash\necho "MediaSoup paths:"\nls -la ./node_modules/mediasoup/worker/out/Release/mediasoup-worker\nls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker\nls -la /worker/out/Release/mediasoup-worker\necho "Testing worker..."\nnode -e "const mediasoup=require(\"mediasoup\");async function test(){try{const worker=await mediasoup.createWorker();console.log(\"Worker created successfully!\");worker.close();}catch(e){console.error(\"Failed:\",e);}}test();"' > /app/check-mediasoup.sh && chmod +x /app/check-mediasoup.sh
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public

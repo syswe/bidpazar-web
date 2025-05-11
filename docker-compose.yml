@@ -42,7 +42,5 @@ services:
       - ./public/uploads:/app/public/uploads
       - ./public/profile:/app/public/profile
       - ./logs:/app/logs
-    depends_on:
-      - db
     networks:
       - app-network
