@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { getUserFromTokenInNode } from '@/lib/auth';
 
+// Import ExtendedHttpServer to access Socket.IO instance
+import { ExtendedHttpServer } from '@/lib/socket/socketHandler';
+
 // POST /api/live-streams/[id]/stop - End a live stream
 export async function POST(
   request: NextRequest,
@@ -99,6 +102,32 @@ export async function POST(
         },
       },
     });
+
+    // Check if there's an active Socket.IO server to notify about the stream state change
+    try {
+      // Access the global HTTP server to get the Socket.IO instance
+      // @ts-ignore - Add ts-ignore to handle global.server access
+      const httpServer = global.server as ExtendedHttpServer;
+      if (httpServer && httpServer.io) {
+        // Emit to any clients in the stream room
+        httpServer.io.to(`stream:${id}`).emit('stream_state_changed', {
+          streamId: id,
+          status: 'ENDED',
+          message: 'Stream has been stopped via API'
+        });
+        
+        // Also notify anyone in the WebRTC room to disconnect
+        httpServer.io.to(`stream:${id}`).emit('stream_ended', {
+          streamId: id,
+          reason: 'Stream was ended by the broadcaster'
+        });
+        
+        logger.info(`API POST /api/live-streams/[id]/stop - Notified Socket.IO clients about stream ${id} ending`);
+      }
+    } catch (socketError) {
+      // Don't fail the API call if Socket.IO notification fails
+      logger.warn(`API POST /api/live-streams/[id]/stop - Could not notify Socket.IO clients: ${socketError}`);
+    }
 
     logger.info(`API POST /api/live-streams/[id]/stop - Stream ${id} stopped successfully`);
     return NextResponse.json(updatedStream);

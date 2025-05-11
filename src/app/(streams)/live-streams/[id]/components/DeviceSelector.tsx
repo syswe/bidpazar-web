@@ -1,362 +1,216 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { Check, RefreshCw, VideoIcon, Mic, Volume2 } from "lucide-react";
+import { Check, RefreshCw, VideoIcon, Mic, Volume2, Settings, AlertTriangle } from "lucide-react";
+import { isLikelyLoopbackConnection } from "../utils/loopbackUtils";
+import { toast } from "sonner";
 
 interface DeviceSelectorProps {
-  onDeviceChange: (type: "audio" | "video", deviceId: string) => void;
-  initialVideoDeviceId?: string;
-  initialAudioDeviceId?: string;
+  devices: {
+    video: MediaDeviceInfo[];
+    audio: MediaDeviceInfo[];
+  };
+  selectedDevices: {
+    videoId: string | null;
+    audioId: string | null;
+  };
+  onDeviceChange: (type: "video" | "audio", deviceId: string) => void;
+  isLoading: boolean;
+  onRefreshDevices?: () => void;
+  error?: string | null;
 }
 
-export default function DeviceSelector({
+export function DeviceSelector({
+  devices,
+  selectedDevices,
   onDeviceChange,
-  initialVideoDeviceId,
-  initialAudioDeviceId,
+  isLoading,
+  onRefreshDevices,
+  error
 }: DeviceSelectorProps) {
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<string | undefined>(
-    initialVideoDeviceId
-  );
-  const [selectedAudio, setSelectedAudio] = useState<string | undefined>(
-    initialAudioDeviceId
-  );
-  const [isLoading, setIsLoading] = useState(true);
-  const [testVideoStream, setTestVideoStream] = useState<MediaStream | null>(
-    null
-  );
-  const [testAudioStream, setTestAudioStream] = useState<MediaStream | null>(
-    null
-  );
-  const [showTestVideo, setShowTestVideo] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
 
-  // Add a useRef for the video element
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // Get available devices
-  const getDevices = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // First request permissions
-      await navigator.mediaDevices
-        .getUserMedia({ video: true, audio: true })
-        .catch((err) => {
-          console.warn("Permission request had an error, but continuing", err);
-          // Continue anyway to see what devices we can access
-        });
-
-      const devices = await navigator.mediaDevices.enumerateDevices();
-
-      const videos = devices.filter((device) => device.kind === "videoinput");
-      const audios = devices.filter((device) => device.kind === "audioinput");
-
-      setVideoDevices(videos);
-      setAudioDevices(audios);
-
-      // If no device is selected yet and we have devices available, select the first one
-      if (!selectedVideo && videos.length > 0) {
-        setSelectedVideo(videos[0].deviceId);
-        onDeviceChange("video", videos[0].deviceId);
-      }
-
-      if (!selectedAudio && audios.length > 0) {
-        setSelectedAudio(audios[0].deviceId);
-        onDeviceChange("audio", audios[0].deviceId);
-      }
-    } catch (err) {
-      console.error("Error getting devices:", err);
-      setError("Failed to access media devices. Please check permissions.");
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  // Test video device
-  const testVideoDevice = async () => {
-    try {
-      // Stop any existing test stream
-      if (testVideoStream) {
-        testVideoStream.getTracks().forEach((track) => track.stop());
-      }
-
-      // Start a new test stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: selectedVideo ? { deviceId: { exact: selectedVideo } } : true,
-        audio: false,
-      });
-
-      setTestVideoStream(stream);
-      setShowTestVideo(true);
-      setError(null);
-    } catch (err) {
-      console.error("Error testing video device:", err);
-      setError(`Video device error: ${(err as Error).message}`);
-      setShowTestVideo(false);
-      setTestVideoStream(null);
-    }
-  };
-
-  // Test audio device with level meter
-  const testAudioDevice = async () => {
-    try {
-      // Stop any existing test stream
-      if (testAudioStream) {
-        testAudioStream.getTracks().forEach((track) => track.stop());
-      }
-
-      // Start a new test stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: selectedAudio ? { deviceId: { exact: selectedAudio } } : true,
-      });
-
-      setTestAudioStream(stream);
-
-      // Create audio context for level meter
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-
-      // Update audio level at regular intervals
-      const updateLevel = () => {
-        if (!testAudioStream) return;
-
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
-        }
-        const average = sum / bufferLength;
-        setAudioLevel(average);
-
-        requestAnimationFrame(updateLevel);
-      };
-
-      updateLevel();
-      setError(null);
-    } catch (err) {
-      console.error("Error testing audio device:", err);
-      setError(`Audio device error: ${(err as Error).message}`);
-      setTestAudioStream(null);
-      setAudioLevel(0);
-    }
-  };
-
-  // Stop test streams
-  const stopTests = () => {
-    if (testVideoStream) {
-      testVideoStream.getTracks().forEach((track) => track.stop());
-      setTestVideoStream(null);
-      setShowTestVideo(false);
-    }
-
-    if (testAudioStream) {
-      testAudioStream.getTracks().forEach((track) => track.stop());
-      setTestAudioStream(null);
-      setAudioLevel(0);
-    }
-  };
-
-  // Refresh device list
-  const refreshDevices = () => {
-    setRefreshing(true);
-    stopTests();
-    getDevices();
-  };
-
-  // Handle device selection
-  const handleVideoChange = (deviceId: string) => {
-    setSelectedVideo(deviceId);
-    onDeviceChange("video", deviceId);
-    // Stop any ongoing tests
-    stopTests();
-  };
-
-  const handleAudioChange = (deviceId: string) => {
-    setSelectedAudio(deviceId);
-    onDeviceChange("audio", deviceId);
-    // Stop any ongoing tests
-    stopTests();
-  };
-
-  // Add a useEffect to set the srcObject when the stream changes
+  // Check for loopback connection on mount
   useEffect(() => {
-    if (videoRef.current && testVideoStream) {
-      videoRef.current.srcObject = testVideoStream;
-    }
-  }, [testVideoStream]);
-
-  // Load devices on mount
-  useEffect(() => {
-    getDevices();
-
-    // Navigator.mediaDevices.ondevicechange event
-    const handleDeviceChange = () => {
-      console.log("Media devices changed, refreshing list");
-      refreshDevices();
-    };
-
-    // Add event listener for device changes
-    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
-
-    // Cleanup
-    return () => {
-      stopTests();
-      navigator.mediaDevices.removeEventListener(
-        "devicechange",
-        handleDeviceChange
-      );
-    };
+    const isLoopback = isLikelyLoopbackConnection();
+    setShowLoopbackWarning(isLoopback);
   }, []);
 
-  return (
-    <div className="p-4 space-y-4">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-medium text-sm">Media Settings</h3>
-        <button
-          onClick={refreshDevices}
-          className={`text-xs p-1 rounded-md bg-muted/50 hover:bg-muted ${
-            refreshing ? "animate-spin" : ""
-          }`}
-          disabled={refreshing}
-        >
-          <RefreshCw size={16} />
-        </button>
-      </div>
+  // Handle device selection
+  const handleVideoDeviceChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const deviceId = event.target.value;
+    if (deviceId) {
+      onDeviceChange("video", deviceId);
+    }
+  };
 
-      {error && (
-        <div className="text-destructive text-xs p-2 bg-destructive/10 rounded-md mb-2">
-          {error}
+  const handleAudioDeviceChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const deviceId = event.target.value;
+    if (deviceId) {
+      onDeviceChange("audio", deviceId);
+    }
+  };
+
+  // Handle refresh
+  const handleRefresh = () => {
+    if (onRefreshDevices) {
+      onRefreshDevices();
+      toast.info("Refreshing available devices...");
+    }
+  };
+
+  // Button to toggle selector visibility
+  return (
+    <div className="relative">
+      {/* Toggle button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-center p-2 rounded-full bg-black/40 hover:bg-black/60 transition-colors"
+        title="Media Settings"
+        aria-label="Open media settings"
+      >
+        <Settings className="h-5 w-5" />
+      </button>
+
+      {/* Settings panel */}
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-2 w-72 bg-background border border-border rounded-md shadow-lg z-50 animate-in fade-in slide-in-from-top-5 duration-200">
+          <div className="p-3">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-semibold flex items-center">
+                <Settings className="w-4 h-4 mr-1" />
+                Media Settings
+              </h3>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="p-1 text-muted-foreground hover:text-foreground"
+                title="Refresh devices"
+                disabled={isLoading}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {/* Loopback warning */}
+            {showLoopbackWarning && (
+              <div className="mb-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded-sm">
+                <p className="text-xs flex items-start">
+                  <AlertTriangle className="w-3 h-3 mr-1 mt-0.5 text-amber-500" />
+                  <span>
+                    Local connection detected. Camera access may be limited.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {/* Error message */}
+            {error && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 rounded-sm">
+                <p className="text-xs flex items-start">
+                  <AlertTriangle className="w-3 h-3 mr-1 mt-0.5 text-destructive" />
+                  <span>{error}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Permission denied message */}
+            {permissionDenied && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/30 rounded-sm">
+                <p className="text-xs flex items-start">
+                  <AlertTriangle className="w-3 h-3 mr-1 mt-0.5 text-destructive" />
+                  <span>
+                    Camera/microphone access denied. Please check browser permissions.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {/* Camera selection */}
+              <div>
+                <label
+                  htmlFor="camera-select"
+                  className="block text-xs font-medium mb-1"
+                >
+                  Camera
+                </label>
+                <select
+                  id="camera-select"
+                  value={selectedDevices.videoId || ""}
+                  onChange={handleVideoDeviceChange}
+                  className="w-full text-xs py-1.5 px-2 rounded bg-background border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                  disabled={isLoading}
+                >
+                  {devices.video.length === 0 ? (
+                    <option value="">No cameras found</option>
+                  ) : (
+                    <>
+                      <option value="">Select camera...</option>
+                      {devices.video.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Camera ${device.deviceId.substring(0, 5)}...`}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Microphone selection */}
+              <div>
+                <label
+                  htmlFor="microphone-select"
+                  className="block text-xs font-medium mb-1"
+                >
+                  Microphone
+                </label>
+                <select
+                  id="microphone-select"
+                  value={selectedDevices.audioId || ""}
+                  onChange={handleAudioDeviceChange}
+                  className="w-full text-xs py-1.5 px-2 rounded bg-background border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+                  disabled={isLoading}
+                >
+                  {devices.audio.length === 0 ? (
+                    <option value="">No microphones found</option>
+                  ) : (
+                    <>
+                      <option value="">Select microphone...</option>
+                      {devices.audio.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Microphone ${device.deviceId.substring(0, 5)}...`}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Device count information */}
+              <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
+                {isLoading ? (
+                  <span className="flex items-center">
+                    <RefreshCw className="animate-spin h-3 w-3 mr-1" />
+                    Detecting devices...
+                  </span>
+                ) : (
+                  <span>
+                    {devices.video.length} camera(s), {devices.audio.length} microphone(s) available
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
-
-      {/* Video device selector */}
-      <div className="space-y-2">
-        <label className="flex items-center justify-between text-xs font-medium">
-          <span className="flex items-center">
-            <VideoIcon size={14} className="mr-1" /> Camera
-          </span>
-          {showTestVideo ? (
-            <button
-              onClick={() => {
-                stopTests();
-                setShowTestVideo(false);
-              }}
-              className="text-xs px-2 py-1 bg-destructive/20 rounded hover:bg-destructive/30"
-            >
-              Stop Test
-            </button>
-          ) : (
-            <button
-              onClick={testVideoDevice}
-              className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 rounded"
-              disabled={!selectedVideo || isLoading}
-            >
-              Test
-            </button>
-          )}
-        </label>
-
-        {showTestVideo && testVideoStream && (
-          <div className="relative h-24 bg-black rounded-md overflow-hidden mb-2">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-          </div>
-        )}
-
-        <select
-          value={selectedVideo || ""}
-          onChange={(e) => handleVideoChange(e.target.value)}
-          className="w-full p-1.5 text-xs rounded-md bg-muted/50 border border-muted"
-          disabled={isLoading}
-        >
-          {videoDevices.length === 0 && (
-            <option value="">No cameras detected</option>
-          )}
-          {videoDevices.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || `Camera ${device.deviceId.substring(0, 5)}...`}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Audio device selector */}
-      <div className="space-y-2">
-        <label className="flex items-center justify-between text-xs font-medium">
-          <span className="flex items-center">
-            <Mic size={14} className="mr-1" /> Microphone
-          </span>
-          {testAudioStream ? (
-            <button
-              onClick={() => {
-                stopTests();
-              }}
-              className="text-xs px-2 py-1 bg-destructive/20 rounded hover:bg-destructive/30"
-            >
-              Stop Test
-            </button>
-          ) : (
-            <button
-              onClick={testAudioDevice}
-              className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 rounded"
-              disabled={!selectedAudio || isLoading}
-            >
-              Test
-            </button>
-          )}
-        </label>
-
-        {testAudioStream && (
-          <div className="h-4 bg-muted/50 rounded-full overflow-hidden mb-2">
-            <div
-              className="h-full bg-primary"
-              style={{ width: `${Math.min(audioLevel, 100)}%` }}
-            ></div>
-          </div>
-        )}
-
-        <select
-          value={selectedAudio || ""}
-          onChange={(e) => handleAudioChange(e.target.value)}
-          className="w-full p-1.5 text-xs rounded-md bg-muted/50 border border-muted"
-          disabled={isLoading}
-        >
-          {audioDevices.length === 0 && (
-            <option value="">No microphones detected</option>
-          )}
-          {audioDevices.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label ||
-                `Microphone ${device.deviceId.substring(0, 5)}...`}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="pt-2 text-xs text-muted-foreground">
-        <p>
-          If you're having issues, try closing other applications that might be
-          using your camera or microphone.
-        </p>
-      </div>
     </div>
   );
 }

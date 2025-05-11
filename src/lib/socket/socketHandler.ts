@@ -4,6 +4,14 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import * as mediasoup from "mediasoup";
 import { types as MediasoupTypes } from "mediasoup";
 import { logger } from "@/lib/logger";
+import path from "path";
+
+// Add heartbeat tracking system
+const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+const HEARTBEAT_TIMEOUT = 45000;  // 45 seconds
+
+// Track last heartbeat timestamps for each broadcaster
+const broadcasterHeartbeats = new Map<string, number>();
 
 // Enhanced structured logging for WebRTC events
 const logEvent = (
@@ -93,12 +101,12 @@ const getAppropriateIceConfiguration = (
   const baseConfig = { ...mediasoupAppConfig.webRtcTransport };
 
   // Check if this is a loopback connection
-  const clientIP =
+  const clientIp =
     socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
   const host = socket.handshake.headers.host;
   const isLoopback =
     socket.data?.isLoopback ||
-    isLoopbackAddress(clientIP as string) ||
+    isLoopbackAddress(clientIp as string) ||
     isLoopbackAddress(host?.split(":")[0]);
 
   // For loopback connections, adjust the configuration to be more reliable
@@ -141,10 +149,22 @@ const getAppropriateIceConfiguration = (
 export interface ExtendedHttpServer extends HttpServer {
   io?: SocketIOServer;
 }
+// Import stream state synchronization utilities
+import { 
+  emitStreamStateChange, 
+  updateDatabaseStreamState, 
+  validateStreamState 
+} from './socketEvents';
+
 // Store mediasoup worker in global scope for graceful shutdown
 // @ts-ignore
 global.mediasoupWorker = null;
 let mediasoupWorker: MediasoupTypes.Worker | null = null;
+
+// Type guard to check if mediasoupWorker is initialized
+function isWorkerInitialized(worker: MediasoupTypes.Worker | null): worker is MediasoupTypes.Worker {
+  return worker !== null && !worker.closed;
+}
 
 // Add chat storage
 interface ChatMessage {
@@ -184,7 +204,7 @@ interface Room {
 const rooms = new Map<string, Room>();
 
 // Set a reasonable session expiration time
-const SESSION_EXPIRATION_TIME = 30 * 1000; // 30 seconds
+const SESSION_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes (increased from 30 seconds)
 
 // Periodically clean up stale sessions
 setInterval(() => {
@@ -193,8 +213,8 @@ setInterval(() => {
 
     // Clean up inactive peers
     room.peers.forEach((peer, socketId) => {
-      if (now - peer.lastActivity > 60 * 1000) {
-        // 1 minute inactive
+      if (now - peer.lastActivity > 3 * 60 * 1000) {
+        // 3 minutes inactive (increased from 1 minute)
         logger.info(
           `[Socket.IO] Removing inactive peer ${socketId} from room ${streamId}`
         );
@@ -262,15 +282,19 @@ setInterval(() => {
   });
 }, SESSION_EXPIRATION_TIME);
 
+// Room creation locks to prevent race conditions
+const roomCreationLocks = new Map<string, Promise<Room>>();
+
 // Helper functions (moved from route.ts)
-async function startMediasoupWorker() {
+async function startMediasoupWorker(): Promise<MediasoupTypes.Worker> {
   // First check if we have a worker in global scope
   // @ts-ignore
   if (global.mediasoupWorker && !global.mediasoupWorker.closed) {
     // @ts-ignore
-    mediasoupWorker = global.mediasoupWorker;
+    const globalWorker: MediasoupTypes.Worker = global.mediasoupWorker;
+    mediasoupWorker = globalWorker;
     logger.info("[MediaSoup] Using existing worker from global scope.");
-    return mediasoupWorker;
+    return globalWorker;
   }
 
   if (mediasoupWorker && !mediasoupWorker.closed) {
@@ -313,17 +337,18 @@ async function startMediasoupWorker() {
       logger.error("[MediaSoup] Error during worker path debugging:", debugErr);
     }
     
-    mediasoupWorker = await mediasoup.createWorker({
+    const worker = await mediasoup.createWorker({
       logLevel: mediasoupAppConfig.worker.logLevel,
       logTags: mediasoupAppConfig.worker.logTags,
       rtcMinPort: mediasoupAppConfig.worker.rtcMinPort,
       rtcMaxPort: mediasoupAppConfig.worker.rtcMaxPort,
     });
     // Store in global scope for graceful shutdown
+    mediasoupWorker = worker;
     // @ts-ignore
-    global.mediasoupWorker = mediasoupWorker;
+    global.mediasoupWorker = worker;
 
-    mediasoupWorker.on("died", (error) => {
+    worker.on("died", (error) => {
       logger.error("[MediaSoup] Worker died.", error);
       mediasoupWorker = null;
       // @ts-ignore
@@ -331,45 +356,248 @@ async function startMediasoupWorker() {
       setTimeout(() => process.exit(1), 2000);
     });
     logger.info("[MediaSoup] Worker created successfully.");
-    return mediasoupWorker;
+    return worker;
   } catch (error) {
     logger.error("[MediaSoup] Failed to create Mediasoup worker:", error);
     throw error;
   }
 }
 
-async function getOrCreateRoom(streamId: string): Promise<Room> {
-  let room = rooms.get(streamId);
-  if (!room) {
-    if (!mediasoupWorker || mediasoupWorker.closed) {
-      await startMediasoupWorker();
-      if (!mediasoupWorker)
-        throw new Error("Mediasoup worker failed to initialize");
+// MediaSoup worker setup
+async function createMediasoupWorker(): Promise<MediasoupTypes.Worker> {
+  const { worker: workerConfig } = mediasoupAppConfig;
+
+  logger.info("[MediaSoup] Creating MediaSoup worker");
+  
+  // Debug worker path
+  try {
+    const { execSync } = require('child_process');
+    const fs = require('fs');
+    
+    logger.info("[MediaSoup] Checking MediaSoup installation status");
+    
+    // Check node_modules structure
+    if (fs.existsSync('./node_modules/mediasoup')) {
+      const files = fs.readdirSync('./node_modules/mediasoup');
+      logger.info(`[MediaSoup] Files in mediasoup dir: ${files.join(', ')}`);
+      
+      if (fs.existsSync('./node_modules/mediasoup/worker')) {
+        const workerFiles = fs.readdirSync('./node_modules/mediasoup/worker');
+        logger.info(`[MediaSoup] Files in worker dir: ${workerFiles.join(', ')}`);
+        
+        // Check worker binary
+        const workerPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
+        if (fs.existsSync(workerPath)) {
+          logger.info(`[MediaSoup] Worker binary exists at ${workerPath}`);
+          
+          // Make sure it's executable
+          try {
+            fs.chmodSync(workerPath, 0o755);
+            logger.info("[MediaSoup] Made worker binary executable");
+          } catch (chmodErr) {
+            logger.error("[MediaSoup] Error making worker executable:", chmodErr);
+          }
+        } else {
+          logger.error(`[MediaSoup] Worker binary NOT found at expected path: ${workerPath}`);
+        }
+      }
+    } else {
+      logger.error("[MediaSoup] MediaSoup module directory not found!");
     }
-    logger.info(`[MediaSoup] Creating new room for stream: ${streamId}`);
-    const router = await mediasoupWorker.createRouter({
-      mediaCodecs: mediasoupAppConfig.router.mediaCodecs,
-    });
-    room = {
-      router,
-      peers: new Map(),
-      activeSessions: new Map(),
-    };
-    rooms.set(streamId, room);
+  } catch (debugErr) {
+    logger.error("[MediaSoup] Error debugging mediasoup installation:", debugErr);
   }
-  return room;
+  
+  try {
+    const worker = await mediasoup.createWorker({
+      logLevel: workerConfig.logLevel as MediasoupTypes.WorkerLogLevel,
+      logTags: workerConfig.logTags as MediasoupTypes.WorkerLogTag[],
+      rtcMinPort: workerConfig.rtcMinPort,
+      rtcMaxPort: workerConfig.rtcMaxPort,
+    });
+
+    worker.on("died", (error) => {
+      logger.error(
+        "[MediaSoup] MediaSoup worker died unexpectedly, attempting restart",
+        { error: error?.toString() }
+      );
+      // Attempt to create a new worker
+      setTimeout(async () => {
+        try {
+          mediasoupWorker = await createMediasoupWorker();
+          // @ts-ignore
+          global.mediasoupWorker = mediasoupWorker;
+          logger.info("[MediaSoup] MediaSoup worker restarted successfully");
+        } catch (e) {
+          logger.error("[MediaSoup] Failed to restart MediaSoup worker", {
+            error: e,
+          });
+        }
+      }, 2000);
+    });
+
+    return worker;
+  } catch (error) {
+    logger.error("[MediaSoup] Failed to create worker with config:", {
+      error,
+      config: {
+        rtcMinPort: workerConfig.rtcMinPort,
+        rtcMaxPort: workerConfig.rtcMaxPort,
+        logLevel: workerConfig.logLevel,
+      }
+    });
+    
+    // Try to find mediasoup worker binary with more detailed paths
+    try {
+      const path = require('path');
+      const fs = require('fs');
+      
+      const possiblePaths = [
+        './node_modules/mediasoup/worker/out/Release/mediasoup-worker',
+        '/app/node_modules/mediasoup/worker/out/Release/mediasoup-worker',
+        path.resolve('./node_modules/mediasoup/worker/out/Release/mediasoup-worker')
+      ];
+      
+      logger.info("[MediaSoup] Searching for worker binary in possible locations:");
+      possiblePaths.forEach(p => {
+        logger.info(`  - ${p}: ${fs.existsSync(p) ? 'EXISTS' : 'NOT FOUND'}`);
+      });
+      
+      // Try to reinstall mediasoup as a last resort
+      logger.info("[MediaSoup] Emergency: Trying to reinstall mediasoup");
+      const { execSync } = require('child_process');
+      execSync('npm install mediasoup@3', { stdio: 'inherit' });
+      
+      // Check if that fixed it
+      const reinstallPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
+      if (fs.existsSync(reinstallPath)) {
+        logger.info("[MediaSoup] Successfully reinstalled mediasoup, binary now exists");
+        fs.chmodSync(reinstallPath, 0o755);
+      } else {
+        logger.error("[MediaSoup] Reinstall failed, binary still missing");
+      }
+    } catch (searchErr) {
+      logger.error("[MediaSoup] Error during emergency recovery:", searchErr);
+    }
+    
+    throw error;
+  }
+}
+
+async function getOrCreateRoom(streamId: string, userId?: string): Promise<Room> {
+  // First check if room already exists
+  let room = rooms.get(streamId);
+  if (room) {
+    return room;
+  }
+  
+  // If a creation process is already in progress for this room, wait for it
+  if (roomCreationLocks.has(streamId)) {
+    logger.info(`[MediaSoup] Room creation already in progress for stream: ${streamId}, waiting for it to complete`);
+    return roomCreationLocks.get(streamId)!;
+  }
+  
+  // Create a promise for the room creation process
+  const roomCreationPromise = (async () => {
+    try {
+      // Double-check that the room wasn't created while we were setting up the lock
+      // This is the critical part that prevents duplicate room creation
+      room = rooms.get(streamId);
+      if (room) {
+        logger.info(`[MediaSoup] Room was created by another process while waiting for lock: ${streamId}`);
+        return room;
+      }
+
+      // Validate stream exists and is in a valid state in the database
+      const streamState = await validateStreamState(streamId);
+      
+      if (!streamState.isValid && streamState.error?.includes("Failed to fetch")) {
+        logger.warn(`[MediaSoup] Creating room for stream ${streamId} that doesn't exist in database`);
+      } else if (streamState.actualState === "ENDED") {
+        logger.warn(`[MediaSoup] Attempted to create room for ENDED stream: ${streamId}`);
+        // We will still create the room, but log the potential inconsistency
+      }
+      
+      // Ensure we have a working mediasoup worker
+      if (!isWorkerInitialized(mediasoupWorker)) {
+        // First check if we have a worker in global scope from server.js
+        // @ts-ignore
+        if (global.mediasoupWorker && !global.mediasoupWorker.closed) {
+          // @ts-ignore
+          mediasoupWorker = global.mediasoupWorker;
+          logger.info("[MediaSoup] Using existing worker from global scope for room creation");
+        } else {
+          try {
+            mediasoupWorker = await startMediasoupWorker();
+          } catch (error) {
+            logger.error("[MediaSoup] Failed to initialize MediaSoup worker:", error);
+            throw new Error("Mediasoup worker failed to initialize");
+          }
+        }
+      }
+      
+      logger.info(`[MediaSoup] Creating new room for stream: ${streamId}`);
+      // At this point mediasoupWorker is guaranteed to be initialized
+      const router = await mediasoupWorker!.createRouter({
+        mediaCodecs: mediasoupAppConfig.router.mediaCodecs,
+      });
+      
+      room = {
+        router,
+        peers: new Map(),
+        activeSessions: new Map(),
+      };
+      
+      // Store the room in the rooms map
+      rooms.set(streamId, room);
+      
+      // Emit room creation event - use STARTING state instead of CREATING
+      emitStreamStateChange({
+        streamId,
+        state: "STARTING",
+        userId,
+        timestamp: new Date().toISOString(),
+        metadata: { isNewRoom: true }
+      });
+      
+      logger.info(`[MediaSoup] Successfully created room for stream: ${streamId}`);
+      return room;
+    } catch (error) {
+      logger.error(`[MediaSoup] Error creating room for stream: ${streamId}`, {
+        error: formatError(error)
+      });
+      // If room creation fails, remove the lock so future attempts can try again
+      throw error;
+    }
+  })();
+  
+  // Store the promise and clean it up when done
+  roomCreationLocks.set(streamId, roomCreationPromise);
+  
+  // Clean up the lock when the promise resolves or rejects
+  roomCreationPromise
+    .finally(() => {
+      // Only remove the lock if it's still the same promise
+      // This prevents race conditions where a new lock might be set while we're cleaning up
+      if (roomCreationLocks.get(streamId) === roomCreationPromise) {
+        roomCreationLocks.delete(streamId);
+        logger.debug(`[MediaSoup] Room creation lock released for stream: ${streamId}`);
+      }
+    });
+  
+  return roomCreationPromise;
 }
 
 // Function to find existing connections from the same user in a room
 function findExistingUserConnection(
   room: Room,
   userId: string,
-  isStreamerQuery: boolean
+  isStreamer: boolean
 ): Peer | null {
-  // isStreamerQuery is the isStreamer status of the *new* connection attempt.
+  // isStreamer is the isStreamer status of the *new* connection attempt.
   if (!room) return null;
   for (const peer of room.peers.values()) {
-    if (peer.userId === userId && peer.isStreamer === isStreamerQuery) {
+    if (peer.userId === userId && peer.isStreamer === isStreamer) {
       return peer; // Found an existing peer with same userId and same streamer status
     }
   }
@@ -573,12 +801,20 @@ export async function initializeSocketIOServer(
 
     // Initialize MediaSoup worker
     try {
-      mediasoupWorker = await createMediasoupWorker();
+      // First check if we already have a worker in the global scope from server.js
       // @ts-ignore
-      global.mediasoupWorker = mediasoupWorker;
-      logger.info(
-        "[MediaSoup] MediaSoup worker created successfully and is ready."
-      );
+      if (global.mediasoupWorker && !global.mediasoupWorker.closed) {
+        // @ts-ignore
+        mediasoupWorker = global.mediasoupWorker;
+        logger.info("[MediaSoup] Using existing MediaSoup worker from server.js initialization");
+      } else if (mediasoupWorker && !mediasoupWorker.closed) {
+        logger.info("[MediaSoup] Worker already running.");
+      } else {
+        mediasoupWorker = await createMediasoupWorker();
+        // @ts-ignore
+        global.mediasoupWorker = mediasoupWorker;
+        logger.info("[MediaSoup] MediaSoup worker created successfully and is ready.");
+      }
     } catch (error) {
       logger.error(
         "[MediaSoup] CRITICAL: Failed to create initial MediaSoup worker during server init.",
@@ -591,53 +827,104 @@ export async function initializeSocketIOServer(
 
     // Main Socket.IO connection handler
     io.on("connection", async (socket: Socket) => {
-      // Extract client information
-      const {
-        streamId,
-        userId,
-        username = "Anonymous",
-        isAnonymous = false,
-        isStreamer = false,
-      } = socket.handshake.query as {
-        streamId?: string;
-        userId?: string;
-        username?: string;
-        isAnonymous?: string | boolean;
-        isStreamer?: string | boolean;
-      };
+      logger.info(`New socket connection: ${socket.id}`, {
+        query: socket.handshake.query,
+      });
 
-      const isAnonymousUser =
-        isAnonymous === "true" || isAnonymous === "1" || isAnonymous === true;
-      const isStreamerUser =
-        isStreamer === "true" || isStreamer === "1" || isStreamer === true;
-      const clientIp =
-        socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
+      // Extract connection parameters
+      const streamId = socket.handshake.query.streamId as string;
+      const userId = socket.handshake.query.userId as string;
+      const username = (socket.handshake.query.username as string) || "Anonymous";
+      const sessionId = socket.handshake.query.sessionId as string || `${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${Math.floor(Math.random() * 2000000000)}`;
+      const isStreamer = socket.handshake.query.isStreamer === "1" || socket.handshake.query.isStreamer === "true";
+      const isAnonymous = socket.handshake.query.isAnonymous === "1" || socket.handshake.query.isAnonymous === "true";
+      const isLocalDev = socket.handshake.query.isLocalDev === "1" || socket.handshake.query.isLocalDev === "true";
+      const clientIp = socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
+
+      if (!streamId) {
+        logger.error(`Socket missing streamId: ${socket.id}`);
+        socket.emit("error", {
+          message: "Missing streamId",
+          code: "MISSING_STREAM_ID",
+          canReconnect: false,
+        });
+        socket.disconnect();
+        return;
+      }
 
       // Check for loopback connections
       const host = socket.handshake.headers.host;
       const isLoopback =
+        socket.data?.isLoopback ||
         isLoopbackAddress(clientIp as string) ||
         isLoopbackAddress(host?.split(":")[0]);
 
-      // Store connection type information
-      socket.data.connectionType = isLoopback ? "loopback" : "standard";
-
+      // In local development, loopback connections are expected
       if (isLoopback) {
-        logger.info(`[Socket.IO] Loopback connection detected for WebRTC`, {
+        socket.data.isLocalDev = isLocalDev;
+        logger.info(`Detected loopback connection in ${isLocalDev ? "local development" : "production"}`, {
           socketId: socket.id,
           clientIp,
           host,
+          isLocalDev
         });
       }
 
-      // Generate a unique session ID for this connection combining timestamp, socket ID, and random string
-      const randomStr = Math.random().toString(36).substring(2, 15);
-      const sessionId = `${Date.now()}-${randomStr}-${Math.floor(
-        Math.random() * 2000000000
-      )}`;
+      // Check for existing session with the same session ID
+      let existingSocketId: string | undefined;
+      let room = rooms.get(streamId);
+
+      // Create room if it doesn't exist
+      if (!room) {
+        room = await getOrCreateRoom(streamId);
+      }
+
+      // Check for duplicate connections with the same session ID
+      let hasDuplicateConnection = false;
+      if (sessionId) {
+        room.activeSessions.forEach((socketId, existingSessionId) => {
+          if (existingSessionId === sessionId && socketId !== socket.id) {
+            existingSocketId = socketId;
+            hasDuplicateConnection = true;
+            
+            // In local development, we can be more tolerant of duplicate connections
+            if (isLocalDev) {
+              logger.info(`Local development: allowing duplicate connection for session ${sessionId}`, {
+                existingSocketId: socketId,
+                newSocketId: socket.id
+              });
+            } else {
+              // Potentially close the existing connection in production
+              const existingSocket = io.sockets.sockets.get(socketId);
+              if (existingSocket) {
+                logger.info(`Cleaning up previous session ${sessionId} with socket ${socketId}`);
+                
+                // Notify the client about the duplicate connection
+                existingSocket.emit("duplicate_connection", {
+                  message: "New connection established with same session ID",
+                  newSocketId: socket.id,
+                });
+                
+                // Update mapping to new socket
+                room.activeSessions.set(sessionId, socket.id);
+              }
+            }
+          }
+        });
+      }
+
+      // Store session info
+      if (sessionId) {
+        room.activeSessions.set(sessionId, socket.id);
+      }
+
+      // Store connection type information
+      socket.data.connectionType = isLoopback 
+        ? (isLocalDev ? "local_development" : "loopback") 
+        : "standard";
 
       // Store this flag for broadcaster/viewer differentiation
-      socket.data.isBroadcaster = isStreamerUser;
+      socket.data.isBroadcaster = isStreamer;
       socket.data.streamId = streamId;
       socket.data.userId = userId;
       socket.data.username = username;
@@ -649,12 +936,21 @@ export async function initializeSocketIOServer(
         streamId: streamId || "no-stream",
         userId: userId || "anonymous",
         username: username || "Anonymous",
-        isAnonymous: isAnonymousUser,
+        isAnonymous,
         ip: clientIp,
         transport: socket.conn.transport.name,
         isLoopback,
-        query: socket.handshake.query,
+        isLocalDev,
+        hasDuplicateConnection
       });
+
+      // If this is a duplicate connection, notify the client
+      if (hasDuplicateConnection) {
+        socket.emit("duplicate_connection", {
+          existingSocketId,
+          isLocalDev
+        });
+      }
 
       // Send welcome message with connection info
       socket.emit("connection_established", {
@@ -662,7 +958,8 @@ export async function initializeSocketIOServer(
         sessionId,
         serverTime: new Date().toISOString(),
         message: "Successfully connected to BidPazar WebSocket server",
-        isLoopback: isLoopback,
+        isLoopback,
+        isLocalDev
       });
 
       // Connection tracking for diagnostics
@@ -808,6 +1105,58 @@ export async function initializeSocketIOServer(
         }
       });
 
+      // Handle stream_starting event (triggered by the API)
+      socket.on("stream_starting", async (data) => {
+        try {
+          if (!data.streamId) {
+            logger.warn(`[WebRTC] stream_starting event missing streamId`, {
+              socketId: socket.id,
+              data
+            });
+            return;
+          }
+
+          const streamId = data.streamId as string;
+          const userId = data.userId as string;
+          const username = data.username as string;
+          
+          logEvent("stream_starting", socket.id, {
+            streamId,
+            userId,
+            username
+          });
+          
+          // Validate the stream is in STARTING state
+          const { isValid, actualState } = await validateStreamState(streamId, "STARTING");
+          
+          if (!isValid) {
+            logger.warn(`[WebRTC] Stream ${streamId} is not in STARTING state`, {
+              actualState,
+              socketId: socket.id
+            });
+            
+            // The API should have set this to STARTING, so this is unexpected
+            // We'll continue anyway but log the issue
+          }
+          
+          // Prepare the room for the upcoming broadcaster
+          const room = await getOrCreateRoom(streamId, userId);
+          
+          logger.info(`[WebRTC] Room prepared for stream ${streamId}`, {
+            streamId,
+            userId
+          });
+          
+          // We don't update the database state here - that will happen when broadcaster_ready completes
+        } catch (error) {
+          logger.error(`[WebRTC] Error in stream_starting handler`, {
+            error: formatError(error),
+            socketId: socket.id,
+            data
+          });
+        }
+      });
+      
       // Handle broadcaster (streamer) ready
       socket.on("broadcaster_ready", async (data) => {
         try {
@@ -821,9 +1170,42 @@ export async function initializeSocketIOServer(
             sessionId: data.sessionId || sessionId,
             userId,
           });
+          
+          // Validate stream state in database before proceeding - expect STARTING state
+          const streamValidation = await validateStreamState(streamId, "STARTING");
+          
+          if (!streamValidation.isValid) {
+            logger.warn(`[WebRTC] Stream state validation failed for broadcaster: ${streamId}`, {
+              error: streamValidation.error,
+              socketId: socket.id,
+              actualState: streamValidation.actualState
+            });
+            
+            // Handle different invalid states appropriately
+            if (streamValidation.actualState === "ENDED" || 
+                streamValidation.actualState === "CANCELLED") {
+              // Don't allow reactivating ended streams - force user to create a new one
+              socket.emit("error", { 
+                message: "This stream has already ended. Please create a new stream.", 
+                code: "STREAM_ENDED"
+              });
+              return;
+            } else if (streamValidation.actualState === "LIVE") {
+              // Allow to continue if already live - might be reconnecting
+              logger.info(`[WebRTC] Stream ${streamId} is already in LIVE state - possible reconnection`);
+            } else if (streamValidation.actualState === "FAILED_TO_START") {
+              // Allow retry from FAILED_TO_START state
+              logger.info(`[WebRTC] Retrying stream ${streamId} that previously failed to start`);
+              // Update to STARTING state
+              await updateDatabaseStreamState(streamId, "STARTING", userId as string);
+            } else {
+              // For any other unexpected state, log a warning but continue
+              logger.warn(`[WebRTC] Stream ${streamId} in unexpected state: ${streamValidation.actualState}`);
+            }
+          }
 
           // Get the room
-          const room = await getOrCreateRoom(streamId);
+          const room = await getOrCreateRoom(streamId, userId as string);
 
           // Store that this is a broadcaster in the socket data for later reference
           socket.data.isBroadcaster = true;
@@ -845,7 +1227,7 @@ export async function initializeSocketIOServer(
             const existingConnection = findExistingUserConnection(
               room,
               userId as string,
-              true // Looking for streamers
+              isStreamer
             );
 
             if (
@@ -957,6 +1339,38 @@ export async function initializeSocketIOServer(
             }
           );
 
+          // At this point, all the setup is complete - WebRTC is established
+          // Update database to reflect that stream is now LIVE
+          try {
+            // Clear any stale error state if this was retried
+            if (userId) {
+              const success = await updateDatabaseStreamState(streamId, "LIVE", userId as string);
+              
+              if (success) {
+                logger.info(`[WebRTC] Successfully updated database state to LIVE for stream ${streamId}`);
+                
+                // Emit stream state change event
+                emitStreamStateChange({
+                  streamId,
+                  state: "LIVE",
+                  userId: userId as string,
+                  timestamp: new Date().toISOString(),
+                  metadata: { socketId: socket.id }
+                });
+              } else {
+                logger.warn(`[WebRTC] Failed to update database state for stream ${streamId}`);
+                // Continue anyway - the stream is technically working
+              }
+            }
+          } catch (err) {
+            logger.error(`[WebRTC] Error updating database state for stream ${streamId}`, {
+              error: formatError(err),
+              streamId,
+              userId
+            });
+            // Continue anyway - the stream is technically working
+          }
+          
           // Notify all viewers
           io.to(`stream:${streamId}`).emit("broadcaster_ready", {
             streamId,
@@ -979,6 +1393,40 @@ export async function initializeSocketIOServer(
           logger.info(
             `[WebRTC] Stream ${streamId} is now active with broadcaster ${userId}`
           );
+
+          // Initialize heartbeat tracking for this broadcaster
+          broadcasterHeartbeats.set(socket.id, Date.now());
+          
+          // Set up heartbeat check interval
+          const heartbeatInterval = setInterval(() => {
+            // Skip if socket is no longer connected or heartbeat entry was removed
+            if (!socket.connected || !broadcasterHeartbeats.has(socket.id)) {
+              clearInterval(heartbeatInterval);
+              return;
+            }
+            
+            const lastHeartbeat = broadcasterHeartbeats.get(socket.id);
+            if (!lastHeartbeat) return;
+            
+            const elapsed = Date.now() - lastHeartbeat;
+            if (elapsed > HEARTBEAT_TIMEOUT) {
+              logger.warn(`[Heartbeat] Broadcaster ${socket.id} timed out after ${elapsed}ms`, {
+                streamId: socket.data.streamId,
+                userId: socket.data.userId
+              });
+              
+              // Handle as if the broadcaster disconnected
+              handleBroadcasterDisconnection(socket.data.streamId, socket.data.userId, socket);
+              socket.disconnect(true);
+              clearInterval(heartbeatInterval);
+            }
+          }, HEARTBEAT_INTERVAL);
+
+          // Clean up on disconnect
+          socket.on("disconnect", () => {
+            clearInterval(heartbeatInterval);
+            broadcasterHeartbeats.delete(socket.id);
+          });
         } catch (err) {
           logger.error(`[WebRTC] Error in broadcaster_ready handler`, {
             error: formatError(err),
@@ -1089,14 +1537,16 @@ export async function initializeSocketIOServer(
       });
 
       // Handle client disconnect
-      socket.on("disconnect", async (reason) => {
-        logEvent("disconnect", socket.id, {
-          streamId: streamId || "no-stream",
-          userId: userId || "anonymous",
-          reason,
-          isStreamer: socket.data?.isBroadcaster || false,
+      socket.on("disconnect", (reason) => {
+        logger.info(`Socket disconnected: ${socket.id}, reason: ${reason}`, {
+          streamId,
+          userId,
+          sessionId
         });
-
+        
+        // Clear heartbeat tracking for this socket
+        broadcasterHeartbeats.delete(socket.id);
+        
         // Clean up WebRTC resources if the stream exists
         if (streamId) {
           try {
@@ -1123,6 +1573,48 @@ export async function initializeSocketIOServer(
                 peerSocketIds: Array.from(room.peers.keys()),
                 sessionCount: room.activeSessions.size,
               });
+              
+              // If this was a broadcaster disconnecting, we need to handle stream state
+              if (socket.data.isBroadcaster) {
+                // Use our dedicated handler for broadcaster disconnections
+                if (userId) {
+                  // Check if this was an abrupt disconnect vs intentional end
+                  if (["transport close", "ping timeout", "transport error"].includes(reason)) {
+                    logger.warn(`[WebRTC] Broadcaster disconnected unexpectedly: ${reason}`);
+                    
+                    // Use dedicated handler for abrupt disconnections which will mark as INTERRUPTED
+                    handleBroadcasterDisconnection(streamId, userId as string, socket);
+                  } else {
+                    // Normal disconnect, update database to ENDED
+                    logger.info(`[WebRTC] Broadcaster disconnected normally, ending stream ${streamId}`);
+                    
+                    updateDatabaseStreamState(streamId, "ENDED", userId as string)
+                      .then(success => {
+                        if (success) {
+                          logger.info(`[WebRTC] Successfully ended stream ${streamId} in database`);
+                          
+                          // Emit stream end event
+                          emitStreamStateChange({
+                            streamId,
+                            state: "ENDED",
+                            userId: userId as string,
+                            timestamp: new Date().toISOString(),
+                            metadata: { reason }
+                          });
+                        } else {
+                          logger.warn(`[WebRTC] Failed to update database state for stream ${streamId}`);
+                        }
+                      })
+                      .catch(err => {
+                        logger.error(`[WebRTC] Error updating database state for stream ${streamId}`, {
+                          error: formatError(err),
+                          streamId,
+                          userId
+                        });
+                      });
+                  }
+                }
+              }
             }
           } catch (err) {
             logger.error(`[WebRTC] Error cleaning up peer on disconnect`, {
@@ -1176,6 +1668,100 @@ export async function initializeSocketIOServer(
           rooms: socket.rooms,
         });
       });
+      
+      // Handle stream state changes from API or other sources
+      socket.on("stream_state_changed", async (data) => {
+        if (!data.streamId) return;
+        
+        logEvent("stream_state_changed", socket.id, {
+          streamId: data.streamId,
+          state: data.status,
+          userId,
+          source: data.source || "client"
+        });
+        
+        const streamId = data.streamId;
+        
+        // Handle different states
+        switch (data.status) {
+          case "ENDED":
+            // If stream ended, notify users and handle room cleanup
+            try {
+              const room = rooms.get(streamId);
+              if (room) {
+                // Notify all clients in the room
+                io.to(`stream:${streamId}`).emit("stream_ended", {
+                  streamId: streamId,
+                  reason: "Stream ended by broadcaster",
+                  source: data.source || "client"
+                });
+                
+                // Log event to track state synchronization
+                emitStreamStateChange({
+                  streamId,
+                  state: "ENDED",
+                  userId: userId as string,
+                  timestamp: new Date().toISOString(),
+                  metadata: { source: data.source || "client" }
+                });
+                
+                // Close all producers if this was externally triggered
+                if (data.source === "api") {
+                  logger.info(`[WebRTC] API-triggered stream end, closing producers for ${streamId}`);
+                  // Find all broadcasting peers and close their producers
+                  for (const peer of room.peers.values()) {
+                    if (peer.isStreamer) {
+                      peer.producers.forEach(producer => {
+                        try {
+                          producer.close();
+                        } catch (err) {
+                          logger.error(`[WebRTC] Error closing producer: ${err}`);
+                        }
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              logger.error(`[WebRTC] Error handling stream end event: ${err}`);
+            }
+            break;
+            
+          case "LIVE":
+            // If stream started, verify room exists
+            try {
+              // Get or create room if needed
+              let room = rooms.get(streamId);
+              if (!room) {
+                room = await getOrCreateRoom(streamId, userId as string);
+                logger.info(`[WebRTC] Created room for LIVE stream ${streamId} from external event`);
+              }
+              
+              // Log event to track state synchronization
+              emitStreamStateChange({
+                streamId,
+                state: "LIVE",
+                userId: userId as string,
+                timestamp: new Date().toISOString(),
+                metadata: { source: data.source || "client" }
+              });
+            } catch (err) {
+              logger.error(`[WebRTC] Error handling stream start event: ${err}`);
+            }
+            break;
+            
+          case "PAUSED":
+            // Handle pause state if needed
+            emitStreamStateChange({
+              streamId,
+              state: "PAUSED",
+              userId: userId as string,
+              timestamp: new Date().toISOString(),
+              metadata: { source: data.source || "client" }
+            });
+            break;
+        }
+      });
 
       // Handle getRouterRtpCapabilities - CRITICAL for WebRTC setup
       socket.on("getRouterRtpCapabilities", async (data, callback) => {
@@ -1201,7 +1787,7 @@ export async function initializeSocketIOServer(
             const existingConnection = findExistingUserConnection(
               room,
               userId as string,
-              isStreamerUser
+              isStreamer
             );
 
             if (
@@ -1212,7 +1798,7 @@ export async function initializeSocketIOServer(
               existingSocketId = existingConnection.socketId;
               logger.warn(
                 `[WebRTC] Found existing ${
-                  isStreamerUser ? "streamer" : "viewer"
+                  isStreamer ? "streamer" : "viewer"
                 } connection for user`,
                 {
                   userId,
@@ -1238,7 +1824,7 @@ export async function initializeSocketIOServer(
             logger.info(`[WebRTC] Creating new peer for socket: ${socket.id}`, {
               streamId,
               userId,
-              isStreamer: isStreamerUser,
+              isStreamer,
               connectionType: socket.data.connectionType,
             });
 
@@ -1248,7 +1834,7 @@ export async function initializeSocketIOServer(
               userId: userId as string,
               username: username as string,
               sessionId: sessionId,
-              isStreamer: isStreamerUser,
+              isStreamer,
               transports: new Map(),
               producers: new Map(),
               consumers: new Map(),
@@ -1264,7 +1850,7 @@ export async function initializeSocketIOServer(
             logger.info(`[WebRTC] Added peer to room for: ${socket.id}`, {
               streamId,
               userId,
-              isStreamer: isStreamerUser,
+              isStreamer,
               connectionType: socket.data.connectionType,
             });
           } else {
@@ -1272,7 +1858,7 @@ export async function initializeSocketIOServer(
             logger.info(`[WebRTC] Updating existing peer: ${socket.id}`, {
               streamId,
               userId,
-              isStreamer: isStreamerUser,
+              isStreamer,
               connectionType: socket.data.connectionType,
             });
 
@@ -1285,7 +1871,7 @@ export async function initializeSocketIOServer(
           }
 
           // Special handling for streamer connections to enforce one streamer per room
-          if (isStreamerUser) {
+          if (isStreamer) {
             ensureOnlyOneStreamerInRoom(io, room, userId as string, socket.id);
           }
 
@@ -1325,7 +1911,7 @@ export async function initializeSocketIOServer(
           logEvent("createProducerTransport", socket.id, {
             streamId,
             userId,
-            isStreamer: isStreamerUser,
+            isStreamer,
             connectionType: socket.data.connectionType,
           });
 
@@ -1381,7 +1967,7 @@ export async function initializeSocketIOServer(
           });
 
           // If this is a streamer, enforce only one streamer per room
-          if (isStreamerUser) {
+          if (isStreamer) {
             ensureOnlyOneStreamerInRoom(io, room, userId as string, socket.id);
           }
         } catch (error) {
@@ -1526,7 +2112,7 @@ export async function initializeSocketIOServer(
             transportId: data.transportId,
             kind: data.kind,
             userId,
-            isStreamer: isStreamerUser,
+            isStreamer,
           });
 
           const room = await getOrCreateRoom(streamId);
@@ -1799,7 +2385,7 @@ export async function initializeSocketIOServer(
           logEvent("connectRtpCapabilities", socket.id, {
             streamId,
             userId,
-            isStreamer: isStreamerUser,
+            isStreamer,
             hasRtpCapabilities: !!data.rtpCapabilities,
             isReconnection: !!data.isReconnection,
           });
@@ -1878,7 +2464,7 @@ export async function initializeSocketIOServer(
               username: username as string,
               sessionId:
                 isReconnection && data.sessionId ? data.sessionId : sessionId,
-              isStreamer: isStreamerUser,
+              isStreamer,
               transports: new Map(),
               producers: new Map(),
               consumers: new Map(),
@@ -1896,7 +2482,7 @@ export async function initializeSocketIOServer(
               {
                 streamId,
                 userId,
-                isStreamer: isStreamerUser,
+                isStreamer,
                 isReconnection,
               }
             );
@@ -1962,6 +2548,17 @@ export async function initializeSocketIOServer(
           });
         }
       });
+
+      // Handle heartbeat from client
+      socket.on("heartbeat", () => {
+        if (socket.data.isBroadcaster) {
+          broadcasterHeartbeats.set(socket.id, Date.now());
+          logger.debug(`[Heartbeat] Received from broadcaster ${socket.id}`, {
+            streamId: socket.data.streamId,
+            userId: socket.data.userId
+          });
+        }
+      });
     });
 
     // Log server started
@@ -1986,123 +2583,134 @@ export async function initializeSocketIOServer(
   }
 }
 
-// MediaSoup worker setup
-async function createMediasoupWorker(): Promise<MediasoupTypes.Worker> {
-  const { worker: workerConfig } = mediasoupAppConfig;
-
-  logger.info("[MediaSoup] Creating MediaSoup worker");
-  
-  // Debug worker path
-  try {
-    const { execSync } = require('child_process');
-    const fs = require('fs');
-    
-    logger.info("[MediaSoup] Checking MediaSoup installation status");
-    
-    // Check node_modules structure
-    if (fs.existsSync('./node_modules/mediasoup')) {
-      const files = fs.readdirSync('./node_modules/mediasoup');
-      logger.info(`[MediaSoup] Files in mediasoup dir: ${files.join(', ')}`);
-      
-      if (fs.existsSync('./node_modules/mediasoup/worker')) {
-        const workerFiles = fs.readdirSync('./node_modules/mediasoup/worker');
-        logger.info(`[MediaSoup] Files in worker dir: ${workerFiles.join(', ')}`);
-        
-        // Check worker binary
-        const workerPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
-        if (fs.existsSync(workerPath)) {
-          logger.info(`[MediaSoup] Worker binary exists at ${workerPath}`);
-          
-          // Make sure it's executable
-          try {
-            fs.chmodSync(workerPath, 0o755);
-            logger.info("[MediaSoup] Made worker binary executable");
-          } catch (chmodErr) {
-            logger.error("[MediaSoup] Error making worker executable:", chmodErr);
-          }
-        } else {
-          logger.error(`[MediaSoup] Worker binary NOT found at expected path: ${workerPath}`);
-        }
-      }
-    } else {
-      logger.error("[MediaSoup] MediaSoup module directory not found!");
-    }
-  } catch (debugErr) {
-    logger.error("[MediaSoup] Error debugging mediasoup installation:", debugErr);
+// Define the broadcaster disconnection handler function at the end of the file or before export
+async function handleBroadcasterDisconnection(streamId: string, userId: string, socket: Socket) {
+  if (!streamId || !userId) {
+    logger.warn(`[StreamHandler] Missing streamId or userId for disconnection handler`, {
+      socketId: socket.id,
+      streamId,
+      userId
+    });
+    return;
   }
-  
+
   try {
-    const worker = await mediasoup.createWorker({
-      logLevel: workerConfig.logLevel as MediasoupTypes.WorkerLogLevel,
-      logTags: workerConfig.logTags as MediasoupTypes.WorkerLogTag[],
-      rtcMinPort: workerConfig.rtcMinPort,
-      rtcMaxPort: workerConfig.rtcMaxPort,
-    });
-
-    worker.on("died", (error) => {
-      logger.error(
-        "[MediaSoup] MediaSoup worker died unexpectedly, attempting restart",
-        { error: error?.toString() }
-      );
-      // Attempt to create a new worker
-      setTimeout(async () => {
-        try {
-          mediasoupWorker = await createMediasoupWorker();
-          // @ts-ignore
-          global.mediasoupWorker = mediasoupWorker;
-          logger.info("[MediaSoup] MediaSoup worker restarted successfully");
-        } catch (e) {
-          logger.error("[MediaSoup] Failed to restart MediaSoup worker", {
-            error: e,
-          });
-        }
-      }, 2000);
-    });
-
-    return worker;
-  } catch (error) {
-    logger.error("[MediaSoup] Failed to create worker with config:", {
-      error,
-      config: {
-        rtcMinPort: workerConfig.rtcMinPort,
-        rtcMaxPort: workerConfig.rtcMaxPort,
-        logLevel: workerConfig.logLevel,
-      }
+    logger.info(`[StreamHandler] Handling broadcaster disconnection`, {
+      streamId,
+      userId,
+      socketId: socket.id
     });
     
-    // Try to find mediasoup worker binary with more detailed paths
-    try {
-      const path = require('path');
-      const fs = require('fs');
-      
-      const possiblePaths = [
-        './node_modules/mediasoup/worker/out/Release/mediasoup-worker',
-        '/app/node_modules/mediasoup/worker/out/Release/mediasoup-worker',
-        path.resolve('./node_modules/mediasoup/worker/out/Release/mediasoup-worker')
-      ];
-      
-      logger.info("[MediaSoup] Searching for worker binary in possible locations:");
-      possiblePaths.forEach(p => {
-        logger.info(`  - ${p}: ${fs.existsSync(p) ? 'EXISTS' : 'NOT FOUND'}`);
-      });
-      
-      // Try to reinstall mediasoup as a last resort
-      logger.info("[MediaSoup] Emergency: Trying to reinstall mediasoup");
-      const { execSync } = require('child_process');
-      execSync('npm install mediasoup@3', { stdio: 'inherit' });
-      
-      // Check if that fixed it
-      const reinstallPath = './node_modules/mediasoup/worker/out/Release/mediasoup-worker';
-      if (fs.existsSync(reinstallPath)) {
-        logger.info("[MediaSoup] Successfully reinstalled mediasoup, binary now exists");
-        fs.chmodSync(reinstallPath, 0o755);
-      } else {
-        logger.error("[MediaSoup] Reinstall failed, binary still missing");
-      }
-    } catch (searchErr) {
-      logger.error("[MediaSoup] Error during emergency recovery:", searchErr);
+    // 1. Get current stream state
+    const { isValid, actualState } = await validateStreamState(streamId);
+    if (!isValid) {
+      logger.warn(`[StreamHandler] Cannot process disconnection - stream not found: ${streamId}`);
+      return;
     }
     
-    throw error;
+    // 2. Only process if stream is in LIVE or PAUSED state
+    if (actualState !== "LIVE" && actualState !== "PAUSED") {
+      logger.info(`[StreamHandler] Stream ${streamId} is not active (${actualState}), no cleanup needed`);
+      return;
+    }
+    
+    // 3. Get the room if it exists
+    const room = rooms.get(streamId);
+    if (!room) {
+      logger.warn(`[StreamHandler] Room for stream ${streamId} not found, marking as INTERRUPTED`);
+      await updateDatabaseStreamState(streamId, "INTERRUPTED", userId);
+      return;
+    }
+    
+    // 4. Close all transports for this broadcaster
+    const peer = room.peers.get(socket.id);
+    if (peer) {
+      logger.info(`[StreamHandler] Cleaning up broadcaster transports for ${streamId}`);
+      
+      // Close all transports for this peer
+      for (const transport of peer.transports.values()) {
+        try {
+                     // Close producers associated with this transport
+           for (const producer of peer.producers.values()) {
+             try {
+               producer.close();
+             } catch (e: unknown) {
+               const errMsg = e instanceof Error ? e.message : String(e);
+               logger.error(`[StreamHandler] Error closing producer: ${errMsg}`);
+             }
+           }
+           
+           // Close the transport
+           transport.close();
+         } catch (e: unknown) {
+           const errMsg = e instanceof Error ? e.message : String(e);
+           logger.error(`[StreamHandler] Error closing transport: ${errMsg}`);
+         }
+      }
+      
+      // Remove peer from room
+      room.peers.delete(socket.id);
+    }
+    
+    // 5. If this was the last broadcaster, mark stream as interrupted
+    const hasOtherBroadcasters = Array.from(room.peers.values())
+      .some(p => p.isStreamer && p.socketId !== socket.id);
+    
+    if (!hasOtherBroadcasters) {
+      logger.info(`[StreamHandler] No remaining broadcasters for ${streamId}, marking as INTERRUPTED`);
+      await updateDatabaseStreamState(streamId, "INTERRUPTED", userId);
+      
+             // Notify all viewers about the interrupted stream
+       const httpServer = (global as any).server as ExtendedHttpServer;
+       if (httpServer?.io) {
+         httpServer.io.to(`stream:${streamId}`).emit('stream_interrupted', {
+           streamId,
+           reason: "broadcaster_disconnected"
+         });
+       }
+      
+      // Optionally close the entire room if no viewers either
+      if (room.peers.size === 0) {
+        cleanupRoom(streamId);
+      }
+    }
+  } catch (error) {
+    logger.error(`[StreamHandler] Error handling broadcaster disconnection`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      streamId,
+      userId
+    });
+    
+    // Ensure stream is marked as interrupted even if cleanup fails
+    await updateDatabaseStreamState(streamId, "INTERRUPTED", userId);
+  }
+}
+
+// Add room cleanup helper function
+function cleanupRoom(streamId: string) {
+  const room = rooms.get(streamId);
+  if (!room) return;
+  
+  try {
+    // Close all peers' transports
+    for (const peer of room.peers.values()) {
+      for (const transport of peer.transports.values()) {
+        transport.close();
+      }
+    }
+    
+    // Close the router
+    room.router.close();
+    
+    // Remove the room from the map
+    rooms.delete(streamId);
+    
+    logger.info(`[StreamHandler] Room for stream ${streamId} cleaned up and removed`);
+  } catch (error) {
+    logger.error(`[StreamHandler] Failed to clean up room ${streamId}`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
 }

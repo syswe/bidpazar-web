@@ -240,11 +240,8 @@ const isLoopbackAddress = (address) => {
 // WebSocket handling upgrade events directly
 httpServer.on("upgrade", (request, socket, head) => {
   // Check if the request is for Socket.IO
-  // Update detection to handle both /socket.io/ and /socket.io? patterns
-  const isSocketIORequest = 
-    request.url.startsWith("/socket.io/") || 
-    request.url.startsWith("/socket.io?") || 
-    request.url === "/socket.io";
+  // Update detection logic to handle all Socket.IO path variants
+  const isSocketIOPath = request.url.startsWith("/socket.io");
   
   const clientIP =
     request.headers["x-forwarded-for"] || request.connection.remoteAddress;
@@ -252,7 +249,7 @@ httpServer.on("upgrade", (request, socket, head) => {
 
   // Log the connection with additional client info
   logger.debug(`WebSocket upgrade request: ${request.url}`, {
-    isSocketIO: isSocketIORequest,
+    isSocketIO: isSocketIOPath,
     clientIP,
     host,
     headers: {
@@ -274,10 +271,12 @@ httpServer.on("upgrade", (request, socket, head) => {
     // In production we might want to add additional validation here
   }
 
-  if (isSocketIORequest) {
+  if (isSocketIOPath) {
     // Let Socket.IO handle its own connections
     // This will be handled by Socket.IO's internal handlers
     logger.debug(`Socket.IO upgrade request: ${request.url}`);
+    // Socket.IO will handle this automatically, we don't need to do anything
+    // Let the event propagate to Socket.IO's handlers
   } else {
     // For raw WebSocket connections (not Socket.IO)
     logger.info(`Raw WebSocket upgrade request for: ${request.url}`);
@@ -302,6 +301,9 @@ console.log("Initializing Socket.IO server...");
 app
   .prepare()
   .then(async () => {
+    // Initialize MediaSoup first
+    await initializeMediaSoup();
+    
     // Use the existing HTTP server instead of creating a new one
     // Add request handler to the existing server
     httpServer.removeAllListeners('request');
@@ -349,41 +351,32 @@ app
     // Initialize Socket.IO on the same server
     console.log("Initializing Socket.IO server...");
     try {
-      // Initialize Socket.IO with our enhanced error handling
+      // Initialize Socket.IO with more resilient settings
       const io = new SocketIOServer(httpServer, {
         cors: {
           origin: "*", // In production, restrict this to your domains
           methods: ["GET", "POST"],
           credentials: true,
         },
-        // Allow all transports with WebSocket preferred
+        // Prioritize websocket transport
         transports: ["websocket", "polling"],
         allowUpgrades: true,
-        // Path and settings
-        path: "/socket.io", // Ensure no trailing slash
-        serveClient: false, // Don't serve client files to save bandwidth
-        connectTimeout: 45000, // 45 seconds (more than default 20s)
+        // Fix path issues by being consistent
+        path: "/socket.io", // No trailing slash
+        serveClient: false, // Don't serve client files
+        connectTimeout: 45000, // 45 seconds
         // Polling settings
-        pingTimeout: 30000,
+        pingTimeout: 60000, // Increased to 60s for better connection stability
         pingInterval: 25000,
-        upgradeTimeout: 10000,
+        upgradeTimeout: 15000, // Increased to 15s
         // WebSocket specific settings
         maxHttpBufferSize: 1e8, // 100 MB max message size
-        // Explicit disable of trailing slash to fix compatibility with Next.js 13+
+        // Fix for trailing slash issues in Next.js 13+
         addTrailingSlash: false,
-        // Enable connection state recovery
+        // Connection state recovery for better reconnection
         connectionStateRecovery: {
-          // optional, see https://socket.io/docs/v4/connection-state-recovery/#options
-          maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
-          skipMiddlewares: true, // RECOMMENDED
-        },
-        // Detailed logging
-        // @ts-ignore - logger option is available in socket.io
-        logger: {
-          debug: (...args) => logger.debug("[Socket.IO] Debug", ...args),
-          info: (...args) => logger.info("[Socket.IO] Info", ...args),
-          warn: (...args) => logger.warn("[Socket.IO] Warning", ...args),
-          error: (...args) => logger.error("[Socket.IO] Error", ...args),
+          maxDisconnectionDuration: 5 * 60 * 1000, // 5 minutes
+          skipMiddlewares: true,
         },
       });
 
@@ -465,6 +458,33 @@ app
       Object.keys(io._nsps).forEach((namespace) => {
         console.log(`Active Socket.IO namespace: ${namespace}`);
       });
+
+      // Instead, add better logging for Socket.IO connections
+      io.on("connection", (socket) => {
+        const clientIP = socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
+        const host = socket.handshake.headers.host;
+        const userAgent = socket.handshake.headers["user-agent"];
+        
+        logger.info(`Socket.IO connection from ${clientIP}`, {
+          socketId: socket.id,
+          transport: socket.conn.transport.name,
+          host,
+          userAgent: userAgent?.substring(0, 100), // Limit length
+          query: socket.handshake.query,
+        });
+        
+        socket.on("disconnect", (reason) => {
+          logger.info(`Socket.IO disconnect: ${socket.id}`, { reason });
+        });
+        
+        // Log transport upgrades
+        socket.conn.on("upgrade", (transport) => {
+          logger.info(`Socket.IO transport upgraded: ${transport.name}`, {
+            socketId: socket.id,
+            previousTransport: socket.conn.transport.name,
+          });
+        });
+      });
     } catch (err) {
       console.error(
         "Failed to initialize Socket.IO server or its handlers:",
@@ -484,41 +504,6 @@ app
       }
       process.exit(1);
     }
-
-    // IMPORTANT CHANGE: Let Socket.IO handle its own upgrade requests
-    // No need to manually handle Socket.IO upgrades, as it automatically
-    // attaches its own event handlers to the HTTP server
-
-    // Only handle non-Socket.IO WebSocket upgrade requests
-    httpServer.on("upgrade", (req, socket, head) => {
-      // Log the request for debugging
-      console.log(`[Server] WebSocket upgrade request for: ${req.url}`);
-
-      // Detect and handle loopback connections
-      const clientIP =
-        req.headers["x-forwarded-for"] || req.connection.remoteAddress;
-      const host = req.headers.host;
-      const isLoopback =
-        isLoopbackAddress(clientIP) || isLoopbackAddress(host?.split(":")[0]);
-
-      if (isLoopback) {
-        logger.info(
-          `[Server] Loopback WebSocket connection from ${clientIP} for ${req.url}`
-        );
-      }
-
-      // Only attempt to handle if it's NOT a Socket.IO request
-      // Socket.IO attaches its own handlers and will handle its own requests
-      // Use the same improved detection logic
-      if (!req.url.startsWith("/socket.io") && !req.url.includes("/socket.io?")) {
-        console.log(
-          `[Server] Unhandled WebSocket upgrade request for: ${req.url}`
-        );
-        // For non-Socket.IO connections, close the socket
-        socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
-      }
-      // Otherwise, let Socket.IO's own handlers manage its requests
-    });
 
     // Start the server with enhanced error handling
     httpServer.listen(port, hostname, (err) => {
@@ -558,7 +543,7 @@ app
       }
     });
 
-    // Add graceful shutdown handling
+    // Add forceful graceful shutdown handling
     const gracefulShutdown = (signal) => {
       console.log(`\n${signal} received. Shutting down gracefully...`);
       if (logger) {
@@ -574,11 +559,20 @@ app
           console.log("Closing remaining socket connections...");
           if (httpServer.io) {
             const activeSockets = httpServer.io.sockets.sockets.size;
-            console.log(
-              `Closing ${activeSockets} active socket connections...`
-            );
+            
+            if (activeSockets > 0) {
+              console.log(
+                `Closing ${activeSockets} active socket connections...`
+              );
+
+              // Close all active sockets
+              httpServer.io.sockets.sockets.forEach((socket) => {
+                socket.disconnect();
+              });
+            }
 
             httpServer.io.close();
+            httpServer.io = null;
             console.log("Socket.IO server closed");
           }
 
@@ -647,30 +641,127 @@ app
 function ensureMediasoupWorkerExecutable() {
   try {
     const mediasoupPath = require.resolve('mediasoup');
-    const workerPath = path.join(path.dirname(mediasoupPath), '..', 'worker', 'out', 'Release', 'mediasoup-worker');
+    // Fix path: Navigate to the correct location of the worker binary
+    const mediasoupDir = path.dirname(mediasoupPath);
+    const workerPath = path.join(mediasoupDir, '..', '..', 'worker', 'out', 'Release', 'mediasoup-worker');
+    
+    console.log("[MediaSoup] Checking for worker binary at:", workerPath);
     
     if (fs.existsSync(workerPath)) {
       const stats = fs.statSync(workerPath);
       // Make sure it's executable
       if (!(stats.mode & 0o111)) {
-        console.log("Making MediaSoup worker executable:", workerPath);
+        console.log("[MediaSoup] Making MediaSoup worker executable:", workerPath);
         fs.chmodSync(workerPath, stats.mode | 0o111);
+      } else {
+        console.log("[MediaSoup] MediaSoup worker is already executable");
       }
+      return true;
     } else {
-      console.error("MediaSoup worker binary not found at:", workerPath);
+      console.error("[MediaSoup] MediaSoup worker binary not found at:", workerPath);
+      
+      // List directories to help diagnose
+      console.log("[MediaSoup] Contents of mediasoup directory:", fs.readdirSync(path.join(mediasoupDir, '..')));
       
       // Try rebuilding as a last resort
       try {
-        console.log("Attempting to rebuild MediaSoup...");
+        console.log("[MediaSoup] Attempting to rebuild MediaSoup...");
         execSync('npm install --no-save mediasoup@3', { stdio: 'inherit' });
       } catch (rebuildErr) {
-        console.error("Failed to rebuild MediaSoup:", rebuildErr.message);
+        console.error("[MediaSoup] Failed to rebuild MediaSoup:", rebuildErr.message);
       }
+      return false;
     }
   } catch (error) {
-    console.error("Error ensuring MediaSoup worker executable:", error.message);
+    console.error("[MediaSoup] Error ensuring MediaSoup worker executable:", error.message);
+    return false;
   }
 }
 
-// Ensure MediaSoup worker is executable
-ensureMediasoupWorkerExecutable();
+// Set up MediaSoup for WebRTC
+async function initializeMediaSoup() {
+  try {
+    // Make sure the binary is executable first
+    if (!ensureMediasoupWorkerExecutable()) {
+      throw new Error("Cannot find or make executable the MediaSoup worker binary");
+    }
+    
+    // Get configuration from environment
+    const mediasoup = require('mediasoup');
+    const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP || '127.0.0.1';
+    const listenIp = process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0';
+    const minPort = parseInt(process.env.MEDIASOUP_MIN_PORT || '40000');
+    const maxPort = parseInt(process.env.MEDIASOUP_MAX_PORT || '40100');
+    const logLevel = process.env.MEDIASOUP_LOG_LEVEL || 'warn';
+    
+    console.log("[MediaSoup] Creating worker with configuration:");
+    console.log(`[MediaSoup] - Announced IP: ${announcedIp}`);
+    console.log(`[MediaSoup] - Listen IP: ${listenIp}`);
+    console.log(`[MediaSoup] - Port range: ${minPort}-${maxPort}`);
+    console.log(`[MediaSoup] - Log level: ${logLevel}`);
+    
+    // Create MediaSoup worker
+    const worker = await mediasoup.createWorker({
+      logLevel,
+      logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
+      rtcMinPort: minPort,
+      rtcMaxPort: maxPort,
+    });
+    
+    worker.on('died', () => {
+      console.error('[MediaSoup] Worker died unexpectedly! Exiting...');
+      setTimeout(() => process.exit(1), 2000);
+    });
+    
+    console.log(`[MediaSoup] Worker created successfully (pid: ${worker.pid})`);
+    
+    // Store worker in global scope for access in socket handlers
+    global.mediasoupWorker = worker;
+    
+    // Create a router (required for WebRTC connections)
+    const router = await worker.createRouter({
+      mediaCodecs: [
+        {
+          kind: 'audio',
+          mimeType: 'audio/opus',
+          clockRate: 48000,
+          channels: 2
+        },
+        {
+          kind: 'video',
+          mimeType: 'video/VP8',
+          clockRate: 90000,
+          parameters: {
+            'x-google-start-bitrate': 1000
+          }
+        },
+        {
+          kind: 'video',
+          mimeType: 'video/H264',
+          clockRate: 90000,
+          parameters: {
+            'packetization-mode': 1,
+            'profile-level-id': '42e01f',
+            'level-asymmetry-allowed': 1
+          }
+        }
+      ]
+    });
+    
+    // Store router in global scope
+    global.mediasoupRouter = router;
+    
+    console.log('[MediaSoup] Router created successfully, WebRTC ready');
+    return { worker, router };
+  } catch (error) {
+    console.error('[MediaSoup] Failed to initialize MediaSoup:', error);
+    if (logger) {
+      logger.error('[MediaSoup] Failed to initialize:', {
+        error: error instanceof Error ? 
+          { name: error.name, message: error.message, stack: error.stack } : 
+          String(error)
+      });
+    }
+    return null;
+  }
+}

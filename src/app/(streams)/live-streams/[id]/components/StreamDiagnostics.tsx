@@ -1,27 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Cpu, RotateCw, Info, Download, Shield, Terminal } from 'lucide-react';
 import { getToken } from "@/lib/frontend-auth";
 import { useRuntimeConfig } from '@/context/RuntimeConfigContext'; // Import the hook
-
-interface LogItem {
-  timestamp: string;
-  message: string;
-  data?: unknown;
-  level: 'info' | 'warn' | 'error' | 'debug';
-}
+import { formatDate } from '../utils/dateUtils';
+import { LiveStreamDetails } from '../hooks/useStreamDetails';
+import { ConnectionState, LogItem } from '../hooks/useStreamLogging';
 
 interface StreamDiagnosticsProps {
-  streamId?: string;
-  onReset?: () => void;
-  logs?: LogItem[];
-  streamInfo?: any;
-  connectionState?: {
-    isConnected: boolean;
-    isReconnecting: boolean;
-    lastError: string | null;
-  };
+  streamId: string;
+  streamInfo: LiveStreamDetails;
+  connectionState: ConnectionState;
+  logs: LogItem[];
+  onReset: () => void;
 }
 
 interface DiagnosticResult {
@@ -30,7 +22,13 @@ interface DiagnosticResult {
   details?: string[];
 }
 
-export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, connectionState }: StreamDiagnosticsProps) {
+export const StreamDiagnostics: React.FC<StreamDiagnosticsProps> = ({
+  streamId,
+  streamInfo,
+  connectionState,
+  logs,
+  onReset,
+}) => {
   const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig(); // Use the hook
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<DiagnosticResult[]>([]);
@@ -38,6 +36,7 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
   const [healthStatus, setHealthStatus] = useState<string>("unknown");
   const [isLoadingHealth, setIsLoadingHealth] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'connection' | 'logs'>('details');
 
   // Use the streamId from props if available
   const streamIdToUse = streamId || (streamInfo?.id || '');
@@ -358,112 +357,240 @@ export function StreamDiagnostics({ streamId, onReset, logs = [], streamInfo, co
     }
   }, [streamId, runtimeConfig, isConfigLoading]); // Add dependencies
 
-  // If logs are provided, render them
-  if (hasExternalLogs) {
-    return (
-      <div className="flex-1 overflow-y-auto p-4 font-mono space-y-1 text-xs">
-        {logs.length === 0 ? (
-          <p className="text-gray-400 italic">No logs available.</p>
-        ) : (
-          <>
-            {/* Stream info summary */}
-            {streamInfo && (
-              <div className="mb-4 p-2 border border-blue-800/30 rounded bg-blue-900/20">
-                <h3 className="text-blue-300 font-semibold mb-1">Stream Info</h3>
-                <p className="text-white/70">ID: {streamInfo.id}</p>
-                <p className="text-white/70">Status: {streamInfo.status}</p>
-                {connectionState && (
-                  <p className="text-white/70">
-                    Connection: {connectionState.isConnected ? 'Connected' : 
-                              connectionState.isReconnecting ? 'Reconnecting' : 'Disconnected'}
-                  </p>
-                )}
-              </div>
-            )}
-            
-            {/* Log entries */}
-            {logs.map((log, index) => (
-              <div key={index} className={`${
-                log.level === 'error' ? 'text-red-400' :
-                log.level === 'warn' ? 'text-yellow-400' :
-                log.level === 'debug' ? 'text-blue-400' :
-                'text-white/70'
-              }`}>
-                <span className="text-gray-500 mr-2 select-none">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                <span>{log.message}</span>
-                {log.data !== undefined && log.data !== null && (
-                  <span className="ml-2 text-gray-400 opacity-80">
-                    {`( ${typeof log.data === 'string' ? log.data : JSON.stringify(log.data)} )`}
-                  </span>
-                )}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    );
-  }
+  const getLevelColor = (level: string) => {
+    switch (level.toLowerCase()) {
+      case 'error':
+        return 'text-red-500';
+      case 'warn':
+        return 'text-yellow-500';
+      case 'debug':
+        return 'text-blue-400';
+      case 'info':
+      default:
+        return 'text-gray-400';
+    }
+  };
 
-  return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold mb-4">Stream Diagnostics</h2>
-
-      <div className="space-y-4">
-        {results.map((result, index) => (
-          <div
-            key={index}
-            className={`p-4 rounded-lg ${result.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+  const renderDetailsTab = () => (
+    <div className="space-y-4">
+      <div className="rounded-md bg-black/30 p-3">
+        <h4 className="text-sm font-semibold mb-2 flex items-center">
+          <Info className="h-4 w-4 mr-1" /> Stream Information
+        </h4>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="text-gray-400">ID</div>
+          <div className="font-mono">{streamInfo.id}</div>
+          <div className="text-gray-400">Title</div>
+          <div>{streamInfo.title}</div>
+          <div className="text-gray-400">Status</div>
+          <div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs ${
+                streamInfo.status === 'LIVE'
+                  ? 'bg-green-500/20 text-green-500'
+                  : streamInfo.status === 'ENDED'
+                  ? 'bg-red-500/20 text-red-500'
+                  : 'bg-yellow-500/20 text-yellow-500'
               }`}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-              />
-              <span className={result.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}>
-                {result.message}
-              </span>
-            </div>
-            {result.details && (
-              <ul className="mt-2 ml-4 text-sm space-y-1">
-                {result.details.map((detail, i) => (
-                  <li key={i} className="text-gray-600 dark:text-gray-400">
-                    • {detail}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
-
-        {isRunning && (
-          <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Running diagnostics...</span>
-          </div>
-        )}
-
-        <div className="mt-4 pt-4 border-t dark:border-gray-700">
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{summary}</p>
-          <div className="flex gap-2">
-            <button
-              onClick={runDiagnostics}
-              disabled={isRunning}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50"
             >
-              Run Again
-            </button>
-            {onReset && (
-              <button
-                onClick={onReset}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg"
-              >
-                Reset Connection
-              </button>
-            )}
+              {streamInfo.status}
+            </span>
           </div>
+          <div className="text-gray-400">Creator ID</div>
+          <div className="font-mono">{streamInfo.creatorId}</div>
+          <div className="text-gray-400">Creator</div>
+          <div>{streamInfo.user?.username || 'Unknown'}</div>
+          <div className="text-gray-400">Started</div>
+          <div>{formatDate(streamInfo.startTime)}</div>
+          <div className="text-gray-400">Updated</div>
+          <div>{formatDate(streamInfo.updatedAt)}</div>
         </div>
       </div>
     </div>
   );
-} 
+
+  const renderConnectionTab = () => (
+    <div className="space-y-4">
+      <div className="rounded-md bg-black/30 p-3">
+        <h4 className="text-sm font-semibold mb-2 flex items-center">
+          <Shield className="h-4 w-4 mr-1" /> Connection Status
+        </h4>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="text-gray-400">Connected</div>
+          <div>
+            <span
+              className={`px-2 py-0.5 rounded-full ${
+                connectionState.isConnected
+                  ? 'bg-green-500/20 text-green-500'
+                  : 'bg-red-500/20 text-red-500'
+              }`}
+            >
+              {connectionState.isConnected ? 'Yes' : 'No'}
+            </span>
+          </div>
+          <div className="text-gray-400">Reconnecting</div>
+          <div>
+            <span
+              className={`px-2 py-0.5 rounded-full ${
+                connectionState.isReconnecting
+                  ? 'bg-yellow-500/20 text-yellow-500'
+                  : 'bg-gray-500/20 text-gray-400'
+              }`}
+            >
+              {connectionState.isReconnecting ? 'Yes' : 'No'}
+            </span>
+          </div>
+          <div className="text-gray-400">Loopback</div>
+          <div>
+            <span
+              className={`px-2 py-0.5 rounded-full ${
+                connectionState.isLoopback
+                  ? 'bg-blue-500/20 text-blue-400'
+                  : 'bg-gray-500/20 text-gray-400'
+              }`}
+            >
+              {connectionState.isLoopback ? 'Yes' : 'No'}
+            </span>
+            {connectionState.isLoopback && (
+              <span className="block mt-1 text-xs text-gray-400">
+                {connectionState.optimizedForLoopback
+                  ? 'Optimized for local connection'
+                  : ''}
+              </span>
+            )}
+          </div>
+          {connectionState.lastError && (
+            <>
+              <div className="text-gray-400">Last Error</div>
+              <div className="text-red-400 whitespace-normal break-words">
+                {connectionState.lastError}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-center">
+        <button
+          onClick={onReset}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm flex items-center"
+        >
+          <RotateCw className="h-4 w-4 mr-2" /> Reset Connection
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderLogsTab = () => (
+    <div>
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="text-sm font-semibold flex items-center">
+          <Terminal className="h-4 w-4 mr-1" /> Session Logs
+        </h4>
+        <button
+          onClick={() => {
+            const logText = logs
+              .map(
+                (log) =>
+                  `${log.timestamp} [${log.level}] ${log.message} ${
+                    log.data ? JSON.stringify(log.data) : ''
+                  }`
+              )
+              .join('\n');
+            
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stream-logs-${streamId}-${new Date().toISOString()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }}
+          className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded flex items-center"
+        >
+          <Download className="h-3 w-3 mr-1" /> Export
+        </button>
+      </div>
+
+      <div className="h-64 overflow-y-auto rounded-md bg-black/50 p-2 font-mono text-xs">
+        {logs.length === 0 ? (
+          <div className="text-gray-500 text-center p-4">No logs available</div>
+        ) : (
+          logs.map((log, index) => (
+            <div key={index} className="border-b border-gray-800 py-1">
+              <div className="flex items-start">
+                <span className="text-gray-500 min-w-[180px] mr-2">
+                  {new Date(log.timestamp).toLocaleTimeString()}
+                </span>
+                <span className={`uppercase font-bold min-w-[50px] ${getLevelColor(log.level)}`}>
+                  {log.level}
+                </span>
+                <span className="ml-2 break-words">{log.message}</span>
+              </div>
+              {log.data !== undefined && log.data !== null && (
+                <pre className="mt-1 pl-[230px] text-gray-400 whitespace-pre-wrap break-words">
+                  {typeof log.data === 'object'
+                    ? JSON.stringify(log.data, null, 2)
+                    : String(log.data)}
+                </pre>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Tab Navigation */}
+      <div className="flex space-x-1 border-b border-gray-700 mb-4">
+        <button
+          onClick={() => setActiveTab('details')}
+          className={`px-4 py-2 text-sm ${
+            activeTab === 'details'
+              ? 'border-b-2 border-blue-500 text-blue-500'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          <div className="flex items-center">
+            <Info className="h-4 w-4 mr-1" /> Details
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('connection')}
+          className={`px-4 py-2 text-sm ${
+            activeTab === 'connection'
+              ? 'border-b-2 border-blue-500 text-blue-500'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          <div className="flex items-center">
+            <Cpu className="h-4 w-4 mr-1" /> Connection
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('logs')}
+          className={`px-4 py-2 text-sm ${
+            activeTab === 'logs'
+              ? 'border-b-2 border-blue-500 text-blue-500'
+              : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          <div className="flex items-center">
+            <Terminal className="h-4 w-4 mr-1" /> Logs ({logs.length})
+          </div>
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="pb-4">
+        {activeTab === 'details' && renderDetailsTab()}
+        {activeTab === 'connection' && renderConnectionTab()}
+        {activeTab === 'logs' && renderLogsTab()}
+      </div>
+    </div>
+  );
+}; 

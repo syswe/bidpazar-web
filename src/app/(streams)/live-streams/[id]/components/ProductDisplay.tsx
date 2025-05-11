@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { ArrowUp, DollarSign, Clock, AlertCircle, Loader2, Info, Tag } from "lucide-react";
 
 interface Product {
@@ -27,9 +27,55 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
   const [error, setError] = useState<string | null>(null);
   const [countdownTime, setCountdownTime] = useState<number | null>(null);
 
+  const fetchProduct = useCallback(async () => {
+    if (!streamId) {
+      setLoading(false); // Ensure loading is stopped if no streamId
+      setError("Stream ID is not available."); // Optionally set an error or handle appropriately
+      setProduct(null);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(`/api/live-streams/${streamId}/product`);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError("No active product for this stream");
+          setProduct(null); 
+        } else {
+          throw new Error(`Failed to fetch product (${response.status})`);
+        }
+        return; 
+      }
+
+      const data = await response.json();
+      setProduct(prevProduct => {
+        if (JSON.stringify(prevProduct) === JSON.stringify(data)) {
+          return prevProduct;
+        }
+        return data;
+      });
+    } catch (err) {
+      console.error('Error fetching product:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load product information');
+      setProduct(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [streamId]);
+
+  useEffect(() => {
+    fetchProduct();
+  }, [fetchProduct]);
+
   // Countdown timer
   useEffect(() => {
-    if (!product?.countdownEnd) return;
+    if (!product?.countdownEnd) {
+      setCountdownTime(null);
+      return;
+    }
     
     const intervalId = setInterval(() => {
       const endTime = new Date(product.countdownEnd!).getTime();
@@ -45,40 +91,7 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
     }, 1000);
     
     return () => clearInterval(intervalId);
-  }, [product?.countdownEnd]);
-
-  useEffect(() => {
-    async function fetchProduct() {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const response = await fetch(`/api/live-streams/${streamId}/product`);
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError("No active product for this stream");
-          } else {
-            throw new Error(`Failed to fetch product (${response.status})`);
-          }
-          setLoading(false);
-          return;
-        }
-
-        const data = await response.json();
-        setProduct(data);
-      } catch (err) {
-        console.error('Error fetching product:', err);
-        setError('Failed to load product information');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (streamId) {
-      fetchProduct();
-    }
-  }, [streamId]);
+  }, [product]); // Depend on the whole product object
 
   const formatTimeLeft = (seconds: number): string => {
     if (!seconds || seconds <= 0) return "Ended";
@@ -101,12 +114,12 @@ export default function ProductDisplay({ streamId, className = "", onBidClick }:
 
   if (error) {
     // Check if error message is about no active product
-    if (error.includes("No active product")) {
+    if (error.includes("No active product") || error.includes("Stream ID is not available")) {
       return (
         <div className={`p-3 bg-background/90 backdrop-blur-sm border border-border rounded-lg ${className}`}>
           <div className="flex items-center justify-center py-4 text-muted-foreground text-sm">
             <Info className="w-4 h-4 mr-2" />
-            <span>No active product for this auction</span>
+            <span>{error.includes("No active product") ? "No active product for this auction" : "Product information unavailable."}</span>
           </div>
         </div>
       );

@@ -6,6 +6,7 @@ This repository contains the frontend user interface for the BidPazar applicatio
 
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
+- [Refactoring Progress](#refactoring-progress)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
@@ -52,6 +53,66 @@ frontend/
 ├── tsconfig.json         # TypeScript configuration
 └── README.md             # This file
 ```
+
+## Refactoring Progress
+
+### Completed Refactoring
+- ✅ WebRTCStreamManager component - Successfully refactored from a monolithic component into smaller, maintainable modules with proper separation of concerns
+
+### In Progress
+- 🔄 LiveStreamPage (`src/app/(streams)/live-streams/[id]/page.tsx`) - Currently being refactored from ~2000 lines to a target of 200 lines by extracting components and logic
+
+### LiveStreamPage Refactoring Plan
+
+The LiveStreamPage component is being refactored to reduce its size from ~2000 lines to a target of 200 lines maximum. Here's the detailed plan:
+
+1. **Extract CSS to Separate Files:**
+   - ✅ Move `verticalStreamStyles` to `styles/stream.css` or use CSS modules
+   - ✅ Move `broadcastControlStyles` and other style blocks to separate files
+
+2. **Create Type Definition Files:**
+   - ✅ Move interfaces to `types/stream.ts`:
+     - `LiveStreamDetails` interface
+     - `LogItem` interface
+     - `ActiveBid` interface
+     - Connection state types
+
+3. **Extract Utilities & Hooks:**
+   - ✅ Create `hooks/useStreamConnection.ts` - Manage connection state and WebRTC
+   - ✅ Create `hooks/useStreamDetails.ts` - Handle fetching stream details
+   - ✅ Create `hooks/useStreamActions.ts` - Handle likes, sharing, etc.
+   - ✅ Create `lib/loopback.ts` - For loopback detection functions
+   - ✅ Create `lib/formatters.ts` - For date formatting and other utility functions
+   - ✅ Create `hooks/useStreamLogger.ts` - For logging functionality
+
+4. **Extract Components:**
+   - ✅ Create `components/StreamErrorView.tsx` - Error display component
+   - ✅ Create `components/StreamLoadingView.tsx` - Loading state component
+   - ✅ Create `components/StreamHeader.tsx` - Stream title and details
+   - ✅ Create `components/StreamControls.tsx` - Main control buttons (already exists)
+   - ✅ Create `components/StreamFooter.tsx` - Footer with action buttons
+   - ✅ Create `components/DiagnosticsPanel.tsx` - Expand the diagnostics into a separate component
+   - ✅ Create `components/MediaControls.tsx` - Camera/microphone controls for streamers
+   - ✅ Create `components/ConnectionStatus.tsx` - Connection state indicator
+
+5. **Separate Business Logic:**
+   - ✅ Create `lib/stream-service.ts` - API calls and stream management functions:
+     - Start/end stream functionality
+     - Product management functions
+     - Bidding functionality
+
+6. **Reduce Main Component Complexity:**
+   - ✅ Simplify render logic using extracted components
+   - ✅ Use composition instead of conditional rendering
+   - ✅ Integrate extracted hooks for state management
+
+7. **Implementation Order:**
+   1. Extract types and utilities first
+   2. Create service layer
+   3. Build individual components
+   4. Refactor main page to use new components
+   5. Test and validate functionality
+   6. Remove old code once functionality is confirmed
 
 ## Getting Started
 

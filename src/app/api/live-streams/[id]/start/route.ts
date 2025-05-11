@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { getUserFromTokenInNode } from '@/lib/auth';
 
+// Import ExtendedHttpServer to access Socket.IO instance
+import { ExtendedHttpServer } from '@/lib/socket/socketHandler';
+
 // POST /api/live-streams/[id]/start - Start a live stream
 export async function POST(
   request: NextRequest,
@@ -64,8 +67,8 @@ export async function POST(
       );
     }
 
-    // Check if the stream is already live
-    if (stream.status === 'LIVE') {
+    // Check if the stream is already live or starting
+    if (stream.status === 'LIVE' || stream.status === 'STARTING') {
       logger.info(`API POST /api/live-streams/[id]/start - Stream ${id} is already live`);
       return NextResponse.json({
         message: 'Stream is already live',
@@ -89,13 +92,13 @@ export async function POST(
       );
     }
 
-    // Update the stream status to LIVE
+    // Update the stream status to STARTING (not directly to LIVE)
     const updatedStream = await prisma.liveStream.update({
       where: { id },
       data: {
-        status: 'LIVE',
-        startTime: new Date().toISOString(), // Set the start time to now
+        status: 'STARTING', // Changed from LIVE to STARTING
         endTime: null, // Clear any previous end time
+        // startTime will be set when the stream actually goes LIVE via socketHandler
       },
       include: {
         user: {
@@ -107,13 +110,40 @@ export async function POST(
         },
       },
     });
+    
+    // Check if there's an active Socket.IO server to notify about the stream state change
+    try {
+      // Access the global HTTP server to get the Socket.IO instance
+      // @ts-ignore - Add ts-ignore to handle global.server access
+      const httpServer = global.server as ExtendedHttpServer;
+      if (httpServer && httpServer.io) {
+        // Emit to any clients in the stream room that stream is STARTING
+        httpServer.io.to(`stream:${id}`).emit('stream_state_changed', {
+          streamId: id,
+          status: 'STARTING',
+          message: 'Stream is starting via API'
+        });
+        
+        // Also emit a special event to trigger WebRTC setup in socketHandler
+        httpServer.io.to(`stream:${id}`).emit('stream_starting', {
+          streamId: id,
+          userId: user.id,
+          username: user.username
+        });
+        
+        logger.info(`API POST /api/live-streams/[id]/start - Notified Socket.IO clients about stream ${id} starting`);
+      }
+    } catch (socketError) {
+      // Don't fail the API call if Socket.IO notification fails
+      logger.warn(`API POST /api/live-streams/[id]/start - Could not notify Socket.IO clients: ${socketError}`);
+    }
 
     logger.info(`API POST /api/live-streams/[id]/start - Stream ${id} started successfully`);
     
     // Return a consistent response format
     return NextResponse.json({
-      message: 'Stream started successfully',
-      status: 'LIVE',
+      message: 'Stream starting process initiated',
+      status: 'STARTING',
       stream: updatedStream
     });
   } catch (error) {
