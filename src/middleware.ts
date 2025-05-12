@@ -6,6 +6,41 @@ import { verifyAuthSession } from "./lib/auth";
 // Remove the explicit runtime export to default back to Edge
 // export const runtime = 'nodejs';
 
+// Improved WebSocket detection function
+function detectWebSocketRequest(request: NextRequest): boolean {
+  // Check the Upgrade header
+  const upgradeHeader = request.headers.get("upgrade");
+  if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
+    return true;
+  }
+
+  // Check if it's a Socket.IO path for either WebSockets or polling
+  const path = request.nextUrl.pathname;
+  
+  // Look for socket.io paths
+  if (
+    path.startsWith("/socket.io/") ||
+    path === "/socket.io" ||
+    path.includes("/socket.io")
+  ) {
+    // Further check query parameters to confirm it's Socket.IO traffic
+    const isSocketIo = request.nextUrl.searchParams.has("EIO") || 
+                       request.nextUrl.searchParams.has("transport") ||
+                       request.nextUrl.searchParams.has("sid");
+    
+    if (isSocketIo) {
+      return true;
+    }
+  }
+  
+  // Check for other common WebSocket paths
+  if (path.startsWith("/ws") || path.startsWith("/wss") || path.includes("/ws/")) {
+    return true;
+  }
+  
+  return false;
+}
+
 export async function middleware(request: NextRequest) {
   // Get the pathname of the request (e.g. /, /protected)
   const path = request.nextUrl.pathname;
@@ -54,12 +89,12 @@ export async function middleware(request: NextRequest) {
     // Allow public access to messages (read-only) API for live streams
     path.startsWith("/api/messages/streams/");
 
-  // Special check for WebSocket and Socket.IO requests
+  // Enhanced check for WebSocket and Socket.IO requests
   // Excluded from middleware processing to prevent connection issues
   const isSocketPath =
     path === "/socket.io" ||
     path.startsWith("/socket.io/") ||
-    path.startsWith("/socket.io?") ||
+    path.includes("/socket.io") ||
     path.startsWith("/api/socket") ||
     path.startsWith("/sockets/") ||
     path.includes("/__nextjs_original-stack-frame") ||
@@ -67,21 +102,17 @@ export async function middleware(request: NextRequest) {
     path.includes("/favicon.ico") ||
     path.startsWith("/_next/");
 
-  // Enhanced WebSocket detection
-  const isWebSocketRequest =
-    request.headers.get("upgrade")?.toLowerCase() === "websocket" ||
-    request.headers.get("connection")?.toLowerCase().includes("upgrade") ||
-    // Include EIO parameter which is used by Socket.IO
-    request.nextUrl.searchParams.has("EIO") ||
-    // Socket.IO polling transport should also bypass middleware
-    ((path === "/socket.io" || 
-      path.startsWith("/socket.io/") || 
-      path.startsWith("/socket.io?")) &&
-      (request.nextUrl.searchParams.has("transport") ||
-        request.nextUrl.searchParams.has("sid")));
+  // Comprehensive WebSocket detection
+  const isWebSocketRequest = detectWebSocketRequest(request);
+
+  // Special handling for socket.io polling requests which may not have WS headers
+  const isSocketIOPolling = 
+    path.startsWith("/socket.io/") && 
+    (request.nextUrl.searchParams.has("EIO") || 
+     request.nextUrl.searchParams.get("transport") === "polling");
 
   // Log socket requests for debugging
-  if (isSocketPath || isWebSocketRequest) {
+  if (isSocketPath || isWebSocketRequest || isSocketIOPolling) {
     console.log(
       `[Middleware] Skipping middleware for Socket/WebSocket path: ${path}`
     );
@@ -152,10 +183,14 @@ export const config = {
      */
     {
       source:
-        "/((?!_next/static|_next/image|socket\\.io|socket\\.io/|socket\\.io\\?|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets).*)",
+        "/((?!_next/static|_next/image|socket\\.io|__nextjs_original-stack-frame|favicon\\.ico|.*\\.(?:jpg|jpeg|gif|png|svg|ico)|api/socket|sockets|ws).*)",
       missing: [
         { type: "header", key: "upgrade", value: "websocket" },
+        { type: "header", key: "connection", value: "upgrade" },
         { type: "query", key: "EIO" },
+        { type: "query", key: "transport" },
+        { type: "query", key: "sid" },
+        { type: "query", key: "streamId" },
       ],
     },
   ],

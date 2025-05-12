@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 import { getUserFromTokenInNode } from '@/lib/auth';
 
 // Import ExtendedHttpServer to access Socket.IO instance
-import { ExtendedHttpServer } from '@/lib/socket/socketHandler';
+import { ExtendedHttpServer } from '@/lib/socket/types';
 
 // POST /api/live-streams/[id]/stop - End a live stream
 export async function POST(

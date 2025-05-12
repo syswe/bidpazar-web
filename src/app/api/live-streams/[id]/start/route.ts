@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 import { getUserFromTokenInNode } from '@/lib/auth';
 
 // Import ExtendedHttpServer to access Socket.IO instance
-import { ExtendedHttpServer } from '@/lib/socket/socketHandler';
+import { ExtendedHttpServer } from '@/lib/socket/types';
 
 // POST /api/live-streams/[id]/start - Start a live stream
 export async function POST(
@@ -84,12 +84,10 @@ export async function POST(
     }
 
     // Check if the stream has ended
+    // Allow restarting an ENDED stream by transitioning it to STARTING
     if (stream.status === 'ENDED') {
-      logger.warn(`API POST /api/live-streams/[id]/start - Cannot start stream ${id} because it has ended`);
-      return NextResponse.json(
-        { error: 'Cannot start a stream that has ended' },
-        { status: 400 }
-      );
+      logger.info(`API POST /api/live-streams/[id]/start - Stream ${id} was ENDED. Attempting to restart by setting to STARTING.`);
+      // Proceed to update status to STARTING below, no error here.
     }
 
     // Update the stream status to STARTING (not directly to LIVE)

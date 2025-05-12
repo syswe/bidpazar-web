@@ -191,11 +191,62 @@ export default function LiveStreamPage() {
     }
   }, [isStreamDetailsLoading, streamDetails, reinitialize]);
 
-  // Handle device selection
+  // Handle device selection - this is our centralized handler
   const handleDeviceSelect = useCallback((kind: 'audio' | 'video', deviceId: string) => {
     selectDevice(kind, deviceId);
     logMessage(`Selected ${kind} device: ${deviceId}`, "info");
   }, [selectDevice, logMessage]);
+  
+  // Improved stream initialization
+  const initializeStream = useCallback(async () => {
+    if (!streamDetails || !userId) return;
+    
+    // Don't proceed if we're already in a live state
+    if (streamDetails.status === "LIVE") {
+      logMessage("Stream is already LIVE, no need to initialize", "info");
+      return;
+    }
+    
+    // If stream is not in STARTING state, attempt to start it first
+    // Type assertion to fix TS error with union types
+    const currentStatus = streamDetails.status as string;
+    if (currentStatus !== "STARTING" && currentStatus !== "SCHEDULED") {
+      try {
+        logMessage("Streamer attempting to start the stream", "info", {
+          streamId,
+          isStreamer: isCurrentUserStreamer
+        });
+        
+        // Call the start API endpoint to transition stream to STARTING
+        const response = await fetch(`${runtimeConfig?.apiUrl}/live-streams/${streamId}/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error: ${response.status} ${errorText}`);
+        }
+        
+        const data = await response.json();
+        logMessage("Stream started successfully via API", "info", data);
+        
+        // Refresh stream details after starting
+        await fetchStreamDetails();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logMessage(`Failed to start stream: ${errorMessage}`, "error");
+        toast.error("Failed to start stream. Please try again.");
+        return;
+      }
+    }
+    
+    // At this point stream should be in STARTING or LIVE state - ready for WebRTC connection
+    logMessage("Yayın başlatıldı", "info");
+  }, [streamDetails, userId, streamId, isCurrentUserStreamer, runtimeConfig, token, fetchStreamDetails, logMessage]);
 
   // Handle connection errors
   const handleConnectionError = useCallback((errorData: {
@@ -351,15 +402,6 @@ export default function LiveStreamPage() {
   // Check if we can render the stream
   const canRenderStreamManager = !isStreamDetailsLoading && !!streamDetails && !!streamId;
 
-  // Format the selected devices to prevent type errors
-  const formattedSelectedDevices = selectedDevices ? {
-    videoId: selectedDevices.videoId || undefined,
-    audioId: selectedDevices.audioId || undefined
-  } : {
-    videoId: undefined,
-    audioId: undefined
-  };
-
   // Debug mode for development
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -397,23 +439,46 @@ export default function LiveStreamPage() {
         {/* Main video container */}
         <div className="video-container">
           {canRenderStreamManager ? (
-            <WebRTCStreamManager
-              key={webRtcKey}
-              streamId={streamId}
-              userId={effectiveUserId}
-              username={effectiveUsername}
-              isStreamer={isCurrentUserStreamer}
-              isCameraOn={isCameraOn}
-              isMicrophoneOn={isMicrophoneOn}
-              onParticipantCount={(count) => logMessage(`Stream participants: ${count}`, "info")}
-              onConnectionError={handleConnectionError}
-              onMediaError={handleMediaError}
-              isAnonymous={!user}
-              onReconnectRequest={onReconnectRequest}
-              isLoopbackConnection={connectionState.isLoopback}
-              optimizeForLoopback={optimizedForLoopback}
-              onLoopbackDetected={handleLoopbackDetected}
-            />
+            <div className="relative w-full h-full">
+              {/* Improved: Show start button for streamers with non-LIVE streams */}
+              {isCurrentUserStreamer && 
+               streamDetails.status !== "LIVE" && 
+               isDeviceSetupComplete && 
+               !mediaError && (
+                <div className="absolute inset-0 z-10 bg-black/80 flex flex-col items-center justify-center">
+                  <div className="p-6 rounded-lg bg-black/50 max-w-lg text-center">
+                    <h3 className="text-2xl font-semibold text-white mb-2">Ready to Go Live?</h3>
+                    <p className="text-gray-300 mb-4">
+                      Your device setup is complete. Start your stream when you're ready.
+                    </p>
+                    <button
+                      onClick={initializeStream}
+                      className="mt-2 py-3 px-6 rounded-lg bg-rose-600 hover:bg-rose-700 transition-colors text-white font-medium"
+                    >
+                      Start Streaming
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <WebRTCStreamManager
+                key={webRtcKey}
+                streamId={streamId}
+                userId={effectiveUserId}
+                username={effectiveUsername}
+                isStreamer={isCurrentUserStreamer}
+                isCameraOn={isCameraOn}
+                isMicrophoneOn={isMicrophoneOn}
+                onParticipantCount={(count) => logMessage(`Stream participants: ${count}`, "info")}
+                onConnectionError={handleConnectionError}
+                onMediaError={handleMediaError}
+                isAnonymous={!user}
+                onReconnectRequest={onReconnectRequest}
+                isLoopbackConnection={connectionState.isLoopback}
+                optimizeForLoopback={optimizedForLoopback}
+                onLoopbackDetected={handleLoopbackDetected}
+              />
+            </div>
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-black">
               <Loader2 className="h-8 w-8 animate-spin text-white" />
@@ -469,7 +534,10 @@ export default function LiveStreamPage() {
                   onCameraToggle={handleCameraToggle}
                   onMicrophoneToggle={handleMicrophoneToggle}
                   devices={devices}
-                  selectedDevices={formattedSelectedDevices}
+                  selectedDevices={{
+                    videoId: selectedDevices.videoId || undefined,
+                    audioId: selectedDevices.audioId || undefined
+                  }}
                   onDeviceSelect={handleDeviceSelect}
                   isDeviceSetupComplete={isDeviceSetupComplete}
                 />

@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import axios from "axios";
 import { PrismaClient } from '@prisma/client';
+import { ExtendedHttpServer } from './types';
 
 // Stream states
 export type StreamState = 
@@ -223,12 +224,3 @@ export async function validateStreamState(
     return { isValid: false, error: errorMessage };
   }
 }
-
-// Define the ExtendedHttpServer interface if it doesn't exist elsewhere
-interface ExtendedHttpServer {
-  io?: {
-    to: (room: string) => {
-      emit: (event: string, data: any) => void;
-    };
-  };
-} 

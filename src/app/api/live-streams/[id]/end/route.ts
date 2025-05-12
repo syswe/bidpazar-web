@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromTokenInNode } from "@/lib/auth";
 import { logger } from "@/lib/logger";
-import { ExtendedHttpServer } from '@/lib/socket/socketHandler';
+import { ExtendedHttpServer } from '@/lib/socket/types';
 
 /**
  * @route POST /api/live-streams/[id]/end

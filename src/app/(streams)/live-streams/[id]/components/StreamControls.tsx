@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { getAuth } from "@/lib/frontend-auth";
 import { useRuntimeConfig } from "@/context/RuntimeConfigContext";
+import { DeviceSelector } from "./DeviceSelector";
 
 interface StreamDetails {
   id: string;
@@ -482,7 +483,7 @@ const StreamControls = ({
               <Settings className="h-4 w-4" />
             </Button>
             
-            {/* Custom Device Dialog with permission status */}
+            {/* Device Dialog using the standardized DeviceSelector component */}
             {isDeviceDialogOpen && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="bg-background border border-border rounded-md shadow-lg max-w-md w-full mx-4">
@@ -532,84 +533,22 @@ const StreamControls = ({
                       )}
                     </div>
                     
-                    {/* Device selection section */}
+                    {/* Use standardized DeviceSelector component */}
                     {devices && onDeviceSelect ? (
-                      <div className="flex flex-col gap-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Kamera Seçimi</label>
-                          <select
-                            value={selectedDevices?.videoId || ""}
-                            onChange={(e) => onDeviceSelect('video', e.target.value)}
-                            disabled={!cameraStateRef.current || permissionStatus.camera === 'denied'}
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                          >
-                            <option value="">Kamera seçin</option>
-                            {devices.video.map((device) => (
-                              <option key={device.deviceId} value={device.deviceId}>
-                                {device.label || `Camera ${device.deviceId.slice(0, 5)}...`}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Mikrofon Seçimi</label>
-                          <select
-                            value={selectedDevices?.audioId || ""}
-                            onChange={(e) => onDeviceSelect('audio', e.target.value)}
-                            disabled={!microphoneStateRef.current || permissionStatus.microphone === 'denied'}
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                          >
-                            <option value="">Mikrofon seçin</option>
-                            {devices.audio.map((device) => (
-                              <option key={device.deviceId} value={device.deviceId}>
-                                {device.label || `Mic ${device.deviceId.slice(0, 5)}...`}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        
-                        <div className="mt-2 text-sm text-gray-500">
-                          Yayını başlatmadan önce kamera ve mikrofonunuzu seçin. Cihazlarınızı seçtikten sonra yayını başlatabilirsiniz.
-                        </div>
-                        
-                        {devices.video.length === 0 && devices.audio.length === 0 && (
-                          <div className="p-3 bg-yellow-100 text-yellow-800 rounded-md text-xs mt-2">
-                            Hiçbir cihaz bulunamadı. Lütfen kamera ve mikrofon izinlerini kontrol edin ve sayfayı yenileyin.
-                          </div>
-                        )}
-                        
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            onClick={() => {
-                              checkPermissions();
-                              // Trigger permission prompt if needed
-                              if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                                navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-                                  .then(() => {
-                                    checkPermissions();
-                                    toast.success("Kamera ve mikrofon izinleri verildi", { duration: 3000 });
-                                  })
-                                  .catch((err) => {
-                                    console.error("[StreamControls] Permission error:", err);
-                                    toast.error("İzin hatası: " + (err.message || "Bilinmeyen hata"), { duration: 5000 });
-                                    checkPermissions();
-                                  });
-                              }
-                            }}
-                            className="mr-2 px-3 py-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-sm"
-                          >
-                            İzinleri Kontrol Et
-                          </button>
-                          
-                          <button
-                            onClick={() => setIsDeviceDialogOpen(false)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
-                          >
-                            Tamam
-                          </button>
-                        </div>
-                      </div>
+                      <DeviceSelector
+                        devices={{
+                          video: devices.video,
+                          audio: devices.audio
+                        }}
+                        selectedDevices={{
+                          videoId: selectedDevices?.videoId || null,
+                          audioId: selectedDevices?.audioId || null
+                        }}
+                        onDeviceChange={(kind, deviceId) => onDeviceSelect(kind, deviceId)}
+                        isLoading={false}
+                        error={permissionStatus.camera === 'denied' || permissionStatus.microphone === 'denied' ? 
+                          "Camera or microphone permission denied" : null}
+                      />
                     ) : (
                       <div className="py-6 text-center">
                         <p className="text-sm text-gray-500">
@@ -617,6 +556,37 @@ const StreamControls = ({
                         </p>
                       </div>
                     )}
+                        
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={() => {
+                          checkPermissions();
+                          // Trigger permission prompt if needed
+                          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                            navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+                              .then(() => {
+                                checkPermissions();
+                                toast.success("Kamera ve mikrofon izinleri verildi", { duration: 3000 });
+                              })
+                              .catch((err) => {
+                                console.error("[StreamControls] Permission error:", err);
+                                toast.error("İzin hatası: " + (err.message || "Bilinmeyen hata"), { duration: 5000 });
+                                checkPermissions();
+                              });
+                          }
+                        }}
+                        className="mr-2 px-3 py-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-sm"
+                      >
+                        İzinleri Kontrol Et
+                      </button>
+                      
+                      <button
+                        onClick={() => setIsDeviceDialogOpen(false)}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                      >
+                        Tamam
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

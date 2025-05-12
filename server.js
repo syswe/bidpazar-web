@@ -237,149 +237,164 @@ const isLoopbackAddress = (address) => {
   );
 };
 
-// WebSocket handling upgrade events directly
+// Track active socket connections to prevent duplicate handling
+const connectionTracker = new Map();
+const connectionCounter = {
+  total: 0,
+  active: 0,
+  byStreamId: new Map()
+};
+
+// WebSocket upgrade tracking ONLY - not handling the actual upgrade
 httpServer.on("upgrade", (request, socket, head) => {
-  // Check if the request is for Socket.IO
-  // Update detection logic to handle all Socket.IO path variants
-  const isSocketIOPath = request.url.startsWith("/socket.io");
-  
-  const clientIP =
-    request.headers["x-forwarded-for"] || request.connection.remoteAddress;
-  const host = request.headers.host;
-
-  // Log the connection with additional client info
-  logger.debug(`WebSocket upgrade request: ${request.url}`, {
-    isSocketIO: isSocketIOPath,
-    clientIP,
-    host,
-    headers: {
-      origin: request.headers.origin,
-      host: request.headers.host,
-      "user-agent": request.headers["user-agent"],
-    },
-  });
-
-  // Check for potential loopback issues
-  const isLoopback =
-    isLoopbackAddress(clientIP) || isLoopbackAddress(host?.split(":")[0]);
-
-  if (isLoopback && process.env.NODE_ENV === "production") {
-    logger.warn(`Potential loopback connection detected: ${request.url}`, {
+  try {
+    // Only track metrics for Socket.IO requests - don't handle the actual upgrade
+    const isSocketIOPath = request.url.startsWith("/socket.io");
+    
+    if (!isSocketIOPath) {
+      return; // Let Socket.IO handle non-Socket.IO requests
+    }
+    
+    // Extract connection info from URL for tracking
+    const url = new URL(`http://localhost${request.url}`);
+    const streamId = url.searchParams.get("streamId");
+    const userId = url.searchParams.get("userId");
+    const connectionId = url.searchParams.get("connectionId");
+    const isStreamer = url.searchParams.get("isStreamer") === "1";
+    const clientIP = request.headers["x-forwarded-for"] || request.connection.remoteAddress;
+    
+    // Create signature for this connection
+    const socketSignature = connectionId || `${clientIP}-${streamId}-${userId}`;
+    
+    // Skip if we can't uniquely identify this connection
+    if (!socketSignature) {
+      return;
+    }
+    
+    // Update connection metrics
+    connectionCounter.total++;
+    connectionCounter.active++;
+    
+    // Track by stream too
+    if (streamId) {
+      const count = connectionCounter.byStreamId.get(streamId) || 0;
+      connectionCounter.byStreamId.set(streamId, count + 1);
+    }
+    
+    // Check if it's a streamer viewing their own stream
+    const isStreamerViewingOwnStream = 
+      isStreamer && 
+      streamId && 
+      userId && 
+      streamId.includes(userId.substring(0, 8));
+    
+    if (isStreamerViewingOwnStream) {
+      console.log(`[WebSocket] Streamer ${userId} viewing own stream ${streamId}`);
+    }
+    
+    // Log debug info
+    console.debug("[WebSocket] upgrade request for connection " + (connectionId || "null"), {
       clientIP,
-      host,
+      url: request.url,
+      isSocketIO: isSocketIOPath,
+      connectionCounter: {
+        total: connectionCounter.total,
+        active: connectionCounter.active,
+        byStream: streamId ? connectionCounter.byStreamId.get(streamId) : null
+      }
     });
-    // In production we might want to add additional validation here
-  }
-
-  if (isSocketIOPath) {
-    // Let Socket.IO handle its own connections
-    // This will be handled by Socket.IO's internal handlers
-    logger.debug(`Socket.IO upgrade request: ${request.url}`);
-    // Socket.IO will handle this automatically, we don't need to do anything
-    // Let the event propagate to Socket.IO's handlers
-  } else {
-    // For raw WebSocket connections (not Socket.IO)
-    logger.info(`Raw WebSocket upgrade request for: ${request.url}`);
-
-    // Accept the connection for non-Socket.IO WebSocket requests
-    // This allows direct WebSocket connections to ws://localhost:3000/
-    socket.write(
-      "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
-        "Upgrade: WebSocket\r\n" +
-        "Connection: Upgrade\r\n" +
-        "\r\n"
-    );
-
-    // Keep socket open for WebSocket communication
-    socket.pipe(socket); // Echo back for simple testing
+    
+    // Add a one-time close event listener to track disconnects
+    socket.once("close", () => {
+      connectionCounter.active--;
+      
+      if (streamId) {
+        const count = connectionCounter.byStreamId.get(streamId) || 0;
+        if (count > 0) {
+          connectionCounter.byStreamId.set(streamId, count - 1);
+        }
+      }
+      
+      // Clear from connection tracker
+      connectionTracker.delete(socketSignature);
+    });
+    
+    // Store connection in tracker
+    connectionTracker.set(socketSignature, {
+      timestamp: Date.now(),
+      clientIP,
+      streamId,
+      userId,
+      isStreamer
+    });
+  } catch (error) {
+    // Log error but don't interfere with Socket.IO's handling
+    console.error("[WebSocket] Error in upgrade tracking:", error);
   }
 });
 
-// Initialize Socket.IO server
-console.log("Initializing Socket.IO server...");
+// Log connection metrics every 60 seconds
+setInterval(() => {
+  if (connectionTracker.size > 0 || connectionCounter.active > 0) {
+    logger.info(`Active WebSocket connections: ${connectionCounter.active}/${connectionCounter.total}`, {
+      trackerSize: connectionTracker.size,
+      byStreamId: Object.fromEntries(connectionCounter.byStreamId)
+    });
+  }
+}, 60000);
 
+// Prepare and start Next.js app
 app
   .prepare()
   .then(async () => {
-    // Initialize MediaSoup first
-    await initializeMediaSoup();
-    
-    // Use the existing HTTP server instead of creating a new one
-    // Add request handler to the existing server
-    httpServer.removeAllListeners('request');
-    httpServer.on('request', async (req, res) => {
-      try {
-        // Special handling for Socket.IO requests
-        const pathname = parse(req.url || "").pathname || "";
-
-        // Debug log all requests to help diagnose issues
-        if (pathname.includes("socket.io")) {
-          console.log(
-            `[Server] HTTP request for Socket.IO: ${req.method} ${req.url}`
-          );
-          console.log(
-            `[Server] Headers: Connection=${req.headers.connection}, Upgrade=${req.headers.upgrade}`
-          );
-        }
-
-        // For other requests, let Next.js handle them
-        const parsedUrl = parse(req.url || "", true);
-        await handle(req, res, parsedUrl);
-      } catch (err) {
-        console.error("Error handling request:", err);
-        if (logger) {
-          logger.error("Error handling HTTP request:", {
-            url: req.url,
-            method: req.method,
-            error:
-              err instanceof Error
-                ? {
-                    name: err.name,
-                    message: err.message,
-                    stack: err.stack,
-                  }
-                : String(err),
-          });
-        }
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.end("internal server error");
-        }
-      }
-    });
-
-    // Initialize Socket.IO on the same server
-    console.log("Initializing Socket.IO server...");
     try {
-      // Initialize Socket.IO with more resilient settings
-      const io = new SocketIOServer(httpServer, {
-        cors: {
-          origin: "*", // In production, restrict this to your domains
-          methods: ["GET", "POST"],
-          credentials: true,
-        },
-        // Prioritize websocket transport
-        transports: ["websocket", "polling"],
-        allowUpgrades: true,
-        // Fix path issues by being consistent
-        path: "/socket.io", // No trailing slash
-        serveClient: false, // Don't serve client files
-        connectTimeout: 45000, // 45 seconds
-        // Polling settings
-        pingTimeout: 60000, // Increased to 60s for better connection stability
-        pingInterval: 25000,
-        upgradeTimeout: 15000, // Increased to 15s
-        // WebSocket specific settings
-        maxHttpBufferSize: 1e8, // 100 MB max message size
-        // Fix for trailing slash issues in Next.js 13+
-        addTrailingSlash: false,
-        // Connection state recovery for better reconnection
-        connectionStateRecovery: {
-          maxDisconnectionDuration: 5 * 60 * 1000, // 5 minutes
-          skipMiddlewares: true,
-        },
-      });
-
+      // Initialize MediaSoup first
+      await initializeMediaSoup();
+      
+      // Create Socket.IO server
+      let io;
+      
+      // Only create Socket.IO if it hasn't been attached already
+      if (httpServer.io) {
+        console.log("Socket.IO already initialized on this server instance, reusing existing instance");
+        io = httpServer.io;
+      } else {
+        console.log("Initializing Socket.IO server...");
+        
+        // Initialize Socket.IO with more resilient settings
+        io = new SocketIOServer(httpServer, {
+          cors: {
+            origin: "*", // In production, restrict this to your domains
+            methods: ["GET", "POST"],
+            credentials: true,
+          },
+          // Prioritize websocket transport
+          transports: ["websocket", "polling"],
+          allowUpgrades: true,
+          // Fix path issues by being consistent
+          path: "/socket.io", // No trailing slash
+          serveClient: false, // Don't serve client files
+          connectTimeout: 45000, // 45 seconds
+          // Polling settings
+          pingTimeout: 60000, // Increased to 60s for better connection stability
+          pingInterval: 25000,
+          upgradeTimeout: 15000, // Increased to 15s
+          // WebSocket specific settings
+          maxHttpBufferSize: 1e8, // 100 MB max message size
+          // Fix for trailing slash issues in Next.js 13+
+          addTrailingSlash: false,
+          // Connection state recovery for better reconnection
+          connectionStateRecovery: {
+            maxDisconnectionDuration: 5 * 60 * 1000, // 5 minutes
+            skipMiddlewares: true,
+          },
+        });
+        
+        // Store a reference to the io instance on the httpServer object
+        // This helps prevent duplicate initialization
+        httpServer.io = io;
+      }
+      
       // Add loopback protection middleware for Socket.IO
       io.use((socket, next) => {
         const clientIP =
@@ -473,6 +488,34 @@ app
           query: socket.handshake.query,
         });
         
+        // Enhanced stream validation on connection
+        if (socket.handshake.query.streamId) {
+          const attemptedStreamId = String(socket.handshake.query.streamId);
+          const isStreamer = socket.handshake.query.isStreamer === "1" || socket.handshake.query.isStreamer === "true";
+          const userId = socket.handshake.query.userId ? String(socket.handshake.query.userId) : undefined;
+          
+          if (typeof validateStreamState === 'function') {
+            // Use directly if available in scope
+            validateStreamState(attemptedStreamId).then(validation => {
+              handleStreamValidation(socket, validation, isStreamer, attemptedStreamId, userId);
+            }).catch(err => {
+              logger.error(`[Socket.IO] Error checking stream state on connection: ${err}`);
+            });
+          } else {
+            // Import it if not already available
+            try {
+              const { validateStreamState } = require('./src/lib/socket/socketEvents');
+              validateStreamState(attemptedStreamId).then(validation => {
+                handleStreamValidation(socket, validation, isStreamer, attemptedStreamId, userId);
+              }).catch(err => {
+                logger.error(`[Socket.IO] Error checking stream state on connection: ${err}`);
+              });
+            } catch (e) {
+              logger.error(`[Socket.IO] Failed to load validation functions: ${e}`);
+            }
+          }
+        }
+        
         socket.on("disconnect", (reason) => {
           logger.info(`Socket.IO disconnect: ${socket.id}`, { reason });
         });
@@ -485,6 +528,76 @@ app
           });
         });
       });
+      
+      // Helper function for stream validation
+      function handleStreamValidation(socket, validation, isStreamer, streamId, userId) {
+        // Always check stream state, but apply different handling for streamers vs viewers
+        if (validation.isValid) {
+          // For streamers: More strict validation
+          if (isStreamer) {
+            if (validation.actualState === "ENDED") {
+              logger.info(`[Socket.IO] Blocking streamer connection to ENDED stream: ${streamId}`, {
+                socketId: socket.id,
+                userId: userId
+              });
+              
+              // Clear error message for streamers trying to reconnect to ended streams
+              socket.emit("error", {
+                message: "This stream has already ended. Please create a new stream using the 'New Stream' button.",
+                code: "STREAM_ENDED",
+                canReconnect: false,
+                canCreateNewStream: true
+              });
+              
+              // Small delay to ensure error is received before disconnect
+              setTimeout(() => {
+                if (socket.connected) {
+                  socket.disconnect(true);
+                }
+              }, 500);
+            } else if (validation.actualState === "FAILED_TO_START" || validation.actualState === "INTERRUPTED") {
+              // Allow these states but log it - we'll handle transition in broadcaster_ready
+              logger.info(`[Socket.IO] Streamer connecting to ${validation.actualState} stream: ${streamId}. Will attempt recovery.`, {
+                socketId: socket.id,
+                userId: userId
+              });
+            }
+          } 
+          // For viewers: Only block connections to non-existent streams
+          else if (!["LIVE", "STARTING", "SCHEDULED", "PAUSED"].includes(validation.actualState)) {
+            if (validation.actualState === "ENDED") {
+              logger.info(`[Socket.IO] Notifying viewer that stream has ended: ${streamId}`);
+              socket.emit("stream_ended", {
+                streamId: streamId,
+                reason: "Stream has already ended",
+                finalState: "ENDED"
+              });
+            } else {
+              logger.info(`[Socket.IO] Notifying viewer that stream is not available: ${validation.actualState}`);
+              socket.emit("error", {
+                message: `This stream is not currently available (${validation.actualState.toLowerCase().replace('_', ' ')})`,
+                code: "STREAM_UNAVAILABLE",
+                canReconnect: false
+              });
+            }
+          }
+        } else if (!validation.isValid && validation.error?.includes("not found")) {
+          // Stream doesn't exist at all
+          logger.warn(`[Socket.IO] Connection attempt to non-existent stream: ${streamId}`);
+          socket.emit("error", {
+            message: "This stream does not exist or has been removed",
+            code: "STREAM_NOT_FOUND",
+            canReconnect: false
+          });
+          
+          // Disconnect after sending error
+          setTimeout(() => {
+            if (socket.connected) {
+              socket.disconnect(true);
+            }
+          }, 500);
+        }
+      }
     } catch (err) {
       console.error(
         "Failed to initialize Socket.IO server or its handlers:",

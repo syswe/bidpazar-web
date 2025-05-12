@@ -28,6 +28,7 @@ interface UseSocketConnectionProps {
     isLoopback?: boolean;
     canCreateNewStream?: boolean;
     details?: any;
+    originalMessage?: string;
   }) => void;
   deviceRef: React.MutableRefObject<MediasoupDevice | null>;
   rtpCapabilitiesRef: React.MutableRefObject<any | null>;
@@ -35,6 +36,39 @@ interface UseSocketConnectionProps {
   isLoopbackConnection?: boolean;
   optimizeForLoopback?: boolean;
 }
+
+// Global connection tracking to prevent duplicate WebSocket connections
+interface ActiveConnection {
+  socket: Socket;
+  streamId: string;
+  userId: string;
+  refCount: number;
+  lastConnectionTime: number;
+  connectionId: string;
+}
+
+// Connection cache to prevent duplicate connections
+const activeSocketConnections = new Set<string>();
+const globalConnectionTracker = new Map<string, ActiveConnection>();
+
+// More aggressive throttling specifically for streamers viewing their own streams
+const CONNECTION_THROTTLE_MS = 5000; // Increased to 5 seconds for all connections
+const STREAMER_SELF_VIEW_THROTTLE_MS = 10000; // 10 seconds for streamers viewing own stream
+const CONNECTION_TIMEOUT_MS = 30000; // 30 seconds timeout
+const MAX_RECONNECTION_ATTEMPTS = 3; // Limit reconnection attempts
+const RECONNECTION_DELAY_MS = 2000; // 2 seconds between reconnection attempts
+const lastConnectionAttempts = new Map<string, number>();
+const pendingConnections = new Map<string, boolean>();
+
+// Add helper function to generate a session ID
+const generateSessionId = () => {
+  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+};
+
+// Add helper function to generate a random ID
+const generateRandomId = () => {
+  return Math.random().toString(36).substring(2, 9);
+};
 
 export function useSocketConnection({
   streamId,
@@ -68,6 +102,8 @@ export function useSocketConnection({
   const [reconnectionFailed, setReconnectionFailed] = useState<boolean>(false);
   const [detectedLoopback, setDetectedLoopback] = useState<boolean>(false);
   const effectiveUserId = userId;
+  // Generate a unique connection ID for tracking
+  const connectionIdRef = useRef<string>(`${streamId}-${userId}-${Date.now()}-${Math.random().toString(36).substring(2,9)}`);
 
   // Helper to check if a URL is a loopback URL
   const isLoopbackAddress = useCallback((address?: string): boolean => {
@@ -101,379 +137,478 @@ export function useSocketConnection({
     [isLoopbackAddress]
   );
 
+  // Cleanup function to remove the socket connection
+  const cleanupSocket = useCallback(() => {
+    if (socketRef.current) {
+      const connectionKey = `${streamId}:${userId}`;
+      logInfo(`Cleaning up socket connection: ${connectionIdRef.current}`);
+      
+      try {
+        // First check if this socket is being shared in the global tracker
+        const existingGlobalConnection = globalConnectionTracker.get(connectionKey);
+        
+        if (existingGlobalConnection && existingGlobalConnection.socket === socketRef.current) {
+          // Decrement reference count
+          existingGlobalConnection.refCount--;
+          
+          // Only actually disconnect if this is the last reference
+          if (existingGlobalConnection.refCount <= 0) {
+            logInfo(`Last reference to shared socket ${connectionKey}, destroying connection`);
+            
+            // Unregister from global connection tracking
+            globalConnectionTracker.delete(connectionKey);
+            activeSocketConnections.delete(connectionIdRef.current);
+            
+            // Disconnect the socket
+            if (socketRef.current.connected) {
+              socketRef.current.disconnect();
+            }
+            
+            // Force clear handlers
+            socketRef.current.removeAllListeners();
+            
+            // Try to close the socket.io instance more aggressively
+            if (socketRef.current.io) {
+              // @ts-ignore - Internal property access
+              socketRef.current.io.engine?.close();
+            }
+          } else {
+            logInfo(`Shared socket ${connectionKey} still has ${existingGlobalConnection.refCount} references, not disconnecting`);
+          }
+        } else {
+          // This socket is not shared or doesn't match the tracked socket, clean up directly
+          activeSocketConnections.delete(connectionIdRef.current);
+          
+          // Disconnect
+          if (socketRef.current.connected) {
+            socketRef.current.disconnect();
+          }
+          
+          // Force clear handlers
+          socketRef.current.removeAllListeners();
+          
+          // Try to close the socket.io instance more aggressively
+          if (socketRef.current.io) {
+            // @ts-ignore - Internal property access
+            socketRef.current.io.engine?.close();
+          }
+        }
+      } catch (err) {
+        logError("Error during socket cleanup", {
+          error: err instanceof Error ? err.message : String(err),
+          connectionId: connectionIdRef.current
+        });
+      }
+      
+      // Clear the reference
+      socketRef.current = null;
+    }
+  }, [streamId, userId]);
+
   // Main connection function
   const connectToSignalingServer = useCallback(() => {
     if (
       !mountedRef.current ||
       !streamId ||
       connectInProgressRef.current ||
-      (socketRef.current && socketRef.current.connected)
+      (socketRef.current && socketRef.current.connected) ||
+      pendingConnections.get(`${streamId}:${userId}`)
     ) {
       return;
     }
-
-    connectInProgressRef.current = true;
-    connectionAttemptsRef.current += 1;
-
-    logInfo("connectToSignalingServer called", {
-      sessionId,
-      attemptNumber: connectionAttemptsRef.current,
-    });
-
-    let effectiveSocketUrl = normalizeSocketIOUrl(
-      runtimeConfig?.socketUrl || window.location.origin
-    );
-    const configSocketUrl = runtimeConfig?.socketUrl || "";
-    const envSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "";
-    const locationOrigin = window.location.origin;
-
-    const wsPath = runtimeConfig?.wsUrl || "/socket.io"; // No trailing slash
-
-    logInfo("Signaling server connection details", {
-      effectiveSocketUrl,
-      configSocketUrl,
-      envSocketUrl,
-      locationOrigin,
-      wsPath,
-      sessionId,
-      isReconnect: reconnectionCounterRef.current > 0,
-    });
-
-    // Detect if this might be a loopback connection
-    if (isLoopbackUrl(effectiveSocketUrl)) {
-      logWarn("Detected Socket.IO connection to a loopback address", {
-        socketUrl: effectiveSocketUrl,
-        hostname: window.location.hostname,
-      });
-      setDetectedLoopback(true);
-      if (onLoopbackDetected) {
-        onLoopbackDetected(true);
+    
+    // Create a connection key for tracking 
+    const connectionKey = `${streamId}:${userId}`;
+    
+    // Detect if this is a streamer viewing their own stream
+    const isStreamerViewingOwnStream = isStreamer && streamId.includes(userId.substring(0, 8));
+    
+    // Check for throttling with appropriate delay based on connection type
+    const now = Date.now();
+    const lastAttempt = lastConnectionAttempts.get(connectionKey) || 0;
+    const throttleTime = isStreamerViewingOwnStream ? 
+      STREAMER_SELF_VIEW_THROTTLE_MS : CONNECTION_THROTTLE_MS;
+    
+    if (now - lastAttempt < throttleTime) {
+      logWarn(`Connection attempt throttled for ${connectionKey}, tried too recently`);
+      
+      // For streamers viewing their own stream, try to reuse an existing socket if available
+      if (isStreamerViewingOwnStream) {
+        const existingConnection = globalConnectionTracker.get(connectionKey);
+        if (existingConnection && existingConnection.socket.connected) {
+          logInfo(`Reusing existing socket for streamer self-view: ${connectionKey}`);
+          socketRef.current = existingConnection.socket;
+          hasActiveConnection.current = true;
+          connectInProgressRef.current = false;
+          pendingConnections.set(connectionKey, false);
+          
+          // Increment ref count
+          existingConnection.refCount++;
+          
+          // Update state
+          onConnectionStatusChange("connected");
+          onError(null);
+          
+          // Set up event handlers
+          setupSocketEventHandlers(existingConnection.socket);
+          return;
+        }
       }
+      
+      // Don't retry too quickly - schedule a single retry after throttle period
+      if (!pendingConnections.get(`${connectionKey}:retry`)) {
+        pendingConnections.set(`${connectionKey}:retry`, true);
+        const retryTimeout = setTimeout(() => {
+          pendingConnections.set(`${connectionKey}:retry`, false);
+          if (mountedRef.current && !hasActiveConnection.current) {
+            connectToSignalingServer();
+          }
+        }, throttleTime + 500); // Add a small buffer
+        
+        // Clean up timeout if component unmounts
+        return () => clearTimeout(retryTimeout);
+      }
+      return;
     }
 
-    // Improved configuration with exponential backoff
-    const socket = io(effectiveSocketUrl, {
-      path: wsPath, // Using the path without trailing slash
-      query: {
-        streamId,
-        userId: effectiveUserId,
-        username,
-        isStreamer: isStreamer ? 1 : 0,
-        sessionId,
-        isAnonymous: isAnonymous ? 1 : 0,
-      },
-      transports: ["websocket", "polling"], // Try both transports
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: 8, // Increase from 5 to 8
-      reconnectionDelay: Math.min(
-        1000 * Math.pow(1.5, connectionAttemptsRef.current),
-        10000
-      ), // Exponential backoff
-      reconnectionDelayMax: 15000, // Increased from 8000 to 15000
-      timeout: 30000, // Increased timeout to allow for slower connections
-      forceNew: true, // Force a new connection each time to prevent reusing existing problematic connections
-      // Fix for trailing slash issues in Next.js 13+
-      addTrailingSlash: false,
-    });
-
-    socketRef.current = socket;
-
-    // Enhanced socket error handlers
-    socket.io.on("error", (err) => {
-      logError("Socket.IO engine error", err);
-
-      // Report to parent component
+    // Update throttling tracker
+    lastConnectionAttempts.set(connectionKey, now);
+    
+    // Check if we've reached the maximum reconnection attempts
+    if (reconnectionCounterRef.current >= MAX_RECONNECTION_ATTEMPTS) {
+      logWarn(`Maximum reconnection attempts (${MAX_RECONNECTION_ATTEMPTS}) reached for ${connectionKey}`);
+      setReconnectionFailed(true);
+      onConnectionStatusChange("disconnected");
+      
       if (onConnectionError) {
         onConnectionError({
-          type: "SOCKET_ENGINE_ERROR",
-          message: `Connection error: ${err.message || "Unknown socket error"}`,
-          canReconnect: true,
+          type: "MAX_RECONNECTION_ATTEMPTS",
+          message: `Maximum reconnection attempts (${MAX_RECONNECTION_ATTEMPTS}) reached`,
+          canReconnect: false
         });
       }
-    });
-
-    socket.io.on("reconnect_attempt", (attempt) => {
-      logInfo(`Socket.IO reconnect attempt ${attempt}`);
-
-      // Update UI to show reconnection is in progress
-      onConnectionStatusChange("connecting");
-      setIsRecovering(true);
-
-      // Store session info for recovery
-      const handleDisconnection = () => {
-        if (deviceRef.current?.loaded) {
-          const sessionData = {
-            streamId,
-            userId: effectiveUserId,
-            deviceCapabilities: deviceRef.current?.rtpCapabilities,
-            timestamp: Date.now(),
-            isStreamer,
-            sessionId,
-          };
-
-          storeSessionInfo(streamId, effectiveUserId, sessionData);
-          logInfo("Session info stored for possible recovery", {
-            sessionId,
-            streamId,
-            timestamp: sessionData.timestamp,
-          });
-        }
-      };
-
-      // Only store on first reconnect attempt to avoid overwrites
-      if (attempt === 1) {
-        handleDisconnection();
-      }
-    });
-
-    socket.io.on("reconnect_error", (error) => {
-      logError("Socket.IO reconnect error", error);
-
-      // If we're trying to recover, show appropriate status
-      if (isRecovering) {
-        // If reconnection fails multiple times, we might need to give up
-        if (reconnectionCounterRef.current > 5) {
-          setIsRecovering(false);
-          onConnectionStatusChange("disconnected");
-          setReconnectionFailed(true); // Set this to true to show retry button
-          onError(
-            "Connection lost. Please try to reconnect or refresh the page."
-          );
-
-          if (onConnectionError) {
-            onConnectionError({
-              type: "RECONNECT_FAILED",
-              message: "Failed to reconnect after multiple attempts",
-              canReconnect: true, // Set to true since we have a manual retry
-            });
-          }
-        }
-      }
-    });
-
-    socket.io.on("reconnect_failed", () => {
-      logError("Socket.IO reconnect failed after all attempts");
-      // Reset connection flags to allow manual reconnection attempts
-      connectInProgressRef.current = false;
-      setIsRecovering(false);
-      setReconnectionFailed(true); // Set this to true to show retry button
-
-      // Report to parent component that connection failed permanently
-      if (onConnectionError) {
-        onConnectionError({
-          type: "RECONNECT_FAILED",
-          message: "Connection failed after multiple attempts",
-          canReconnect: true, // Set to true since we have a manual retry
-        });
-      }
-    });
-
-    socket.io.on("reconnect", (attempt) => {
-      logInfo(`Socket.IO reconnected after ${attempt} attempts`);
-      reconnectionCounterRef.current += 1;
-      lastReconnectionTimeRef.current = Date.now();
-
-      // Reset connection flag on successful reconnection
-      connectInProgressRef.current = false;
-
-      // Attempt session recovery
-      const handleReconnection = async () => {
-        const sessionData = getSessionInfo(streamId, effectiveUserId);
-
-        if (
-          sessionData &&
-          sessionData.timestamp &&
-          Date.now() - sessionData.timestamp < 5 * 60 * 1000
-        ) {
-          // Only recover sessions less than 5 minutes old
-
-          logInfo("Attempting to recover session from stored data", {
-            sessionId,
-            timeSinceDisconnection: Date.now() - sessionData.timestamp,
-          });
-
-          // If we have device capabilities stored, try to use them
-          if (sessionData.deviceCapabilities && deviceRef.current) {
-            try {
-              // If device is already loaded, we can skip reloading
-              if (!deviceRef.current.loaded) {
-                await deviceRef.current.load({
-                  routerRtpCapabilities: sessionData.deviceCapabilities,
-                });
-                logInfo("Recovered device capabilities from stored session", {
-                  sessionId: sessionData.sessionId,
-                });
-              }
-
-              // Send stored capabilities to the server
-              if (socketRef.current?.connected) {
-                logInfo("Sending recovered device capabilities to server");
-
-                socketRef.current.emit("connectRtpCapabilities", {
-                  rtpCapabilities: deviceRef.current.rtpCapabilities,
-                  streamId,
-                  isReconnection: true,
-                  sessionId: sessionData.sessionId,
-                });
-              }
-            } catch (err) {
-              logError("Failed to recover session", {
-                error: err instanceof Error ? err.message : String(err)
-              });
-              // Fall back to normal connection process
-              if (socketRef.current?.connected) {
-                socketRef.current.emit("getRouterRtpCapabilities", {
-                  streamId,
-                });
-              }
-            }
-          } else {
-            logInfo(
-              "No device capabilities found in stored session, requesting new ones"
-            );
-            if (socketRef.current?.connected) {
-              socketRef.current.emit("getRouterRtpCapabilities", { streamId });
-            }
-          }
-        } else {
-          logInfo(
-            "No valid session data found or session too old, starting fresh connection"
-          );
-          if (socketRef.current?.connected) {
-            socketRef.current.emit("getRouterRtpCapabilities", { streamId });
-          }
-        }
-
-        // Update the connection info to mark it as active again
-        const storedInfo = getStoredConnectionInfo(streamId, effectiveUserId);
-        if (storedInfo) {
-          storeConnectionInfo(streamId, effectiveUserId, {
-            ...storedInfo,
-            isActive: true,
-            timestamp: Date.now(),
-          });
-        }
-      };
-
-      handleReconnection();
-    });
-
-    // Existing connect handler
-    socket.on("connect", () => {
-      if (!mountedRef.current) {
-        logWarn("Socket connected but component unmounted, cleaning up");
-        socket.disconnect();
-        return;
-      }
-
-      // Reset reconnection counter on successful connection
-      reconnectionCounterRef.current = 0;
-      lastReconnectionTimeRef.current = Date.now();
-
-      logInfo("Socket connected", {
-        socketId: socket.id,
-        streamId,
-        userId: effectiveUserId,
-        sessionId,
-        transportType: socket.io.engine.transport.name, // Log the actual transport type that succeeded
-      });
-
-      // Mark this component as having an active connection
+      return;
+    }
+    
+    // Set connection in progress
+    connectInProgressRef.current = true;
+    pendingConnections.set(connectionKey, true);
+    connectionAttemptsRef.current += 1;
+    
+    // Check first if we already have a working connection we can reuse
+    const existingConnection = globalConnectionTracker.get(connectionKey);
+    if (existingConnection && existingConnection.socket.connected) {
+      logInfo(`Reusing existing socket connection for ${connectionKey}`);
+      socketRef.current = existingConnection.socket;
       hasActiveConnection.current = true;
       connectInProgressRef.current = false;
+      pendingConnections.set(connectionKey, false);
+      
+      // Increment ref count
+      existingConnection.refCount++;
+      
+      // Update state
       onConnectionStatusChange("connected");
       onError(null);
-      connectionAttemptsRef.current = 0; // Reset attempts on successful connection
+      
+      // Set up event handlers
+      setupSocketEventHandlers(existingConnection.socket);
+      
+      return;
+    }
 
-      // Request router capabilities after successful connection
-      socket.emit(
-        "getRouterRtpCapabilities",
-        { streamId, sessionId },
-        (response: RouterRtpCapabilitiesResponse) => {
-          if (!mountedRef.current) return;
-
-          if (response.error) {
-            logError("Failed to get router capabilities", {
-              error: response.error,
-            });
-            onError(`Failed to initialize media: ${response.error}`);
-            return;
-          }
-
-          // Store RTP capabilities for later use
-          if (response.rtpCapabilities) {
-            rtpCapabilitiesRef.current = response.rtpCapabilities;
-          }
-
-          // Don't show error for duplicate connection, try to continue anyway
-          if (response.duplicateConnection) {
-            logWarn(
-              "Server reported duplicate connection but we'll try to continue",
-              {
-                existingSocketId: response.existingSocketId,
-              }
-            );
-
-            // Store the duplicate connection info
-            if (response.existingSocketId) {
-              // This may be common during development with HMR, but should be rare in production
-              logInfo("Handling potential duplicate connection scenario", {
-                newSocketId: socket.id,
-                existingSocketId: response.existingSocketId,
-                streamId,
-              });
-
-              // Set state variables to prevent disruption
-              hasActiveConnection.current = true;
-
-              // Continue with normal flow but add a delay for the server to clean up previous connection
-              setTimeout(() => {
-                if (!mountedRef.current) return;
-
-                if (response.rtpCapabilities) {
-                  onDeviceInitialized(response.rtpCapabilities);
-                }
-              }, 300);
-
-              return; // Skip the immediate initialization below
-            }
-          }
-
-          logInfo("Received router capabilities", {
-            capabilities: response.rtpCapabilities,
-          });
-
-          if (response.rtpCapabilities) {
-            onDeviceInitialized(response.rtpCapabilities);
-          } else {
-            logError("No RTP capabilities received from server");
-            onError(
-              "Failed to initialize media: No RTP capabilities received"
-            );
-          }
-        }
+    // Generate unique connection ID to help with tracking
+    const effectiveUserId = userId || 'anonymous';
+    const connectionId = `${streamId}-${userId}-${Date.now()}-${Math.random().toString(36).substring(2,9)}`;
+    connectionIdRef.current = connectionId;
+    
+    // Prepare connection query params
+    const generatedSessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2,9)}`;
+    const connectionParams = {
+      streamId,
+      userId: effectiveUserId,
+      username: username || 'Anonymous User',
+      isStreamer: isStreamer ? 1 : 0,
+      sessionId: sessionId || generatedSessionId,
+      isAnonymous: !userId ? 1 : 0,
+      connectionId,
+      ts: Date.now(),
+      // Add flag for loopback awareness to help server handle these connections better
+      loopbackAware: 1,
+      isStreamerSelfView: isStreamerViewingOwnStream ? 1 : 0
+    };
+    
+    // Log connecting with more detail for diagnosis
+    logInfo(`Connecting to WebRTC signaling server for stream ${streamId}`, {
+      ...connectionParams,
+      isStreamerViewingOwnStream,
+      attemptNumber: connectionAttemptsRef.current,
+      reconnectionCount: reconnectionCounterRef.current
+    });
+    
+    onConnectionStatusChange("connecting");
+    
+    try {
+      // Detect if this might be a loopback connection
+      const effectiveSocketUrl = normalizeSocketIOUrl(
+        runtimeConfig?.socketUrl || window.location.origin
       );
 
-      // Mark connection as active in localStorage
-      const storedInfo = getStoredConnectionInfo(streamId, effectiveUserId);
-      if (storedInfo) {
-        storeConnectionInfo(streamId, effectiveUserId, {
-          ...storedInfo,
-          isActive: true,
-          timestamp: Date.now(),
+      if (isLoopbackUrl(effectiveSocketUrl)) {
+        logWarn("Detected Socket.IO connection to a loopback address", {
+          socketUrl: effectiveSocketUrl,
+          hostname: window.location.hostname,
         });
+        setDetectedLoopback(true);
+        if (onLoopbackDetected) {
+          onLoopbackDetected(true);
+        }
       }
 
-      // Announce broadcaster or viewer readiness
-      if (isStreamer) {
-        logInfo("Emitting broadcaster_ready signal", { streamId, sessionId });
-        socket.emit("broadcaster_ready", { streamId, sessionId });
-      } else {
-        logInfo("Emitting viewer_ready signal", { streamId, sessionId });
-        socket.emit("viewer_ready", { streamId, sessionId });
+      // For loopback connections, especially self-view, adjust the config
+      const socketConfig = {
+        path: runtimeConfig?.wsUrl || '/socket.io',
+        query: connectionParams,
+        reconnection: true,
+        reconnectionAttempts: MAX_RECONNECTION_ATTEMPTS, 
+        reconnectionDelay: RECONNECTION_DELAY_MS,
+        timeout: CONNECTION_TIMEOUT_MS,
+        transports: ['websocket', 'polling'],  // Prefer WebSocket but fall back to polling
+        forceNew: !isStreamerViewingOwnStream, // Allow connection reuse for self-view
+      };
+
+      // Configure socket with explicit transport config and timeout
+      const socket = io(effectiveSocketUrl, socketConfig);
+      
+      // Set a connection timeout
+      const timeoutId = setTimeout(() => {
+        if (socket && !socket.connected && mountedRef.current) {
+          logError(`Connection timeout after ${CONNECTION_TIMEOUT_MS}ms for ${connectionKey}`);
+          
+          if (onConnectionError) {
+            onConnectionError({
+              type: "CONNECTION_TIMEOUT",
+              message: `Connection timed out after ${CONNECTION_TIMEOUT_MS}ms`,
+              canReconnect: reconnectionCounterRef.current < MAX_RECONNECTION_ATTEMPTS
+            });
+          }
+          
+          // Cleanup the pending connection
+          pendingConnections.set(connectionKey, false);
+          reconnectionCounterRef.current++;
+          connectInProgressRef.current = false;
+          
+          // Clean up socket
+          if (!socket.connected) {
+            socket.close();
+          }
+        }
+      }, CONNECTION_TIMEOUT_MS);
+      
+      socketRef.current = socket;
+
+      // Special handling for loopback connections
+      socket.on('loopback_detected', (data) => {
+        logInfo("Server detected loopback connection", data);
+        setDetectedLoopback(true);
+        
+        if (onLoopbackDetected) {
+          onLoopbackDetected(true);
+        }
+        
+        // For streamers viewing their own streams, we still want to try to make it work
+        if (isStreamerViewingOwnStream) {
+          logInfo("Loopback connection allowed for streamer self-view");
+          // We don't disconnect, let it continue
+        }
+      });
+      
+      // Setup socket connection error handlers
+      socket.on("connect_error", (err: Error) => {
+        logError("Socket connection error", { 
+          error: err.message, 
+          transportType: socket.io.engine?.transport?.name,
+          canReconnect: reconnectionCounterRef.current < MAX_RECONNECTION_ATTEMPTS
+        });
+        
+        clearTimeout(timeoutId);
+        pendingConnections.set(connectionKey, false);
+        
+        if (mountedRef.current) {
+          reconnectionCounterRef.current++;
+          connectInProgressRef.current = false;
+          
+          if (onConnectionError) {
+            onConnectionError({
+              type: "SOCKET_CONNECT_ERROR",
+              message: err.message,
+              canReconnect: reconnectionCounterRef.current < MAX_RECONNECTION_ATTEMPTS
+            });
+          }
+        }
+      });
+      
+      socket.io.engine.on("error", (err: any) => {
+        const errorMessage = typeof err === 'string' ? err : (err?.message || 'unknown error');
+        logError("Socket.IO engine error", { 
+          error: errorMessage
+        });
+        
+        pendingConnections.set(connectionKey, false);
+        
+        if (mountedRef.current && onConnectionError) {
+          onConnectionError({
+            type: "SOCKET_ENGINE_ERROR",
+            message: `Connection error: ${errorMessage}`,
+            canReconnect: true
+          });
+        }
+      });
+
+      socket.on("connect", () => {
+        if (!mountedRef.current) {
+          logWarn("Socket connected but component unmounted, cleaning up");
+          socket.disconnect();
+          pendingConnections.set(connectionKey, false);
+          clearTimeout(timeoutId);
+          return;
+        }
+
+        // Clear the timeout
+        clearTimeout(timeoutId);
+        
+        // Reset reconnection counter on successful connection
+        reconnectionCounterRef.current = 0;
+        lastReconnectionTimeRef.current = Date.now();
+        pendingConnections.set(connectionKey, false);
+
+        logInfo("Socket connected", {
+          socketId: socket.id,
+          streamId,
+          userId: effectiveUserId,
+          sessionId,
+          transportType: socket.io.engine.transport.name, // Log the actual transport type that succeeded
+          isStreamerViewingOwnStream,
+          isLoopback: detectedLoopback
+        });
+
+        // Store this connection in the global tracker to allow sharing
+        globalConnectionTracker.set(connectionKey, {
+          socket,
+          streamId,
+          userId: effectiveUserId,
+          refCount: 1,
+          lastConnectionTime: Date.now(),
+          connectionId: connectionIdRef.current
+        });
+        
+        // Also track by connection ID
+        activeSocketConnections.add(connectionIdRef.current);
+
+        // Update UI state
+        hasActiveConnection.current = true;
+        connectInProgressRef.current = false;
+        
+        // For loopback connections, especially if this is a streamer viewing their own stream,
+        // we want to mark it connected even though it's a loopback connection
+        const connectionStatus = isStreamerViewingOwnStream && detectedLoopback ? 
+          "connected" : (detectedLoopback ? "connecting" : "connected");
+        
+        onConnectionStatusChange(connectionStatus);
+        onError(null);
+        connectionAttemptsRef.current = 0;
+      });
+
+      socket.on("disconnect", (reason) => {
+        logWarn(`Socket disconnected: ${reason}`, {
+          socketId: socket.id,
+          connectionId,
+          reconnectionCounter: reconnectionCounterRef.current
+        });
+        
+        pendingConnections.set(connectionKey, false);
+        
+        if (mountedRef.current) {
+          if (reason === "io server disconnect" || reason === "io client disconnect") {
+            // The server/client has forcefully disconnected - don't attempt reconnection
+            hasActiveConnection.current = false;
+            onConnectionStatusChange("disconnected");
+          } else {
+            // For transport close and other reasons, update UI but let socket.io handle reconnect
+            onConnectionStatusChange("connecting");
+          }
+        }
+      });
+
+      // Setup all other event handlers
+      setupSocketEventHandlers(socket);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logError("Error creating socket connection", { error: errorMessage });
+      connectInProgressRef.current = false;
+      pendingConnections.set(connectionKey, false);
+      onConnectionStatusChange("disconnected");
+      
+      if (onConnectionError) {
+        onConnectionError({
+          type: "SOCKET_INIT_ERROR",
+          message: errorMessage,
+          canReconnect: true
+        });
       }
-    });
+    }
+  }, [
+    streamId,
+    userId,
+    username,
+    isStreamer,
+    sessionId,
+    runtimeConfig,
+    onConnectionStatusChange,
+    onError,
+    onConnectionError,
+    onLoopbackDetected,
+    isLoopbackUrl
+    // Intentionally omitting setupSocketEventHandlers to avoid circular reference
+  ]);
+
+  // Setup event handlers for socket.io events
+  const setupSocketEventHandlers = useCallback((socket: Socket) => {
+    // Request router capabilities after successful connection
+    socket.emit(
+      "getRouterRtpCapabilities",
+      { streamId, sessionId },
+      (response: RouterRtpCapabilitiesResponse) => {
+        if (!mountedRef.current) return;
+
+        if (response.error) {
+          logError("Failed to get router capabilities", {
+            error: response.error,
+          });
+          onError(`Failed to initialize media: ${response.error}`);
+          return;
+        }
+
+        // Store RTP capabilities for later use
+        if (response.rtpCapabilities) {
+          rtpCapabilitiesRef.current = response.rtpCapabilities;
+        }
+
+        logInfo("Received router capabilities", {
+          capabilities: response.rtpCapabilities,
+        });
+
+        if (response.rtpCapabilities) {
+          onDeviceInitialized(response.rtpCapabilities);
+        } else {
+          logError("No RTP capabilities received from server");
+          onError(
+            "Failed to initialize media: No RTP capabilities received"
+          );
+        }
+      }
+    );
 
     // Add a handler for server-side errors
     socket.on(
@@ -496,35 +631,39 @@ export function useSocketConnection({
 
         // Set the error message for the user
         onError(data.message);
-
-        // If the server indicates we can reconnect, try that
-        if (data.canReconnect) {
-          logInfo("Will attempt to reconnect based on server suggestion");
-
-          // Wait a moment then try reconnecting
-          setTimeout(() => {
-            if (mountedRef.current) {
-              connectionAttemptsRef.current = 0;
-              onConnectionStatusChange("disconnected");
-              connectToSignalingServer();
-            }
-          }, 2000);
-        }
-
-        // Report the error to parent component if callback is provided
+        
+        // Notify parent component about the error with proper metadata
         if (onConnectionError) {
           onConnectionError({
             type: data.code || "SERVER_ERROR",
-            message: data.message,
-            canReconnect: !!data.canReconnect,
-            canCreateNewStream: !!data.canCreateNewStream
+            message: `Connection error: ${data.code || "Unknown"} - ${data.message}`,
+            canReconnect: data.canReconnect !== false, // Default to true unless explicitly set to false
+            canCreateNewStream: !!data.canCreateNewStream,
+            details: data.details,
+            originalMessage: data.message
           });
         }
       }
     );
 
-    // Set up broadcaster_ready and viewer_ready event handlers
-    if (!isStreamer) {
+    // Set up participant count event handler
+    socket.on("participant_count", (data: { count: number }) => {
+      if (mountedRef.current && onParticipantCount) {
+        onParticipantCount(data.count);
+      }
+    });
+    
+    // Set up broadcaster/viewer specific handlers
+    if (isStreamer) {
+      // Broadcaster listens for viewer ready events
+      socket.on("viewer_connected", (data) => {
+        logInfo("Received viewer_connected event", {
+          viewerSocketId: data.viewerSocketId,
+          viewerUserId: data.viewerUserId,
+          streamId: data.streamId,
+        });
+      });
+    } else {
       // Viewer listens for broadcaster ready events
       socket.on("broadcaster_ready", (data) => {
         logInfo("Received broadcaster_ready event", {
@@ -549,107 +688,39 @@ export function useSocketConnection({
           }
         }
       });
-
-      // Handle viewer_ready_response with active producers info
-      socket.on("viewer_ready_response", (data) => {
-        logInfo("Received viewer_ready_response event", {
-          broadcasterSocketId: data.broadcasterSocketId,
-          broadcasterUserId: data.broadcasterUserId,
-          hasActiveStreamer: data.hasActiveStreamer,
-          activeProducers: data.activeProducers,
-        });
-
-        // If we have active producers, process them
-        if (data.activeProducers && data.activeProducers.length > 0) {
-          logInfo(`Stream has ${data.activeProducers.length} active producers`);
-          if (deviceRef.current?.loaded && onViewerReady) {
-            onViewerReady(data.activeProducers);
-          }
-        } else if (!data.hasActiveStreamer) {
-          onError("The streamer is not currently broadcasting");
-        }
-      });
-
-      // Send viewer ready event after connection
-      socket.emit("viewer_ready", {
-        streamId,
-        sessionId,
-      });
-    } else {
-      // Broadcaster listens for viewer ready events
-      socket.on("viewer_connected", (data) => {
-        logInfo("Received viewer_connected event", {
-          viewerSocketId: data.viewerSocketId,
-          viewerUserId: data.viewerUserId,
-          streamId: data.streamId,
-        });
-      });
-
-      // Handle broadcaster_ready_confirmed to know the server recognized us
-      socket.on("broadcaster_ready_confirmed", (data) => {
-        logInfo("Broadcaster ready confirmed by server", {
-          success: data.success,
-          roomState: data.roomState,
-        });
-
-        // Update UI state to show we're successfully broadcasting
-        if (data.success) {
-          onConnectionStatusChange("streaming");
-          onError(""); // Clear any previous errors
-
-          // Update participant count if provided
-          if (data.roomState && typeof data.roomState.viewers === "number" && onParticipantCount) {
-            onParticipantCount(data.roomState.viewers);
-          }
-        }
-      });
     }
-
-    // Set up additional debug event to monitor connection quality
-    socket.io.engine.on("upgrade", (transport) => {
-      logInfo("Socket.IO transport upgraded", {
-        from: socket.io.engine.transport.name,
-        to: transport.name,
-      });
-    });
-
-    socket.on("participant_count", (data: { count: number }) => {
-      if (mountedRef.current && onParticipantCount) {
-        onParticipantCount(data.count);
-      }
-    });
-
-    // Add an rtpCapabilities event handler and store the value
-    socket.on("rtpCapabilities", (rtpCapabilities) => {
-      logInfo("Received RTP capabilities from server");
-      rtpCapabilitiesRef.current = rtpCapabilities;
-    });
-
-    return socket;
+    
+    return () => {
+      // Clean up event listeners when the component unmounts
+      socket.off("getRouterRtpCapabilities");
+      socket.off("error");
+      socket.off("participant_count");
+      socket.off("broadcaster_ready");
+      socket.off("viewer_connected");
+    };
   }, [
-    runtimeConfig,
-    streamId,
-    effectiveUserId,
-    username,
-    isStreamer,
-    isAnonymous,
-    sessionId,
-    onConnectionStatusChange,
-    onError,
-    onConnectionError,
-    onDeviceInitialized,
+    streamId, 
+    sessionId, 
+    onError, 
+    onDeviceInitialized, 
+    onConnectionError, 
     onParticipantCount,
     onStreamerReady,
     onViewerReady,
+    isStreamer,
     deviceRef,
-    rtpCapabilitiesRef,
-    isLoopbackUrl,
-    onLoopbackDetected
+    rtpCapabilitiesRef
   ]);
 
   // Component lifecycle management
   useEffect(() => {
     mountedRef.current = true;
+
+    // Create a fixed, stable connection ID that persists across component remounts
+    // This helps prevent duplicate connections when the component remounts
+    if (!connectionIdRef.current) {
+      connectionIdRef.current = `${streamId}-${userId}-${Date.now()}-${Math.random().toString(36).substring(2,9)}`;
+    }
 
     // Function to explicitly clear connection state on page unload/refresh
     const handleBeforeUnload = () => {
@@ -713,7 +784,7 @@ export function useSocketConnection({
       logInfo("Network connection restored");
 
       // If we were in an error state, try reconnecting
-      if (mountedRef.current) {
+      if (mountedRef.current && !hasActiveConnection.current) {
         connectionAttemptsRef.current = 0; // Reset for fresh attempt
         connectToSignalingServer();
       }
@@ -727,6 +798,15 @@ export function useSocketConnection({
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // Detect if this is a streamer viewing their own stream and handle specially
+    const isStreamerViewingOwnStream = isStreamer && streamId.includes(userId.substring(0, 8));
+    if (isStreamerViewingOwnStream) {
+      logInfo("Detected streamer viewing own stream, using special connection handling", {
+        streamId,
+        userId
+      });
+    }
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -735,20 +815,18 @@ export function useSocketConnection({
 
       mountedRef.current = false;
 
-      logInfo("Component unmounting, cleaning up resources");
+      logInfo("Component unmounting, cleaning up resources", {
+        connectionId: connectionIdRef.current,
+        streamId,
+        userId: effectiveUserId
+      });
 
-      // Close socket connection
-      if (socketRef.current) {
-        logInfo("Disconnecting socket on unmount", {
-          socketId: socketRef.current.id,
-        });
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
+      // Remove from global tracking and clean up socket properly
+      activeSocketConnections.delete(connectionIdRef.current);
+      cleanupSocket();
 
       // Reset all refs to ensure a fresh start if remounted
       connectInProgressRef.current = false;
-      connectionAttemptsRef.current = 0;
       hasActiveConnection.current = false; // Immediately set to false to avoid duplicate connection issues
 
       // Mark connection as inactive in localStorage
@@ -760,8 +838,14 @@ export function useSocketConnection({
           timestamp: Date.now(),
         });
       }
+
+      // Clean up pending connection state
+      if (streamId && userId) {
+        pendingConnections.set(`${streamId}:${userId}`, false);
+        pendingConnections.set(`${streamId}:${userId}:retry`, false);
+      }
     };
-  }, [streamId, userId, effectiveUserId, isStreamer, connectToSignalingServer]);
+  }, [streamId, userId, effectiveUserId, isStreamer, connectToSignalingServer, cleanupSocket]);
 
   // Manual reconnection function that can be called externally
   const triggerManualReconnect = useCallback(() => {
@@ -806,11 +890,9 @@ export function useSocketConnection({
       clearConnectionInfo(streamId, effectiveUserId);
     }
 
-    // Disconnect current socket
-    if (socketRef.current?.connected) {
-      logInfo("Disconnecting current socket for manual reconnection");
-      socketRef.current.disconnect();
-    }
+    // Disconnect current socket properly
+    logInfo("Cleaning up socket for manual reconnection");
+    cleanupSocket();
 
     // Reset connection state
     connectInProgressRef.current = false;
@@ -836,6 +918,7 @@ export function useSocketConnection({
     reconnectionFailed,
     onConnectionStatusChange,
     onError,
+    cleanupSocket
   ]);
 
   // Initialize connection when component mounts and config is loaded

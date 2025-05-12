@@ -46,11 +46,10 @@ import { cn } from "@/lib/utils";
 import { WebRTCStreamManagerProps } from "./types";
 import { useSocketConnection } from "./hooks/useSocketConnection";
 import { useMediasoupDevice } from "./hooks/useMediasoupDevice";
-import { useWebRTCMedia } from "./hooks/useWebRTCMedia";
 import { useMediaTransports } from "./hooks/useMediaTransports";
 import { VideoDisplay } from "./components/VideoDisplay";
 import { ConnectionInfo } from "./components/ConnectionInfo";
-import { DeviceSelector } from "../DeviceSelector";
+import { DeviceSelector } from "../../components/DeviceSelector";
 import { Settings } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { logInfo, logError } from "./utils/logging";
@@ -402,6 +401,15 @@ export default function WebRTCStreamManager({
     };
   }, [streamId, isStreamer, componentInstanceId, isLoopbackConnection]);
 
+  // Add specific loopback handling component
+  const LoopbackBanner = ({ isStreamingSelf }: { isStreamingSelf: boolean }) => (
+    <div className="absolute top-0 left-0 right-0 bg-purple-600/70 text-white py-1 text-sm text-center z-20">
+      {isStreamingSelf ? 
+        "Loopback connection detected (streamer view)" : 
+        "Loopback connection detected"}
+    </div>
+  );
+
   return (
     <div
       className={cn(
@@ -422,7 +430,7 @@ export default function WebRTCStreamManager({
         />
         
         {/* Loading or error states */}
-        {connectionStatus !== "connected" && !error && (
+        {connectionStatus !== "connected" && !error && !isLoopback && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
             <div className="text-center">
               <Loader2 className="w-10 h-10 animate-spin text-white mx-auto mb-2" />
@@ -433,6 +441,11 @@ export default function WebRTCStreamManager({
               </div>
             </div>
           </div>
+        )}
+        
+        {/* Loopback indicator */}
+        {isLoopback && (
+          <LoopbackBanner isStreamingSelf={isStreamer} />
         )}
         
         {/* Error message */}
@@ -448,10 +461,11 @@ export default function WebRTCStreamManager({
         )}
         
         {/* Stream info overlay */}
-        {connectionStatus === "connected" && (
+        {(connectionStatus === "connected" || (isLoopback && isStreamer)) && (
           <div className="absolute bottom-4 right-4 bg-black/50 text-white px-2 py-1 rounded flex items-center gap-2 z-10">
             <div
               className={`h-2 w-2 rounded-full ${
+                isLoopback ? "bg-purple-500" :
                 connectionStatus === "connected"
                   ? "bg-green-500"
                   : connectionStatus === "connecting"
@@ -460,9 +474,11 @@ export default function WebRTCStreamManager({
               }`}
             ></div>
             <span className="text-xs font-medium">
-              {participantCount > 0
-                ? `${participantCount} viewer${participantCount !== 1 ? "s" : ""}`
-                : "Live"}
+              {isLoopback && isStreamer ? 
+                "Streamer Self-View" :
+                participantCount > 0
+                  ? `${participantCount} viewer${participantCount !== 1 ? "s" : ""}`
+                  : "Live"}
             </span>
           </div>
         )}
@@ -484,10 +500,10 @@ export default function WebRTCStreamManager({
           "bg-red-500"
         }`} />
         <div className="text-white text-xs bg-black/60 px-2 py-1 rounded">
-          {isLoopback ? "Loopback" : connectionStatus}
+          {isLoopback ? (isStreamer ? "Self View" : "Loopback") : connectionStatus}
         </div>
         
-        {reconnectionFailed && (
+        {(reconnectionFailed || (isLoopback && !isStreamer)) && (
           <button 
             onClick={handleReconnect}
             className="text-white text-xs bg-blue-600 px-2 py-1 rounded"
@@ -595,19 +611,21 @@ export default function WebRTCStreamManager({
           </div>
         </div>
       )}
-      <DeviceSelector
-        devices={{
-          video: devices.video,
-          audio: devices.audio
-        }}
-        selectedDevices={{
-          videoId: selectedVideoDevice || null,
-          audioId: selectedAudioDevice || null
-        }}
-        onDeviceChange={handleDeviceChange}
-        isLoading={isMediaLoading}
-        error={mediaError}
-      />
+      {isStreamer && (
+        <DeviceSelector
+          devices={{
+            video: devices.video,
+            audio: devices.audio
+          }}
+          selectedDevices={{
+            videoId: selectedVideoDevice || null,
+            audioId: selectedAudioDevice || null
+          }}
+          onDeviceChange={handleDeviceChange}
+          isLoading={isMediaLoading}
+          error={mediaError}
+        />
+      )}
     </div>
   );
 }
