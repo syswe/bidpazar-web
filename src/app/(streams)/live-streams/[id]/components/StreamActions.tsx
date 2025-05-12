@@ -1,45 +1,42 @@
 import React from 'react';
-import { Heart, Share2, Terminal } from 'lucide-react';
+import { Heart, Share2 } from 'lucide-react';
 
 interface StreamActionsProps {
   isLiked: boolean;
   onLike: () => void;
   onShare: () => void;
-  onShowDiagnostics: () => void;
+  likeCount?: number;
 }
 
-const StreamActions = ({ 
+const StreamActions: React.FC<StreamActionsProps> = ({ 
   isLiked, 
   onLike, 
-  onShare, 
-  onShowDiagnostics 
-}: StreamActionsProps) => {
+  onShare,
+  likeCount = 0
+}) => {
   return (
-    <div className="stream-actions">
-      <button
-        onClick={onLike}
-        className="action-button"
-        aria-label="Like stream"
-      >
-        <Heart
-          className={`h-5 w-5 ${
-            isLiked ? "fill-red-500 text-red-500" : ""
-          }`}
-        />
-      </button>
+    <div className="flex flex-col items-center gap-3">
+      <div className="flex flex-col items-center">
+        <button 
+          onClick={onLike}
+          className="action-button"
+          aria-label={isLiked ? "Unlike" : "Like"}
+        >
+          <Heart 
+            className={`w-5 h-5 ${isLiked ? 'text-red-500 fill-red-500' : 'text-white'}`} 
+          />
+        </button>
+        {likeCount > 0 && (
+          <span className="text-xs text-white mt-1">{likeCount}</span>
+        )}
+      </div>
+      
       <button 
-        className="action-button" 
-        aria-label="Share stream"
         onClick={onShare}
-      >
-        <Share2 className="h-5 w-5" />
-      </button>
-      <button
-        onClick={onShowDiagnostics}
         className="action-button"
-        aria-label="Stream diagnostics"
+        aria-label="Share"
       >
-        <Terminal className="h-5 w-5" />
+        <Share2 className="w-5 h-5 text-white" />
       </button>
     </div>
   );

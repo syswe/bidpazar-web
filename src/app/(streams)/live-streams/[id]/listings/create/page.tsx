@@ -65,6 +65,11 @@ export default function CreateListingPage() {
 
     try {
       setSubmitting(true);
+      console.log(`Attempting to create listing for stream ${id} with:`, {
+        productName,
+        startPrice: parseFloat(startPrice),
+        apiUrl: backendApiUrl
+      });
 
       // Create a minimal listing with just the necessary information
       const response = await fetch(`${backendApiUrl}/live-streams/${id}/listings/simplified`, {
@@ -79,10 +84,18 @@ export default function CreateListingPage() {
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("API error response:", errorData);
+      const responseText = await response.text();
+      console.log(`Simplified API response status: ${response.status}, body:`, responseText);
+      
+      let responseData;
+      try {
+        responseData = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        console.error("Error parsing API response:", parseError);
+        responseData = { message: "Invalid server response" };
+      }
 
+      if (!response.ok) {
         // If the simplified endpoint fails, try the original endpoint with a fallback method
         console.log("Simplified API failed, trying fallback method");
 
@@ -100,19 +113,29 @@ export default function CreateListingPage() {
           })
         });
 
-        if (!fallbackResponse.ok) {
-          const fallbackErrorData = await fallbackResponse.json().catch(() => ({}));
-          console.error("Fallback API error response:", fallbackErrorData);
-          throw new Error(fallbackErrorData.message || "Failed to create listing");
+        const fallbackText = await fallbackResponse.text();
+        console.log(`Fallback API response status: ${fallbackResponse.status}, body:`, fallbackText);
+        
+        let fallbackData;
+        try {
+          fallbackData = fallbackText ? JSON.parse(fallbackText) : {};
+        } catch (parseError) {
+          console.error("Error parsing fallback API response:", parseError);
+          fallbackData = { message: "Invalid server response from fallback" };
         }
 
-        const data = await fallbackResponse.json();
-        console.log("Listing created with fallback method:", data);
-      } else {
-        const data = await response.json();
-        console.log("Listing created successfully:", data);
+        if (!fallbackResponse.ok) {
+          console.error("Fallback API error response:", fallbackData);
+          throw new Error(fallbackData.message || "Failed to create listing");
+        }
+
+        console.log("Listing created with fallback method:", fallbackData);
+        toast.success("Listing added to stream");
+        router.push(`/live-streams/${id}`);
+        return;
       }
 
+      console.log("Listing created successfully:", responseData);
       toast.success("Listing added to stream");
       router.push(`/live-streams/${id}`);
     } catch (error) {

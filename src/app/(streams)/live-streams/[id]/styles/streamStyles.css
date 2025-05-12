@@ -3,64 +3,131 @@
 .vertical-stream-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
+  height: 100vh;
   width: 100%;
-  padding: 0;
-  background: var(--background);
-  min-height: 100vh;
+  background-color: black;
+  overflow: hidden;
+  position: relative;
 }
 
 .stream-content-wrapper {
+  position: relative;
   width: 100%;
-  max-width: 500px;
-  margin: 0 auto;
-  height: calc(100vh - 2rem);
+  height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  position: relative;
-  overflow: hidden;
-  border-radius: 12px;
-  background: var(--background);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  align-items: center;
+  justify-content: center;
 }
 
-@media (max-width: 768px) {
-  .stream-content-wrapper {
-    max-width: 100%;
-    height: 100vh;
-    border-radius: 0;
-  }
-}
-
-.video-container {
+/* Jitsi container styles */
+.stream-content-wrapper > div:first-child {
   flex: 1;
-  width: 100%;
   position: relative;
-  background: #000;
-  overflow: hidden;
-}
-
-.video-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
-  pointer-events: none;
-}
-
-.stream-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  background-color: #000;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Make sure Jitsi iframe takes full height and width */
+.stream-content-wrapper iframe {
+  height: 100% !important;
+  width: 100% !important;
+  border: none !important;
+  background-color: black !important;
+}
+
+/* Custom Jitsi styles via CSS injection */
+:root {
+  --jitsi-bg-color: #000000;
+}
+
+/* Ensure Jitsi controls are clickable */
+.streamer-mode #new-toolbox {
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+
+.streamer-mode .toolbox-content {
+  pointer-events: auto !important;
+}
+
+.streamer-mode .toolbar-button {
+  pointer-events: auto !important;
+}
+
+/* Increase the z-index of the toolbox container in streamer mode */
+.streamer-mode .new-toolbox {
+  z-index: 9999 !important;
+}
+
+/* Hide Jitsi watermark and quality indicators */
+.watermark, .large-video-labels {
+  display: none !important;
+}
+
+/* Ensure video fills available space */
+#largeVideoContainer,
+#largeVideoWrapper {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* For viewers, make video fit screen better */
+.viewer-mode #remoteVideos {
+  height: 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Make video properly centered */
+video {
+  object-fit: contain !important;
+  max-height: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Hide login related elements */
+.prejoin-input-area,
+#security-dialog,
+#lobby-screen,
+#prejoin-screen,
+#login-footer,
+.prejoin-preview-dropdown-container {
+  display: none !important;
+}
+
+/* For streamer mode, ensure controls are accessible */
+.streamer-mode .toolbox-button,
+.streamer-mode .toolbar-button {
+  pointer-events: auto !important;
+}
+
+/* Reposition product section to center-left */
+.product-section {
+  position: absolute;
+  left: 24px;
+  bottom: 50%;
+  transform: translateY(50%);
+  max-width: 240px;
+  z-index: 30;
+}
+
+/* Stream header */
+.stream-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 1rem;
+  width: 100%;
   z-index: 20;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%);
   pointer-events: auto;
 }
 
@@ -69,17 +136,6 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  margin-bottom: 0.5rem;
-}
-
-.stream-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 1rem;
-  z-index: 20;
-  background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%);
 }
 
 .stream-info {
@@ -88,16 +144,45 @@
   margin-left: 0.5rem;
 }
 
+/* Reposition stream actions */
 .stream-actions {
+  position: fixed;
+  right: 1rem;
+  bottom: 6rem;
+  z-index: 30;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  position: absolute;
-  right: 1rem;
-  bottom: 4rem;
-  z-index: 30;
   gap: 0.75rem;
+  align-items: center;
   pointer-events: auto;
+}
+
+/* Chat container positioned at bottom */
+.chat-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  z-index: 999;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(5px);
+  pointer-events: auto !important;
+}
+
+.chat-container input,
+.chat-container button {
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+.chat-container form {
+  pointer-events: auto !important;
+}
+
+/* Ensure chat scroll area remains clickable */
+.chat-container .overflow-y-auto {
+  pointer-events: auto !important;
 }
 
 .action-button {
@@ -119,30 +204,7 @@
   transform: scale(1.1);
 }
 
-.chat-container {
-  position: absolute;
-  bottom: 4rem;
-  left: 0;
-  width: 75%;
-  max-height: 25%;
-  overflow-y: auto;
-  z-index: 15;
-  padding: 0 1rem;
-  pointer-events: auto;
-}
-
-.product-container {
-  position: absolute;
-  bottom: calc(25% + 5rem);
-  left: 0;
-  width: 75%;
-  z-index: 16;
-  padding: 0 1rem;
-  pointer-events: auto;
-}
-
 .back-button {
-  margin-top: 0.5rem;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
@@ -152,7 +214,7 @@
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-center: center;
   width: 2rem;
   height: 2rem;
   pointer-events: auto;
@@ -162,132 +224,228 @@
   background: rgba(0, 0, 0, 0.8);
 }
 
-/* Fix for device selector overlapping with LIVE indicator */
-.stream-header {
-  z-index: 30 !important; /* Higher z-index to appear above device selector */
+/* Sidebar compatibility for stream container */
+@media (min-width: 768px) {
+  .vertical-stream-container {
+    width: calc(100% - 64px); /* When sidebar is collapsed */
+    margin-left: 64px;
+  }
 }
 
-/* Override the device selector position in WebRTCStreamManager to place it below the LIVE indicator */
-.video-container .absolute.top-4.right-4.z-10 {
-  top: 8rem !important;
-  right: 1rem !important; 
-  z-index: 25 !important; 
+@media (min-width: 768px) and (max-width: 1023px) {
+  .vertical-stream-container.sidebar-expanded {
+    width: calc(100% - 272px); /* When sidebar is expanded */
+    margin-left: 272px;
+  }
 }
 
-/* Make sure the dropdown appears correctly */
-.video-container .absolute.top-4.right-4.z-10 .absolute.right-0 {
-  z-index: 26 !important; /* Higher z-index for the dropdown */
+@media (min-width: 1024px) {
+  .vertical-stream-container.sidebar-expanded {
+    width: calc(100% - 256px); /* When sidebar is expanded */
+    margin-left: 256px;
+  }
 }
 
-/* Hide the device selector for non-streamers */
-.hide-for-viewers {
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .product-section {
+    left: 16px;
+    max-width: 180px;
+  }
+  
+  .chat-container {
+    max-height: 250px;
+  }
+}
+
+/* Product section styles */
+.product-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 300px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  overflow: hidden;
+  z-index: 20;
+  transition: all 0.3s ease;
+}
+
+.product-section:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.product-image {
+  width: 100%;
+  height: 100px;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* TikTok-style chat overlay */
+/* Remove the old chat side panel styles */
+.chat-side-panel {
+  display: none; /* Hide this completely */
+}
+
+/* Chat message styles for overlay */
+.chat-message {
+  animation: slideIn 0.3s ease forwards;
+  margin-bottom: 0.75rem;
+}
+
+.system-message {
+  font-style: italic;
+  opacity: 0.8;
+  text-align: center;
+  padding: 0.25rem 0.5rem;
+  margin: 0.5rem 0;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 0.5rem;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Animation for chat messages appearing */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Bidding interface styles */
+.bidding-interface {
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.countdown-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.countdown-timer.ending {
+  background-color: rgba(220, 38, 38, 0.7);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .vertical-stream-container {
+    height: 100vh;
+  }
+  
+  .product-section {
+    max-width: 250px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* Additional Jitsi styles to replace script injection */
+
+/* Streamer toolbar styling */
+.streamer-mode .new-toolbox,
+.streamer-mode #new-toolbox {
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+  display: flex !important;
+  bottom: 25px !important;
+}
+
+.streamer-mode .toolbar-button,
+.streamer-mode .toolbox-content,
+.streamer-mode .toolbox-button {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 10000 !important;
+}
+
+.streamer-mode .button-group-container {
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+}
+
+/* Hide viewer elements */
+.viewer-mode .new-toolbox,
+.viewer-mode #new-toolbox {
   display: none !important;
 }
 
-/* Create a container for product bid and controls in a row */
-.product-and-controls-row {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  z-index: 50;
-  pointer-events: all !important;
+.viewer-mode #filmstripContainer {
+  display: none !important;
 }
 
-/* Make product container fixed width on the left */
-.product-container {
-  position: relative;
-  width: 75%;
-  padding: 0 0.5rem 0 1rem;
-  pointer-events: auto;
+.viewer-mode .subject,
+.viewer-mode .circular-label,
+.viewer-mode .subject-info-container,
+.viewer-mode .video-state-indicator,
+.viewer-mode .connection-indicator {
+  display: none !important;
 }
 
-/* Style the chat container to take up 100% width */
-.chat-container {
-  position: absolute;
-  bottom: 4rem;
-  left: 0;
-  width: 100%;
-  max-height: 30%;
-  overflow-y: auto;
-  z-index: 15;
-  padding: 0 1rem;
-  pointer-events: auto;
+/* Center video for both modes */
+.streamer-mode #largeVideoContainer,
+.viewer-mode #largeVideoContainer {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 10 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
-/* Move the media settings panel to avoid overlap */
-.video-container .absolute.top-4.right-4.z-10 {
-  top: 4rem !important;
-  right: 1rem !important;
-  z-index: 25 !important;
-}
-
-/* Broadcast controls positioning and styling */
-.broadcast-controls-container {
-  position: relative !important;
-  width: 25%;
-  z-index: 100 !important;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  background-color: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  border-top-left-radius: 12px;
-  border-bottom-left-radius: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  max-height: 100%;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  pointer-events: all !important;
-}
-
-/* Add glow effect to the broadcast buttons */
-.broadcast-button {
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-  transition: all 0.3s ease;
-  backdrop-filter: blur(4px);
-  min-width: 40px;
-  min-height: 40px;
-  z-index: 101 !important;
-  pointer-events: all !important;
-  cursor: pointer !important;
-  position: relative !important;
-}
-
-.broadcast-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
-}
-
-.broadcast-button * {
-  pointer-events: all !important;
-}
-
-/* Start broadcast button styling */
-.broadcast-button-start {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-}
-
-/* End broadcast button styling */
-.broadcast-button-end {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-/* Make controls more visible on mobile */
-@media (max-width: 768px) {
-  .product-container {
-    width: 65%;
-  }
-  
-  .broadcast-controls-container {
-    width: 35%;
-    padding: 0.5rem;
-  }
+.streamer-mode #largeVideoWrapper,
+.viewer-mode #largeVideoWrapper {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 } 

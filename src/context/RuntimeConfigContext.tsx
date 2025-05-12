@@ -26,8 +26,8 @@ const defaultConfig: RuntimeConfig = {
   apiUrl: "/api",
   socketUrl:
     typeof window !== "undefined"
-      ? `http://${window.location.host}` // Use HTTP for Socket.IO, not WebSocket protocol
-      : "http://localhost:3000",
+      ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}` // Derive protocol from page
+      : "ws://localhost:3001",
   appUrl:
     typeof window !== "undefined"
       ? window.location.origin
@@ -201,18 +201,35 @@ export const RuntimeConfigProvider: React.FC<{ children: ReactNode }> = ({
 
       // 2. Socket.IO URL - Allow ws:// or wss:// protocols
       if (newConfig.socketUrl) {
+        // Ensure protocol is correct based on the current connection
         if (
           !newConfig.socketUrl.startsWith("http://") &&
           !newConfig.socketUrl.startsWith("https://") &&
           !newConfig.socketUrl.startsWith("ws://") &&
           !newConfig.socketUrl.startsWith("wss://")
         ) {
-          // If no recognized protocol, default to ws:// or http:// based on needs
-          // Forcing ws:// as per .env
-          newConfig.socketUrl = `ws://${newConfig.socketUrl}`;
-          console.log(
-            "[RuntimeConfig] Added ws:// protocol to Socket.IO URL as default"
-          );
+          // For production: Use secure protocols if current page is secure
+          if (typeof window !== "undefined" && window.location.protocol === "https:") {
+            newConfig.socketUrl = `wss://${newConfig.socketUrl}`;
+            console.log(
+              "[RuntimeConfig] Added wss:// protocol to Socket.IO URL based on secure page"
+            );
+          } else {
+            // For development or non-secure pages
+            newConfig.socketUrl = `ws://${newConfig.socketUrl}`;
+            console.log(
+              "[RuntimeConfig] Added ws:// protocol to Socket.IO URL"
+            );
+          }
+        }
+
+        // Convert http(s):// to ws(s):// if needed
+        if (newConfig.socketUrl.startsWith("http://")) {
+          newConfig.socketUrl = newConfig.socketUrl.replace("http://", "ws://");
+          console.log("[RuntimeConfig] Converted Socket.IO URL from http:// to ws://");
+        } else if (newConfig.socketUrl.startsWith("https://")) {
+          newConfig.socketUrl = newConfig.socketUrl.replace("https://", "wss://");
+          console.log("[RuntimeConfig] Converted Socket.IO URL from https:// to wss://");
         }
 
         // Remove trailing slash to avoid double slashes when combined with path

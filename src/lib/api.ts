@@ -1419,6 +1419,7 @@ export const addSimplifiedListingToLiveStream = async (
     {
       method: "POST",
       body: JSON.stringify(data),
+      requireAuth: true,
     }
   );
 };

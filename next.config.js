@@ -18,6 +18,7 @@ const nextConfig = {
       "bidpazar-storage.s3.amazonaws.com",
       "loremflickr.com",
       "placekitten.com",
+      "meet.bidpazar.com", // Added Jitsi server domain
     ],
     unoptimized: true,
   },
@@ -50,7 +51,6 @@ const nextConfig = {
       {
         "utf-8-validate": "commonjs utf-8-validate",
         bufferutil: "commonjs bufferutil",
-        mediasoup: "commonjs mediasoup",
       },
     ];
 

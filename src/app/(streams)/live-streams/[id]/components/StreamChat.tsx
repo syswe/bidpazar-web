@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRuntimeConfig } from "@/context/RuntimeConfigContext";
 import { useAuth } from "@/components/AuthProvider";
-import { Loader2, Send, LogIn } from "lucide-react";
+import { Loader2, Send, LogIn, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { io, Socket } from "socket.io-client";
 
@@ -112,9 +112,11 @@ export default function StreamChat({
           return;
         }
 
+        // First try using socketUrl from runtime config
         const baseSocketUrl = runtimeConfig.socketUrl || window.location.origin;
         console.log(`StreamChat: Connecting to Socket.IO at ${baseSocketUrl}`);
 
+        // Create socket with more resilient options
         const newSocket = io(baseSocketUrl, {
           path: "/socket.io",
           query: {
@@ -125,9 +127,10 @@ export default function StreamChat({
           },
           transports: ["websocket", "polling"],
           reconnection: true,
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000,
-          timeout: 10000,
+          reconnectionAttempts: 3,
+          reconnectionDelay: 2000,
+          timeout: 15000, // Reduce timeout to fail faster
+          forceNew: true, // Create a fresh connection each time
         });
 
         socketRef.current = newSocket;
@@ -178,14 +181,6 @@ export default function StreamChat({
         newSocket.on("disconnect", (reason) => {
           console.warn("StreamChat: Socket.IO disconnected, reason:", reason);
           setIsConnected(false);
-
-          // If the disconnection wasn't intentional, try to reconnect
-          if (
-            reason === "io server disconnect" ||
-            reason === "transport close"
-          ) {
-            console.log("StreamChat: Will try to reconnect...");
-          }
         });
 
         newSocket.on("connect_error", (error) => {
@@ -195,21 +190,19 @@ export default function StreamChat({
           );
           setIsConnected(false);
 
-          // Manual reconnect if needed
-          if (reconnectAttempts < 3) {
-            const timeout = Math.min(2000 * (reconnectAttempts + 1), 10000);
-            console.log(
-              `StreamChat: Will attempt reconnect in ${timeout}ms (attempt ${
-                reconnectAttempts + 1
-              })`
-            );
-
-            setTimeout(() => {
-              setReconnectAttempts((prev) => prev + 1);
-              if (socketRef.current) {
-                socketRef.current.connect();
-              }
-            }, timeout);
+          // Specific error handling for timeouts
+          if (error.message === "timeout") {
+            console.log("StreamChat: Connection timeout");
+            
+            // Only try to reconnect if we haven't exceeded the limit
+            if (reconnectAttempts < 2) {
+              // Silently try to reconnect without showing errors to the user
+              setReconnectAttempts(prev => prev + 1);
+            } else {
+              // After multiple failed attempts, don't show error toast
+              // Just silently fail and let the user still watch the stream
+              console.log("StreamChat: Max reconnect attempts reached, chat will be unavailable");
+            }
           }
         });
 
@@ -224,15 +217,20 @@ export default function StreamChat({
       }
     };
 
-    const socket = connectSocket();
+    // Don't immediately create socket when component mounts
+    // Instead, wait a bit to prevent race conditions with other components
+    const timer = setTimeout(() => {
+      connectSocket();
+    }, 1000);
 
     // Cleanup function
     return () => {
-      if (socket) {
+      clearTimeout(timer);
+      if (socketRef.current) {
         console.log("StreamChat: Cleaning up socket connection");
         // Leave the chat room before disconnecting
-        socket.emit("leaveChatRoom", { streamId });
-        socket.disconnect();
+        socketRef.current.emit("leaveChatRoom", { streamId });
+        socketRef.current.disconnect();
       }
       socketRef.current = null;
     };
@@ -297,13 +295,28 @@ export default function StreamChat({
     }
   };
 
+  // Simplified UI when chat is unavailable
+  const renderChatUnavailableUI = () => {
+    if (isLoading) return null;
+    
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-4">
+        <MessageCircle className="h-8 w-8 text-white/30 mb-2" />
+        <p className="text-white/70 text-center text-sm">
+          Chat is currently unavailable. You can still watch the stream.
+        </p>
+      </div>
+    );
+  };
+
+  // Render a more user-friendly loading state
   if (isConfigLoading || isAuthLoading) {
     return (
       <div
         className={`flex flex-col h-full bg-opacity-70 bg-black rounded-lg overflow-hidden items-center justify-center ${className}`}
       >
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
-        <p className="text-white/70 mt-2">Loading chat...</p>
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
+        <p className="text-white/70 mt-2 text-sm">Loading chat...</p>
       </div>
     );
   }
@@ -313,14 +326,18 @@ export default function StreamChat({
       className={`flex flex-col h-full bg-opacity-70 bg-black rounded-lg overflow-hidden ${className}`}
     >
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {isLoading && messages.length === 0 ? (
+        {(isLoading && messages.length === 0) ? (
           <div className="flex justify-center items-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
+            <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="text-center text-white/70 py-4">
-            No messages yet. Be the first to chat!
-          </div>
+          reconnectAttempts >= 2 ? (
+            renderChatUnavailableUI()
+          ) : (
+            <div className="text-center text-white/70 py-4 text-sm">
+              No messages yet. Be the first to chat!
+            </div>
+          )
         ) : (
           messages.map((message, index) => (
             <div
@@ -339,7 +356,7 @@ export default function StreamChat({
                 <div className="text-xs font-medium opacity-80 mb-1">
                   {message.username || "Anonymous"}
                 </div>
-                <p>{message.content}</p>
+                <p className="text-sm">{message.content}</p>
               </div>
             </div>
           ))
@@ -360,13 +377,13 @@ export default function StreamChat({
             }
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            disabled={!isAuthenticated || isSending || !isConnected}
+            disabled={!isAuthenticated || isSending || !isConnected || reconnectAttempts >= 2}
             className="w-full bg-black/50 text-white placeholder-white/50 px-4 py-2 pr-10 rounded-full focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
           />
           {isAuthenticated ? (
             <button
               type="submit"
-              disabled={isSending || !newMessage.trim() || !isConnected}
+              disabled={isSending || !newMessage.trim() || !isConnected || reconnectAttempts >= 2}
               className="absolute right-2 text-white/80 hover:text-white disabled:text-white/40"
             >
               {isSending ? (

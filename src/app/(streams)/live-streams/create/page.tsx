@@ -8,6 +8,7 @@ import { createLiveStream } from '@/lib/api';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Upload } from 'lucide-react';
 import { getToken } from '@/lib/frontend-auth';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function CreateLiveStreamPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function CreateLiveStreamPage() {
     description: '',
     thumbnailUrl: '',
     startTime: '',
+    roomName: '', // For Jitsi room name
   });
 
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
@@ -31,6 +33,13 @@ export default function CreateLiveStreamPage() {
   useEffect(() => {
     setIsMounted(true);
     setToken(getToken());
+    
+    // Generate a unique room name for the Jitsi meeting
+    const uniqueRoomId = uuidv4().substring(0, 8);
+    setFormData(prev => ({
+      ...prev,
+      roomName: `bidpazar-${uniqueRoomId}`
+    }));
   }, []);
 
   // Only run this after the component has mounted (client-side only)
@@ -214,6 +223,20 @@ export default function CreateLiveStreamPage() {
                   <p className="text-sm text-[var(--foreground)]/60 mt-2">
                     Boş bırakırsanız, yayın &quot;Planlanmış&quot; olarak kaydedilir.
                   </p>
+                </div>
+
+                <div>
+                  <label className="block text-[var(--foreground)] font-medium mb-2">
+                    Jitsi Oda Bilgisi
+                  </label>
+                  <div className="p-3 border border-[var(--border)] rounded-lg bg-[var(--background)]">
+                    <p className="text-sm text-[var(--foreground)]/80">
+                      Otomatik oluşturulan oda adı: <strong>{formData.roomName}</strong>
+                    </p>
+                    <p className="text-xs text-[var(--foreground)]/60 mt-1">
+                      Bu bilgi, yayınınız için oluşturulan benzersiz bir oda adıdır ve değiştirilemez.
+                    </p>
+                  </div>
                 </div>
               </div>
 

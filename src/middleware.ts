@@ -77,12 +77,17 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/api/public/") ||
     // Allow anonymous access to live-streams pages and their data
     path.startsWith("/live-streams/") ||
+    // Allow anonymous access to live-auctions-hls pages and API
+    path.startsWith("/live-auctions-hls/") ||
+    // Allow public access to HLS stream data and files
+    path.startsWith("/api/live-streams/hls/") ||
     // Allow public access to stream-related API endpoints
     (path.startsWith("/api/live-streams/") &&
       (path.endsWith("/public") ||
         path.includes("/public/") ||
         path.includes("/active-bid") ||
         path.includes("/active-listing") ||
+        path.includes("/listings") || // Allow listings endpoints
         path.includes("/messages"))) ||
     // Allow public access to product auctions API
     path.startsWith("/api/product-auctions") ||

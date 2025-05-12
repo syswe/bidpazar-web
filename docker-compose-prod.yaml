@@ -6,13 +6,20 @@ services:
     restart: always
     ports:
       - "3000:3000"
-      - "40000-40100:40000-40100/udp"
+      # RTMP port for streaming
+      - "1935:1935"
+      # HTTP port for HLS
+      - "8000:8000"
     env_file:
       - ./bidpazar-web/.env.docker
     environment:
       - PORT=3000
+      - RTMP_SERVER_HOST=${EXTERNAL_IP:-45.147.46.183}
+      - NEXT_PUBLIC_RTMP_SERVER_HOST=${EXTERNAL_IP:-45.147.46.183}
+      - FFMPEG_PATH=/usr/bin/ffmpeg
     volumes:
       - ./uploads:/app/public/uploads
+      - ./hls:/app/public/hls
     networks:
       - shared-network
     depends_on:

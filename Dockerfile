@@ -1,9 +1,9 @@
 FROM --platform=linux/amd64 node:22 AS base
 
-# Set up Python properly in the base image
+# Set up basic dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-dev python3-pip python3-setuptools python3-wheel \
-    build-essential cmake make g++ pkg-config libssl-dev \
+    build-essential pkg-config \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
@@ -21,30 +21,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install development dependencies first (including ts-node)
-RUN npm install --no-save ts-node typescript @types/node
-
 # Install Node.js dependencies
 RUN npm ci
-
-# Explicitly install mediasoup and build its worker
-RUN apt-get update && apt-get install -y python3 make g++ pkg-config libssl-dev \
-    && npm install mediasoup@3 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Verify the mediasoup binary was built
-RUN ls -la ./node_modules/mediasoup/worker/out/Release/ || echo "MediaSoup worker not built correctly"
-
-# Create correct directory structure for mediasoup
-RUN mkdir -p ./node_modules/mediasoup/node/worker/out/Release/ \
-    && mkdir -p /worker/out/Release/ \
-    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker ./node_modules/mediasoup/node/worker/out/Release/ \
-    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker /worker/out/Release/ \
-    && chmod +x ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
-    && chmod +x /worker/out/Release/mediasoup-worker \
-    && ls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
-    && ls -la /worker/out/Release/mediasoup-worker
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -63,8 +41,7 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 # Build next.js app with standalone output
 RUN npm run build
 
-# Directly include the original TypeScript files and compile them at runtime with a full bundle
-# This avoids complex module resolution issues
+# Create simple bundles for server files
 RUN npm install --no-save esbuild && \
     mkdir -p ./dist && \
     npx esbuild ./src/lib/socket/socketHandler.ts --bundle --platform=node --outfile=./dist/socketHandler.js && \
@@ -106,36 +83,8 @@ COPY --from=builder /app/dist ./dist
 # Copy module-alias package which is required by server.js
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 
-# Install required dependencies including mediasoup
-RUN apt-get update && apt-get install -y \
-    python3 make g++ pkg-config libssl-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install all required development dependencies
+# Install required dependencies for socket.io
 RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-client ws cors
-
-# Install mediasoup in the runner stage to ensure its binary is properly built
-RUN npm install mediasoup@3
-
-# Copy MediaSoup from the builder stage as backup
-COPY --from=builder /app/node_modules/mediasoup ./node_modules/mediasoup
-
-# Create correct directory structure for mediasoup in the runner stage
-RUN mkdir -p ./node_modules/mediasoup/node/worker/out/Release/ \
-    && mkdir -p /worker/out/Release/ \
-    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker ./node_modules/mediasoup/node/worker/out/Release/ \
-    && cp ./node_modules/mediasoup/worker/out/Release/mediasoup-worker /worker/out/Release/ \
-    && chmod +x ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker \
-    && chmod +x /worker/out/Release/mediasoup-worker
-
-# Verify mediasoup binaries exist and are executable
-RUN ls -la ./node_modules/mediasoup/worker/out/Release/mediasoup-worker && \
-    ls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker && \
-    ls -la /worker/out/Release/mediasoup-worker
-
-# Create debugging script for mediasoup paths
-RUN echo '#!/bin/bash\necho "MediaSoup paths:"\nls -la ./node_modules/mediasoup/worker/out/Release/mediasoup-worker\nls -la ./node_modules/mediasoup/node/worker/out/Release/mediasoup-worker\nls -la /worker/out/Release/mediasoup-worker\necho "Testing worker..."\nnode -e "const mediasoup=require(\"mediasoup\");async function test(){try{const worker=await mediasoup.createWorker();console.log(\"Worker created successfully!\");worker.close();}catch(e){console.error(\"Failed:\",e);}}test();"' > /app/check-mediasoup.sh && chmod +x /app/check-mediasoup.sh
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public
@@ -145,31 +94,19 @@ ENV APP_URL="http://localhost:3000"
 ENV API_URL="http://localhost:3000/api"
 ENV BACKEND_API_URL="http://localhost:3000/api"
 ENV SOCKET_URL="ws://localhost:3001"
-ENV WEBRTC_SERVER="http://localhost:3001"
 ENV WS_URL="/socket.io/"
 ENV PORT="3000"
 ENV PORT_SOCKET="3001"
-ENV TURN_SERVER_URL="turn:localhost:3478"
-ENV TURN_USERNAME="bidpazar"
-ENV TURN_PASSWORD="bidpazarpass"
-ENV STUN_SERVER_URL="stun:localhost:3478"
 
 # Set up NEXT_PUBLIC environment variables
 ENV NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ENV NEXT_PUBLIC_API_URL="http://localhost:3000/api"
 ENV NEXT_PUBLIC_SOCKET_URL="ws://localhost:3001"
-ENV NEXT_PUBLIC_WEBRTC_SERVER="http://localhost:3001"
 ENV NEXT_PUBLIC_WS_URL="/socket.io/"
-ENV NEXT_PUBLIC_TURN_SERVER_URL="turn:localhost:3478"
-ENV NEXT_PUBLIC_TURN_USERNAME="bidpazar"
-ENV NEXT_PUBLIC_TURN_PASSWORD="bidpazarpass"
-ENV NEXT_PUBLIC_STUN_SERVER_URL="stun:localhost:3478"
 
 # Expose the ports the app runs on
 EXPOSE 3000
 EXPOSE 3001
-# Expose MediaSoup ports for WebRTC
-EXPOSE 40000-40100/udp
 
 # Start the Next.js server directly
 CMD ["node", "server.js"]
