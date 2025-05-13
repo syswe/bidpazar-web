@@ -128,21 +128,11 @@ This document details the live streaming auction system for Bidpazar.com, enabli
 
 ### WebSocket Events (Socket.IO)
 
-The WebSocket server is initialized in `server.js` and the handler logic is implemented in `src/lib/socket/socketHandler.ts`.
+The WebSocket server is initialized in `server.js` and handles real-time communication for chat and bid updates.
 
 #### Connection
 
-- Clients connect to the Socket.IO server with query parameters: `streamId`, `userId`, `username`, and `isStreamer`.
-
-#### WebRTC Signaling Events
-
-- `getRouterRtpCapabilities`: Client requests Mediasoup router's capabilities.
-- `createWebRtcTransport`: Client requests to create a WebRTC transport on the server.
-- `connectTransport`: Client provides its DTLS parameters to connect the transport.
-- `produce`: Streamer client sends media tracks (audio/video).
-- `consume`: Viewer client receives media tracks from a producer.
-- `newProducer`: Server broadcasts when a new producer becomes available.
-- `resumeConsumer`: Client requests to resume a paused consumer.
+- Clients connect to the Socket.IO server with query parameters: `streamId`, `userId`, `username`.
 
 #### Chat Events
 
@@ -151,100 +141,99 @@ The WebSocket server is initialized in `server.js` and the handler logic is impl
 - `newChatMessage`: Server broadcasts a new chat message.
 - `leaveChatRoom`: Client leaves a chat room.
 
-#### Peer Management Events
+#### Bid Events
 
-- `peerClosed`: Server notifies when a peer disconnects.
+- `placeBid`: Client places a bid on a product.
+- `newBid`: Server broadcasts a new bid to all viewers.
+- `startCountdown`: Seller starts the countdown timer.
+- `countdownUpdate`: Server broadcasts countdown updates.
+- `countdownComplete`: Server notifies when countdown is complete and winner is determined.
 
 ### Frontend Components
 
-- `WebRTCStreamManager.tsx` — Handles WebRTC connection and media streaming.
+- `JitsiStreamManager.tsx` — Handles Jitsi Meet integration for live streaming.
 - `ProductDisplay.tsx` — Shows product information and countdown timer.
 - `BiddingInterface.tsx` — UI for placing bids.
 - `StreamChat.tsx` — Real-time chat interface.
 - `CreateProductForm.tsx` — Form for adding products during livestream.
-- `StreamDiagnostics.tsx` — Debug information for stream quality.
 - `StreamControls.tsx` — Controls for the streamer.
 
 ## Technical Implementation
 
-### WebRTC Streaming Architecture
+### Jitsi Meet Streaming Architecture
 
-BidPazar uses MediaSoup, a powerful WebRTC Selective Forwarding Unit (SFU), for low-latency, high-quality streaming:
+BidPazar uses Jitsi Meet SDK for low-latency, high-quality streaming:
 
-1. **Server Integration**:
+1. **Integration**:
 
-   - MediaSoup is integrated directly with the Next.js application through a custom server (`server.js`).
-   - WebRTC signaling is handled via Socket.IO on the same server.
+   - Jitsi Meet SDK is integrated with Next.js using the React API
+   - Socket.IO is used for non-video related real-time communication (chat, bidding)
 
 2. **Media Flow**:
 
    ```
-   STREAMER (Producer) -> MEDIASOUP SERVER -> VIEWERS (Consumers)
+   STREAMER -> JITSI VIDEOBRIDGE -> VIEWERS
    ```
 
 3. **Configuration Requirements**:
 
-   - Server requires proper UDP port configuration (default: 40000-40100)
-   - Server needs a correctly configured `MEDIASOUP_ANNOUNCED_IP` environment variable
-   - STUN/TURN servers for NAT traversal in production environments
+   - Basic Jitsi Meet configuration (domain, room name, user info)
+   - Socket.IO server for handling chat and bidding
+   - Proper CORS configuration for socket connections
 
-4. **Known Issues and Workarounds**:
-   - IP configuration is the most common source of problems
-   - Proper firewall configuration is critical (both TCP for signaling and UDP for media)
-   - Client-to-server network connectivity must be verified
+4. **Key Features**:
+   - Built-in device selection and handling
+   - Screen sharing capabilities
+   - Built-in chat (can be disabled in favor of custom chat)
+   - Customizable UI with the Jitsi iframe API
 
 For detailed technical setup, configuration, and troubleshooting:
 
-- See [MEDIASOUP-SETUP.md](./MEDIASOUP-SETUP.md) for configuration details.
-- See [WEBRTC-TROUBLESHOOTING.md](./WEBRTC-TROUBLESHOOTING.md) for troubleshooting steps.
+- See [JITSI-SETUP.md](./JITSI-SETUP.md) for configuration details.
+- See [JITSI-TROUBLESHOOTING.md](./JITSI-TROUBLESHOOTING.md) for troubleshooting steps.
 
 ## Stream Quality & Performance
 
 ### Video Quality Management
 
-The platform includes adaptive bitrate handling to provide the best possible quality based on network conditions:
+Jitsi Meet provides built-in adaptive bitrate handling:
 
 1. **Resolution Tiers**:
 
-   - High: 720p (1280x720) at 1.5 Mbps
-   - Medium: 480p (854x480) at 800 Kbps
-   - Low: 360p (640x360) at 400 Kbps
-   - Mobile: 240p (426x240) at 250 Kbps
+   - High: 720p (1280x720)
+   - Medium: 480p (854x480)
+   - Low: 360p (640x360)
+   - Mobile: 240p (426x240)
 
 2. **Automatic Quality Adaptation**:
 
-   - The system monitors available bandwidth and adjusts video quality in real-time
+   - Jitsi automatically monitors available bandwidth and adjusts video quality in real-time
    - Quality switches are smooth and do not interrupt the stream
    - Initial quality is determined based on device capability and network speed
 
 3. **Client-Side Controls**:
-   - Viewers can manually select quality level if desired
+   - Viewers can manually select quality level through the Jitsi UI
    - Automatic quality selection is the default
 
 ### Audio Quality
 
 - Audio is prioritized over video during constrained bandwidth
 - Sample rate: 48 kHz for high-quality audio
-- Bitrate: 64-128 Kbps adaptive based on network conditions
-- Echo cancellation and noise suppression enabled
+- Echo cancellation and noise suppression enabled by default
 
 ### Latency Management
 
-The MediaSoup SFU architecture enables low-latency streaming:
-
 - Target end-to-end latency: 500ms - 2000ms
 - Optimized for interactivity and real-time bidding
-- Buffer management to reduce stalling and dropped frames
 
 ### Device Optimization
 
 - Mobile-specific optimizations:
-  - Battery usage monitoring
-  - Thermal throttling detection
-  - Background mode handling (audio-only when app is not in foreground)
+  - Battery usage management
+  - Background mode handling
 - Desktop optimizations:
   - Multi-core encoding/decoding where available
-  - Hardware acceleration support detection and utilization
+  - Hardware acceleration support
 
 ## Monitoring & Analytics
 
@@ -254,22 +243,14 @@ The system includes comprehensive monitoring for both streamer and admin use:
 
 1. **Stream Health Dashboard**:
 
-   - Real-time bandwidth usage
+   - Jitsi-provided connection quality indicators
    - Connected viewer count
-   - CPU/resource utilization
-   - Error rate monitoring
+   - Participant list and roles
 
 2. **Viewer Experience Metrics**:
-
-   - Buffering events per minute
-   - Average quality level
    - Join success rate
+   - Average quality level
    - Playback continuity score
-
-3. **Alerts and Notifications**:
-   - Automatic alerts for stream degradation
-   - Notifications for high error rates
-   - Connection status updates
 
 ### Stream Analytics
 
@@ -280,30 +261,26 @@ Post-stream analytics provide valuable insights:
    - Peak concurrent viewers
    - Average watch time
    - Viewer retention curve
-   - Drop-off points
 
 2. **Bidding Analytics**:
 
    - Bids per minute
    - Bid value distribution
-   - Correlation between stream quality and bidding activity
    - Conversion rate (viewers to bidders)
 
 3. **Performance Reports**:
    - Stream stability score
    - Quality consistency rating
    - Network performance summary
-   - Device compatibility report
 
 ### Logging
 
 Comprehensive logging is implemented throughout the streaming system:
 
-- WebRTC connection events
-- Media track state changes
-- Transport statistics
-- ICE candidate gathering and selection
-- Error conditions with detailed context
+- Connection events
+- Participant join/leave events
+- Chat message distribution
+- Bidding activity
 
 For more information on logging, see [LOGGING.md](./LOGGING.md).
 
@@ -313,9 +290,8 @@ For more information on logging, see [LOGGING.md](./LOGGING.md).
 - Role-based access for sellers, buyers, and admins
 - Input validation for all product and bid submissions
 - Real-time moderation tools for admins
-- Secure WebRTC and WebSocket connections
+- Secure WebSocket connections
 - Rate limiting and abuse prevention
-- End-to-end encryption for WebRTC media when possible
 
 ### Security Best Practices
 
@@ -332,8 +308,7 @@ For more information on logging, see [LOGGING.md](./LOGGING.md).
    - Protect against cross-site WebSocket hijacking
 
 3. **Infrastructure Security**:
-   - Regular security audits of WebRTC implementation
-   - Production TURN server with proper credentials
+   - Regular security audits of Jitsi implementation
    - DDoS protection for WebSocket and media endpoints
 
 ## Implementation Checklist
@@ -351,8 +326,8 @@ For more information on logging, see [LOGGING.md](./LOGGING.md).
 - [x] Web vertical/centered view
 - [x] Admin moderation tools
 - [x] Stream quality monitoring and analytics
-- [ ] Adaptive bitrate streaming (in progress)
-- [ ] Advanced bandwidth management (in progress)
+- [x] Jitsi Meet integration
+- [x] Socket.IO for chat and bidding
 - [ ] Accessibility features (planned)
 - [ ] Multi-language support (planned)
 - [ ] Automated content moderation (planned)
@@ -360,5 +335,5 @@ For more information on logging, see [LOGGING.md](./LOGGING.md).
 ---
 
 _For more details on the platform structure, see `docs/STRUCTURE.md`._
-_For technical configuration of WebRTC, see `docs/MEDIASOUP-SETUP.md`._
+_For technical configuration of Jitsi Meet, see `docs/JITSI-SETUP.md`._
 _For logging standards, see `docs/LOGGING.md`._

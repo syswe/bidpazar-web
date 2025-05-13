@@ -41,17 +41,10 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 # Build next.js app with standalone output
 RUN npm run build
 
-# Create simple bundles for server files
+# Create bundle for logger
 RUN npm install --no-save esbuild && \
     mkdir -p ./dist && \
-    npx esbuild ./src/lib/socket/socketHandler.ts --bundle --platform=node --outfile=./dist/socketHandler.js && \
     npx esbuild ./src/lib/logger.ts --bundle --platform=node --outfile=./dist/logger.js
-
-# Create a simple build script for TypeScript files
-RUN echo '{ "compilerOptions": { "target": "es2020", "module": "commonjs", "moduleResolution": "node", "esModuleInterop": true, "outDir": "./dist", "strict": false, "baseUrl": ".", "paths": { "@/*": ["src/*"] } }, "include": ["src/lib/socket/socketHandler.ts", "src/lib/logger.ts"] }' > tsconfig.server.json
-
-# Manually compile TypeScript files with a controlled environment
-RUN npx tsc -p tsconfig.server.json || true
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -76,7 +69,7 @@ COPY --from=builder /app/package.json ./
 # Make sure server.js is in the image
 COPY --from=builder /app/server.js ./
 
-# Copy source and compiled JS files
+# Copy source files
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/dist ./dist
 
@@ -84,7 +77,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
 
 # Install required dependencies for socket.io
-RUN npm install --no-save ts-node typescript @types/node socket.io socket.io-client ws cors
+RUN npm install --no-save socket.io socket.io-client ws cors
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public
