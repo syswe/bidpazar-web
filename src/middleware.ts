@@ -85,6 +85,7 @@ export async function middleware(request: NextRequest) {
     path === "/shipping-returns" ||
     path === "/terms" ||
     path === "/user-agreement" ||
+    path === "/packages"  ||
     path.startsWith("/download") ||
     // Allow anonymous access to live-streams pages and their data
     path.startsWith("/live-streams/") ||
