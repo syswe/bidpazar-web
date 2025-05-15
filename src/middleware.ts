@@ -75,6 +75,17 @@ export async function middleware(request: NextRequest) {
     path.includes(".svg") ||
     path.includes(".ico") ||
     path.startsWith("/api/public/") ||
+    // Static pages
+    path === "/about" ||
+    path === "/contact" ||
+    path === "/cookies" ||
+    path === "/faq" ||
+    path === "/kvkk" ||
+    path === "/privacy" ||
+    path === "/shipping-returns" ||
+    path === "/terms" ||
+    path === "/user-agreement" ||
+    path.startsWith("/download") ||
     // Allow anonymous access to live-streams pages and their data
     path.startsWith("/live-streams/") ||
     // Allow anonymous access to live-auctions-hls pages and API
