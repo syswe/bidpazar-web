@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { SignJWT } from "jose";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { logger } from "@/lib/logger";
@@ -54,18 +54,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        username: user.username,
-        isAdmin: user.isAdmin ?? false,
-        appVersion: APP_VERSION,
-      },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
-    );
+    if (!process.env.JWT_SECRET) {
+      logger.error("JWT_SECRET is not defined");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    // Generate JWT token using jose
+    const jwtPayload = {
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+      isAdmin: user.isAdmin ?? false,
+      appVersion: APP_VERSION,
+    };
+
+    const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
+    const token = await new SignJWT(jwtPayload)
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(secretKey);
 
     // Create response
     const response = NextResponse.json({

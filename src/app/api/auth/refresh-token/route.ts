@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { jwtVerify, SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { cookies } from "next/headers";
@@ -26,18 +26,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!process.env.JWT_SECRET) {
+      logger.error("[API] JWT_SECRET is not defined");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     // Verify the token
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-        userId: string;
-        email: string;
-        username: string;
-        isAdmin: boolean;
-      };
+      const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
+      const { payload } = await jwtVerify(token, secretKey);
+
+      const userId = payload.userId as string;
+      const email = payload.email as string;
+      const username = payload.username as string;
+      const isAdmin = payload.isAdmin as boolean;
+
+      if (!userId) {
+        logger.warn(
+          "[API] Token validation failed - Missing userId in payload"
+        );
+        return NextResponse.json(
+          { message: "Invalid token payload" },
+          { status: 401 }
+        );
+      }
 
       // Fetch the user to ensure they still exist
       const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
+        where: { id: userId },
         select: {
           id: true,
           email: true,
@@ -60,17 +79,19 @@ export async function POST(req: NextRequest) {
       }
 
       // Generate a new token
-      const newToken = jwt.sign(
-        {
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-          isAdmin: user.isAdmin ?? false,
-          appVersion: APP_VERSION,
-        },
-        process.env.JWT_SECRET!,
-        { expiresIn: "7d" }
-      );
+      const jwtPayload = {
+        userId: user.id,
+        email: user.email,
+        username: user.username,
+        isAdmin: user.isAdmin ?? false,
+        appVersion: APP_VERSION,
+      };
+
+      const newToken = await new SignJWT(jwtPayload)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime("7d")
+        .sign(secretKey);
 
       // Create response
       const response = NextResponse.json({

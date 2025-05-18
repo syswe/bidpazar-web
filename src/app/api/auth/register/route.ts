@@ -5,7 +5,7 @@ import { z } from "zod";
 import { generateVerificationCode, sendVerificationCode } from "@/lib/sms";
 import { logger } from "@/lib/logger";
 import { APP_VERSION } from "@/lib/auth";
-import jwt from "jsonwebtoken";
+import { SignJWT } from "jose";
 
 const registerSchema = z.object({
   email: z
@@ -146,18 +146,29 @@ export async function POST(request: Request) {
 
     let token = null;
     if (!verificationRequired) {
-      // Auto-verified, issue JWT
-      token = jwt.sign(
-        {
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-          isAdmin: user.isAdmin ?? false,
-          appVersion: APP_VERSION,
-        },
-        process.env.JWT_SECRET!,
-        { expiresIn: "7d" }
-      );
+      if (!process.env.JWT_SECRET) {
+        logger.error("JWT_SECRET is not defined");
+        return NextResponse.json(
+          { error: "Server configuration error" },
+          { status: 500 }
+        );
+      }
+
+      // Auto-verified, issue JWT using jose
+      const jwtPayload = {
+        userId: user.id,
+        email: user.email,
+        username: user.username,
+        isAdmin: user.isAdmin ?? false,
+        appVersion: APP_VERSION,
+      };
+
+      const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
+      token = await new SignJWT(jwtPayload)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime("7d")
+        .sign(secretKey);
     }
 
     // Create the response

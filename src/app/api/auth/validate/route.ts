@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserFromToken, verifyToken, APP_VERSION } from "@/lib/auth";
-import jwt from "jsonwebtoken";
+import {
+  getUserFromToken,
+  verifyToken,
+  APP_VERSION,
+  createToken,
+} from "@/lib/auth";
+import { SignJWT } from "jose";
 import { logger } from "@/lib/logger";
 
 /**
@@ -94,17 +99,30 @@ export async function GET(request: NextRequest) {
         logger.info(
           "[API][/api/auth/validate] Updating token with current app version"
         );
-        newToken = jwt.sign(
-          {
-            userId: user.id,
-            email: user.email,
-            username: user.username,
-            isAdmin: user.isAdmin ?? false,
-            appVersion: APP_VERSION,
-          },
-          process.env.JWT_SECRET!,
-          { expiresIn: "7d" }
-        );
+
+        if (!process.env.JWT_SECRET) {
+          logger.error("[API][/api/auth/validate] JWT_SECRET is not defined");
+          return NextResponse.json(
+            { error: "Server configuration error" },
+            { status: 500 }
+          );
+        }
+
+        // Create new token with current app version using jose
+        const jwtPayload = {
+          userId: user.id,
+          email: user.email,
+          username: user.username,
+          isAdmin: user.isAdmin ?? false,
+          appVersion: APP_VERSION,
+        };
+
+        const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
+        newToken = await new SignJWT(jwtPayload)
+          .setProtectedHeader({ alg: "HS256" })
+          .setIssuedAt()
+          .setExpirationTime("7d")
+          .sign(secretKey);
       }
 
       // Set up response

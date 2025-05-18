@@ -1,10 +1,9 @@
-import jwt from "jsonwebtoken";
 import { prisma } from "./prisma";
 import { cookies } from "next/headers";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { JWT } from "next-auth/jwt";
-import { jwtVerify, JWTPayload } from "jose";
+import { jwtVerify, SignJWT, JWTPayload } from "jose";
 
 // App version for token validation
 export const APP_VERSION = process.env.APP_VERSION || "1.0.0";
@@ -280,48 +279,45 @@ export async function verifyAuthSession(
 // Function for Node.js runtime: Verifies token AND fetches user data
 // Used by API routes, Server Components etc.
 export async function getUserFromTokenInNode(token: string) {
-  console.log(
-    "[getUserFromTokenInNode:Node] Verifying token and fetching user."
-  );
+  console.log("[getUserFromTokenInNode] Verifying token and fetching user.");
   if (!token) return null;
 
   try {
-    // 1. Verify token using jsonwebtoken (works in Node.js)
+    // 1. Verify token using jose (Edge-compatible)
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      console.error("[getUserFromTokenInNode:Node] JWT_SECRET is missing.");
+      console.error("[getUserFromTokenInNode] JWT_SECRET is missing.");
       return null;
     }
-    const payload = jwt.verify(token, secret) as JwtPayload;
 
-    // 2. Check payload structure (redundant check, but good practice)
+    const secretKey = new TextEncoder().encode(secret);
+    const { payload } = await jwtVerify(token, secretKey);
+
+    // 2. Check payload structure
     if (!(typeof payload === "object" && typeof payload.userId === "string")) {
       console.error(
-        "[getUserFromTokenInNode:Node] Invalid payload structure after verify.",
+        "[getUserFromTokenInNode] Invalid payload structure after verify.",
         payload
       );
       return null;
     }
-    console.log(
-      `[getUserFromTokenInNode:Node] Token verified, payload:`,
-      payload
-    );
+    console.log(`[getUserFromTokenInNode] Token verified, payload:`, payload);
 
     // 3. Check app version only if it exists (backward compatibility)
     if (payload.appVersion && payload.appVersion !== APP_VERSION) {
       console.warn(
-        `[getUserFromTokenInNode:Node] Token version mismatch: token=${payload.appVersion}, app=${APP_VERSION}`
+        `[getUserFromTokenInNode] Token version mismatch: token=${payload.appVersion}, app=${APP_VERSION}`
       );
       // For now, allow tokens without version or with different versions
       // return null;
     }
 
-    // 4. Fetch user from DB (this is safe in Node.js)
+    // 4. Fetch user from DB
     console.log(
-      `[getUserFromTokenInNode:Node] Looking for user with ID: ${payload.userId}`
+      `[getUserFromTokenInNode] Looking for user with ID: ${payload.userId}`
     );
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: payload.userId as string },
       select: {
         // Select only needed fields
         id: true,
@@ -336,25 +332,62 @@ export async function getUserFromTokenInNode(token: string) {
       },
     });
 
-    console.log(`[getUserFromTokenInNode:Node] Prisma found user: ${!!user}`);
+    console.log(`[getUserFromTokenInNode] Prisma found user: ${!!user}`);
     return user;
   } catch (error: any) {
-    console.error(
-      "[getUserFromTokenInNode:Node] Failed:",
-      error.message || error
-    );
-    if (error.name === "JsonWebTokenError") {
+    console.error("[getUserFromTokenInNode] Failed:", error.message || error);
+    if (error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
       console.log(
-        "[getUserFromTokenInNode:Node] Invalid token signature or format."
+        "[getUserFromTokenInNode] Invalid token signature or format."
       );
-    } else if (error.name === "TokenExpiredError") {
-      console.log("[getUserFromTokenInNode:Node] Token expired.");
+    } else if (error.code === "ERR_JWT_EXPIRED") {
+      console.log("[getUserFromTokenInNode] Token expired.");
     } else {
       console.error(
-        "[getUserFromTokenInNode:Node] Error during verification or DB fetch:",
+        "[getUserFromTokenInNode] Error during verification or DB fetch:",
         error
       );
     }
+    return null;
+  }
+}
+
+// Function to create and sign a JWT token
+export async function createToken(payload: JwtPayload): Promise<string | null> {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    console.error(
+      "[createToken] JWT_SECRET is not set in environment variables."
+    );
+    return null;
+  }
+
+  try {
+    const secretKey = new TextEncoder().encode(secret);
+
+    // Create and sign the token using jose
+    // Convert our JwtPayload type to a Record<string, any> to satisfy jose's JWTPayload interface
+    const jwtPayload: Record<string, any> = {
+      userId: payload.userId,
+      email: payload.email,
+      username: payload.username,
+      isAdmin: payload.isAdmin,
+      appVersion: payload.appVersion,
+    };
+
+    const token = await new SignJWT(jwtPayload)
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d") // 7 days expiration
+      .sign(secretKey);
+
+    return token;
+  } catch (error: any) {
+    console.error(
+      "[createToken] Failed to create token:",
+      error.message || error
+    );
     return null;
   }
 }

@@ -209,6 +209,40 @@ export interface ChatMessage {
   updatedAt: string;
 }
 
+export interface Message {
+  id: string;
+  content: string;
+  senderId: string;
+  receiverId: string;
+  conversationId: string;
+  createdAt: string;
+  sender?: {
+    id: string;
+    username: string;
+    name?: string;
+  };
+}
+
+export interface Notification {
+  id: string;
+  content: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  updatedAt: string;
+  participants: Array<{
+    id: string;
+    username: string;
+    name?: string;
+  }>;
+  latestMessage?: Message;
+  _count?: { messages: number };
+}
+
 /**
  * Generic fetch wrapper with authentication and error handling (Simplified)
  * Handles relative paths (assumed to be Next.js API routes) and absolute URLs.
@@ -1085,48 +1119,6 @@ export const getStreamVideo = async (
 };
 
 // Message and Conversation interfaces
-export interface Conversation {
-  id: string;
-  updatedAt: string;
-  createdAt: string;
-  latestMessage?: Message;
-  participants: {
-    id: string;
-    username: string;
-    name?: string;
-  }[];
-  _count?: {
-    messages: number;
-  };
-}
-
-export interface Message {
-  id: string;
-  content: string;
-  senderId: string;
-  receiverId: string;
-  conversationId: string;
-  createdAt: string;
-  updatedAt: string;
-  sender?: {
-    id: string;
-    username: string;
-    name?: string;
-  };
-}
-
-export interface Notification {
-  id: string;
-  content: string;
-  type: "MESSAGE" | "BID_WON" | "BID_OUTBID" | "SYSTEM";
-  isRead: boolean;
-  relatedId?: string;
-  userId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Message API functions
 export const getUserConversations = async (): Promise<Conversation[]> => {
   try {
     console.log("Fetching user conversations...");
@@ -1506,3 +1498,5 @@ export const HttpMethod = {
   DELETE: "DELETE",
   PATCH: "PATCH",
 } as const;
+
+// End of file

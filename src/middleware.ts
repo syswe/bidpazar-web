@@ -16,7 +16,7 @@ function detectWebSocketRequest(request: NextRequest): boolean {
 
   // Check if it's a Socket.IO path for either WebSockets or polling
   const path = request.nextUrl.pathname;
-  
+
   // Look for socket.io paths
   if (
     path.startsWith("/socket.io/") ||
@@ -24,20 +24,25 @@ function detectWebSocketRequest(request: NextRequest): boolean {
     path.includes("/socket.io")
   ) {
     // Further check query parameters to confirm it's Socket.IO traffic
-    const isSocketIo = request.nextUrl.searchParams.has("EIO") || 
-                       request.nextUrl.searchParams.has("transport") ||
-                       request.nextUrl.searchParams.has("sid");
-    
+    const isSocketIo =
+      request.nextUrl.searchParams.has("EIO") ||
+      request.nextUrl.searchParams.has("transport") ||
+      request.nextUrl.searchParams.has("sid");
+
     if (isSocketIo) {
       return true;
     }
   }
-  
+
   // Check for other common WebSocket paths
-  if (path.startsWith("/ws") || path.startsWith("/wss") || path.includes("/ws/")) {
+  if (
+    path.startsWith("/ws") ||
+    path.startsWith("/wss") ||
+    path.includes("/ws/")
+  ) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -66,6 +71,7 @@ export async function middleware(request: NextRequest) {
     path === "/api/config" || // Allow public access to config
     path === "/api/live-streams" || // Allow public access to live streams list
     path.startsWith("/api/health") || // Health checks should be public
+    path.startsWith("/api/messages/") || // Allow authenticated messaging API access
     path.startsWith("/public/") ||
     path.startsWith("/_next/") ||
     path.startsWith("/favicon") ||
@@ -85,7 +91,7 @@ export async function middleware(request: NextRequest) {
     path === "/shipping-returns" ||
     path === "/terms" ||
     path === "/user-agreement" ||
-    path === "/packages"  ||
+    path === "/packages" ||
     path.startsWith("/download") ||
     // Allow anonymous access to live-streams pages and their data
     path.startsWith("/live-streams/") ||
@@ -95,8 +101,11 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/api/live-streams/hls/") ||
     // Allow public access to stream-related API endpoints
     (path.startsWith("/api/live-streams/") &&
-      (path.endsWith("/public") ||
+      // Matches /api/live-streams/{id} - for stream details GET request
+      (path.match(/^\/api\/live-streams\/[^/]+$/) !== null ||
+        path.endsWith("/public") ||
         path.includes("/public/") ||
+        path.includes("/viewers") || // Allow viewers endpoint
         path.includes("/active-bid") ||
         path.includes("/active-listing") ||
         path.includes("/listings") || // Allow listings endpoints
@@ -123,10 +132,10 @@ export async function middleware(request: NextRequest) {
   const isWebSocketRequest = detectWebSocketRequest(request);
 
   // Special handling for socket.io polling requests which may not have WS headers
-  const isSocketIOPolling = 
-    path.startsWith("/socket.io/") && 
-    (request.nextUrl.searchParams.has("EIO") || 
-     request.nextUrl.searchParams.get("transport") === "polling");
+  const isSocketIOPolling =
+    path.startsWith("/socket.io/") &&
+    (request.nextUrl.searchParams.has("EIO") ||
+      request.nextUrl.searchParams.get("transport") === "polling");
 
   // Log socket requests for debugging
   if (isSocketPath || isWebSocketRequest || isSocketIOPolling) {

@@ -30,53 +30,63 @@ export async function GET(
   );
 
   try {
-    // Fetch live stream auction listings
-    const listings = await prisma.auctionListing.findMany({
+    // Find active auction for this stream
+    const auction = await prisma.auctionListing.findFirst({
       where: {
         liveStreamId: streamId,
+        status: { in: ["ACTIVE", "COUNTDOWN"] },
       },
       include: {
-        product: {
-          include: {
-            media: {
-              take: 1,
-            },
-          },
-        },
+        product: true,
         bids: {
-          orderBy: {
-            amount: "desc",
-          },
+          orderBy: { amount: "desc" },
           take: 1,
+          include: { user: { select: { username: true } } },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Transform data for response
-    const formattedProducts = listings.map((listing) => ({
-      id: listing.id,
-      name: listing.product.title,
-      description: listing.product.description,
-      startingPrice: listing.startPrice,
-      currentPrice: listing.bids[0]?.amount || listing.startPrice,
-      imageUrl: listing.product.media[0]?.url || null,
-      createdAt: listing.createdAt,
-      status: listing.status,
-      hasBids: listing.bids.length > 0,
-      productId: listing.productId,
-    }));
+    if (!auction) {
+      return NextResponse.json(
+        { error: "No active auction found" },
+        { status: 404 }
+      );
+    }
 
-    return NextResponse.json(formattedProducts);
+    // Get the product image if available
+    const productMedia = await prisma.productMedia.findFirst({
+      where: { productId: auction.productId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Count total bids
+    const bidCount = await prisma.bid.count({
+      where: { listingId: auction.id },
+    });
+
+    // Format response
+    return NextResponse.json({
+      id: auction.id,
+      product: {
+        id: auction.productId,
+        name: auction.product.title,
+        description: auction.product.description,
+        imageUrl: productMedia?.url || null,
+        basePrice: auction.product.price,
+        currentPrice: auction.bids[0]?.amount || auction.startPrice,
+      },
+      bidCount,
+      highestBidder: auction.bids[0]?.user?.username || null,
+      countdownEnd: auction.countdownEnd,
+    });
   } catch (error) {
     logger.error(
-      `[API][/api/live-streams/${streamId}/product] Error fetching products`,
-      { error }
+      `[API][/api/live-streams/${streamId}/product] Error fetching active product:`,
+      error
     );
     return NextResponse.json(
-      { error: "Failed to fetch products" },
+      { error: "Failed to fetch active product" },
       { status: 500 }
     );
   }
@@ -88,58 +98,31 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: streamId } = await params;
-  logger.info(
-    `[API][/api/live-streams/${streamId}/product] POST request received`
-  );
 
   try {
-    // Try to authenticate user via session first
-    const session = await getServerSession(authOptions);
-    let user = session?.user;
-
-    // If no session user, try token-based authentication
-    if (!user?.id) {
-      // Extract token from authorization header
-      const authHeader = request.headers.get("authorization");
-      const token = authHeader?.startsWith("Bearer ")
-        ? authHeader.substring(7)
-        : request.cookies.get("token")?.value ||
-          request.cookies.get("authToken")?.value;
-
-      if (!token) {
-        logger.warn(
-          `[API][/api/live-streams/${streamId}/product] No authentication token found`
-        );
-        return NextResponse.json(
-          { error: "Unauthorized - No token provided" },
-          { status: 401 }
-        );
-      }
-
-      // Verify token and get user
-      const tokenUser = await getUserFromTokenInNode(token);
-      if (!tokenUser) {
-        logger.warn(
-          `[API][/api/live-streams/${streamId}/product] Invalid token or user not found`
-        );
-        return NextResponse.json(
-          { error: "Unauthorized - Invalid token" },
-          { status: 401 }
-        );
-      }
-
-      user = tokenUser;
+    // Verify authentication
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Unauthorized - Authentication required" },
+        { status: 401 }
+      );
     }
 
-    // At this point, if we still don't have a user, return unauthorized
-    if (!user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const token = authHeader.substring(7);
+    const user = await getUserFromTokenInNode(token);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized - Invalid token" },
+        { status: 401 }
+      );
     }
 
-    // Verify user is the stream creator
+    // Check if stream exists and user is the creator
     const stream = await prisma.liveStream.findUnique({
       where: { id: streamId },
-      select: { userId: true },
+      select: { userId: true, status: true },
     });
 
     if (!stream) {
@@ -147,146 +130,163 @@ export async function POST(
     }
 
     if (stream.userId !== user.id) {
-      logger.warn(
-        `[API][/api/live-streams/${streamId}/product] User ${user.id} is not the stream creator (${stream.userId})`
-      );
       return NextResponse.json(
         { error: "Only the stream creator can add products" },
         { status: 403 }
       );
     }
 
-    // Parse and validate request body
-    const body = await request.json();
-    logger.debug(
-      `[API][/api/live-streams/${streamId}/product] Request body:`,
-      body
-    );
-
-    // Handle both startingPrice and price fields for compatibility
-    if (body.price && !body.startingPrice) {
-      body.startingPrice = body.price;
-    }
-
-    const validationResult = createProductSchema.safeParse(body);
-
-    if (!validationResult.success) {
-      logger.warn(
-        `[API][/api/live-streams/${streamId}/product] Invalid request data:`,
-        validationResult.error
-      );
+    if (stream.status !== "LIVE") {
       return NextResponse.json(
-        {
-          error: "Invalid request data",
-          details: validationResult.error.format(),
-        },
+        { error: "Can only add products to live streams" },
         { status: 400 }
       );
     }
 
-    const productData = validationResult.data;
+    // Parse request body
+    const body = await request.json();
+    const { name, description, startingPrice, imageUrl } = body;
 
-    // Find a valid category ID or create one if needed
-    let categoryId = "";
-    try {
-      // First try to find any existing category
-      const existingCategory = await prisma.category.findFirst({
-        select: { id: true },
-      });
-
-      if (existingCategory) {
-        // Use the first category found
-        categoryId = existingCategory.id;
-        logger.info(`[API] Using existing category ID: ${categoryId}`);
-      } else {
-        // Create a default category if none exists
-        const newCategory = await prisma.category.create({
-          data: {
-            name: "Genel",
-            description: "Genel ürün kategorisi",
-          },
-        });
-        categoryId = newCategory.id;
-        logger.info(
-          `[API] Created new default category with ID: ${categoryId}`
-        );
-      }
-    } catch (categoryError) {
-      logger.error(`[API] Error handling category: ${categoryError}`);
+    if (!name || !startingPrice) {
       return NextResponse.json(
-        { error: "Failed to process category for product" },
-        { status: 500 }
+        { error: "Product name and starting price are required" },
+        { status: 400 }
       );
     }
 
-    // First create the product
-    const product = await prisma.product.create({
-      data: {
-        title: productData.name,
-        description: productData.description,
-        price: productData.startingPrice,
-        currency: "TRY", // Default currency
-        userId: user.id,
-        categoryId: categoryId, // Use the valid category ID
-        media: {
-          create: productData.imageUrl
+    // Check if there's already an active auction for this stream
+    const existingAuction = await prisma.auctionListing.findFirst({
+      where: {
+        liveStreamId: streamId,
+        status: { in: ["ACTIVE", "COUNTDOWN", "PENDING"] },
+      },
+    });
+
+    if (existingAuction) {
+      return NextResponse.json(
+        { error: "There is already an active auction for this stream" },
+        { status: 400 }
+      );
+    }
+
+    // Calculate auction end time (60 seconds from now)
+    const countdownEnd = new Date(Date.now() + 60 * 1000);
+
+    // Transaction to create product and auction listing
+    const result = await prisma.$transaction(async (tx) => {
+      // First find a default category
+      const defaultCategory = await tx.category.findFirst();
+      if (!defaultCategory) {
+        throw new Error("No category found");
+      }
+
+      // First create a product specifically for this livestream auction
+      const product = await tx.product.create({
+        data: {
+          title: name,
+          description: description || null,
+          price: startingPrice,
+          userId: user.id,
+          categoryId: defaultCategory.id,
+          media: imageUrl
             ? {
-                url: productData.imageUrl,
-                type: "image",
+                create: {
+                  url: imageUrl,
+                  type: "IMAGE",
+                },
               }
             : undefined,
         },
-      },
-    });
-
-    // Then create the auction listing for this product in the livestream
-    const listing = await prisma.auctionListing.create({
-      data: {
-        productId: product.id,
-        liveStreamId: streamId,
-        startPrice: productData.startingPrice,
-        status: "PENDING", // Initial status
-      },
-      include: {
-        product: true,
-      },
-    });
-
-    // Notify connected clients via Socket.IO (if set up)
-    try {
-      const { io } = global as any;
-      if (io) {
-        io.to(`stream:${streamId}`).emit("new_product", {
-          productId: product.id,
-          listingId: listing.id,
-          name: product.title,
-          startingPrice: listing.startPrice,
-        });
-      }
-    } catch (notifyError) {
-      logger.warn("Failed to notify clients about new product", {
-        error: notifyError,
       });
-    }
 
-    return NextResponse.json(
+      // Create auction listing for the livestream
+      const auction = await tx.auctionListing.create({
+        data: {
+          productId: product.id,
+          liveStreamId: streamId,
+          startPrice: startingPrice,
+          status: "ACTIVE",
+          countdownTime: 60, // 60 seconds
+          countdownStart: new Date(),
+          countdownEnd: countdownEnd,
+        },
+      });
+
+      return { product, auction };
+    });
+
+    // Schedule automatic auction end after 60 seconds
+    setTimeout(async () => {
+      try {
+        // Check if the auction is still active
+        const auction = await prisma.auctionListing.findUnique({
+          where: { id: result.auction.id },
+          select: { status: true },
+        });
+
+        if (
+          auction &&
+          (auction.status === "ACTIVE" || auction.status === "COUNTDOWN")
+        ) {
+          // End the auction
+          await fetch(
+            `${request.nextUrl.origin}/api/live-streams/${streamId}/auction-end`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                listingId: result.auction.id,
+              }),
+            }
+          );
+
+          logger.info(
+            `[API][/api/live-streams/${streamId}/product] Auto-ended auction after 60 seconds`,
+            {
+              auctionId: result.auction.id,
+              productId: result.product.id,
+            }
+          );
+        }
+      } catch (error) {
+        logger.error(
+          `[API][/api/live-streams/${streamId}/product] Error auto-ending auction:`,
+          error
+        );
+      }
+    }, 60000); // 60 seconds
+
+    // Log the successful creation
+    logger.info(
+      `[API][/api/live-streams/${streamId}/product] Product added for livestream auction`,
       {
-        id: listing.id,
-        productId: product.id,
-        name: product.title,
-        description: product.description,
-        startingPrice: listing.startPrice,
-        status: listing.status,
+        productId: result.product.id,
+        auctionId: result.auction.id,
+        userId: user.id,
+      }
+    );
+
+    // Return data formatted for the client
+    return NextResponse.json({
+      id: result.auction.id,
+      product: {
+        id: result.product.id,
+        name: result.product.title,
+        description: result.product.description,
+        imageUrl: imageUrl || null,
+        basePrice: result.product.price,
+        currentPrice: result.auction.startPrice,
       },
-      { status: 201 }
-    );
+      bidCount: 0,
+      countdownEnd: result.auction.countdownEnd,
+    });
   } catch (error) {
-    logger.error(
-      `[API][/api/live-streams/${streamId}/product] Error creating product`,
-      { error }
-    );
+    logger.error(`[API][/api/live-streams/${streamId}/product] Error:`, error);
     return NextResponse.json(
-      { error: "Failed to create product" },
+      { error: "Failed to add product" },
       { status: 500 }
     );
   }

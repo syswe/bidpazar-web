@@ -14,6 +14,7 @@ interface ChatMessage {
   username: string;
   content: string;
   timestamp?: string;
+  message?: string; // For compatibility with server messages
 }
 
 interface StreamChatProps {
@@ -56,10 +57,9 @@ export default function StreamChat({
     const fetchMessages = async () => {
       try {
         setIsLoading(true);
-        const apiUrl = runtimeConfig?.apiUrl || window.location.origin;
         console.log(
           "StreamChat: Fetching initial messages from",
-          `${apiUrl}/live-streams/${streamId}/chat`
+          `/api/live-streams/${streamId}/chat`
         );
 
         const response = await fetch(`/api/live-streams/${streamId}/chat`);
@@ -89,11 +89,11 @@ export default function StreamChat({
     };
 
     fetchMessages();
-  }, [streamId, runtimeConfig, isConfigLoading]);
+  }, [streamId, isConfigLoading]);
 
   // Set up Socket.IO for real-time chat
   useEffect(() => {
-    if (!streamId || isConfigLoading || !runtimeConfig) {
+    if (!streamId || isConfigLoading) {
       return;
     }
 
@@ -112,25 +112,24 @@ export default function StreamChat({
           return;
         }
 
-        // First try using socketUrl from runtime config
-        const baseSocketUrl = runtimeConfig.socketUrl || window.location.origin;
-        console.log(`StreamChat: Connecting to Socket.IO at ${baseSocketUrl}`);
+        // Get socket URL from environment variables directly
+        // Using the window object to access NEXT_PUBLIC env variables
+        const socketUrl = window.location.origin;
+        console.log(`StreamChat: Connecting to Socket.IO at ${socketUrl}`);
 
         // Create socket with more resilient options
-        const newSocket = io(baseSocketUrl, {
+        const newSocket = io(socketUrl, {
           path: "/socket.io",
           query: {
             streamId,
             userId: currentUserId || "anonymous-chat-user",
             username: currentUsername || "Anonymous Viewer",
-            isAnonymous: !user ? "1" : "0",
           },
           transports: ["websocket", "polling"],
           reconnection: true,
-          reconnectionAttempts: 3,
-          reconnectionDelay: 2000,
-          timeout: 15000, // Reduce timeout to fail faster
-          forceNew: true, // Create a fresh connection each time
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          timeout: 10000,
         });
 
         socketRef.current = newSocket;
@@ -143,39 +142,26 @@ export default function StreamChat({
           setIsConnected(true);
           setReconnectAttempts(0);
 
-          // Join the chat room for this stream
-          newSocket.emit("joinChatRoom", { streamId }, (response: any) => {
-            if (response && response.error) {
-              console.error(
-                "StreamChat: Error joining chat room:",
-                response.message
-              );
-            } else {
-              console.log("StreamChat: Successfully joined chat room");
-            }
-          });
+          // Join the stream room
+          newSocket.emit("join-stream", streamId);
+          console.log(`StreamChat: Joined stream: ${streamId}`);
         });
 
-        newSocket.on("newChatMessage", (message: ChatMessage) => {
-          console.log("StreamChat: Received new chat message", message);
-          setMessages((prev) => [...prev, message]);
-        });
+        // Listen for stream-message events
+        newSocket.on("stream-message", (message: any) => {
+          console.log("StreamChat: Received new message", message);
 
-        newSocket.on("chatHistory", (history: ChatMessage[]) => {
-          console.log(
-            "StreamChat: Received chat history with",
-            history.length,
-            "messages"
-          );
-          if (Array.isArray(history) && history.length > 0) {
-            setMessages(history);
-          }
-          setIsLoading(false);
-        });
+          // Normalize message format
+          const normalizedMessage = {
+            id: message.id || `temp-${Date.now()}`,
+            streamId: message.streamId,
+            userId: message.userId,
+            username: message.username,
+            content: message.message || message.content, // Handle both formats
+            timestamp: message.timestamp,
+          };
 
-        newSocket.on("chatNotification", (notification: any) => {
-          console.log("StreamChat: Received notification", notification);
-          // You could display user join/leave notifications if desired
+          setMessages((prev) => [...prev, normalizedMessage]);
         });
 
         newSocket.on("disconnect", (reason) => {
@@ -190,24 +176,10 @@ export default function StreamChat({
           );
           setIsConnected(false);
 
-          // Specific error handling for timeouts
-          if (error.message === "timeout") {
-            console.log("StreamChat: Connection timeout");
-            
-            // Only try to reconnect if we haven't exceeded the limit
-            if (reconnectAttempts < 2) {
-              // Silently try to reconnect without showing errors to the user
-              setReconnectAttempts(prev => prev + 1);
-            } else {
-              // After multiple failed attempts, don't show error toast
-              // Just silently fail and let the user still watch the stream
-              console.log("StreamChat: Max reconnect attempts reached, chat will be unavailable");
-            }
+          // Try to reconnect
+          if (reconnectAttempts < 3) {
+            setReconnectAttempts((prev) => prev + 1);
           }
-        });
-
-        newSocket.on("error", (error) => {
-          console.error("StreamChat: Socket.IO error:", error);
         });
 
         return newSocket;
@@ -217,30 +189,26 @@ export default function StreamChat({
       }
     };
 
-    // Don't immediately create socket when component mounts
-    // Instead, wait a bit to prevent race conditions with other components
+    // Connect after a short delay
     const timer = setTimeout(() => {
       connectSocket();
-    }, 1000);
+    }, 500);
 
     // Cleanup function
     return () => {
       clearTimeout(timer);
       if (socketRef.current) {
         console.log("StreamChat: Cleaning up socket connection");
-        // Leave the chat room before disconnecting
-        socketRef.current.emit("leaveChatRoom", { streamId });
+        socketRef.current.emit("leave-stream", streamId);
         socketRef.current.disconnect();
       }
       socketRef.current = null;
     };
   }, [
     streamId,
-    runtimeConfig,
     isConfigLoading,
     currentUserId,
     currentUsername,
-    user,
     reconnectAttempts,
   ]);
 
@@ -260,32 +228,31 @@ export default function StreamChat({
 
     setIsSending(true);
 
-    const chatMessage: ChatMessage = {
-      streamId,
-      userId: currentUserId,
-      username: currentUsername,
-      content: newMessage.trim(),
-      timestamp: new Date().toISOString(),
-    };
-
     try {
-      // Use a Promise to handle the socket.io callback
-      const sendViaSocket = () =>
-        new Promise((resolve, reject) => {
-          if (!socketRef.current) {
-            return reject(new Error("Socket not connected"));
-          }
+      // Create message object
+      const messageData = {
+        streamId,
+        userId: currentUserId,
+        username: currentUsername,
+        message: newMessage.trim(), // Use 'message' to match server expectations
+      };
 
-          socketRef.current.emit("sendChatMessage", chatMessage, (ack: any) => {
-            if (ack && ack.error) {
-              reject(new Error(ack.message || "Failed to send message"));
-            } else {
-              resolve(ack);
-            }
-          });
-        });
+      // Send message via socket.io
+      socketRef.current.emit("stream-message", messageData);
 
-      await sendViaSocket();
+      // Locally add message for immediate display
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          streamId,
+          userId: currentUserId,
+          username: currentUsername,
+          content: newMessage.trim(),
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
       setNewMessage("");
     } catch (error) {
       console.error("StreamChat: Error sending message:", error);
@@ -298,7 +265,7 @@ export default function StreamChat({
   // Simplified UI when chat is unavailable
   const renderChatUnavailableUI = () => {
     if (isLoading) return null;
-    
+
     return (
       <div className="h-full flex flex-col items-center justify-center p-4">
         <MessageCircle className="h-8 w-8 text-white/30 mb-2" />
@@ -326,7 +293,7 @@ export default function StreamChat({
       className={`flex flex-col h-full bg-opacity-70 bg-black rounded-lg overflow-hidden ${className}`}
     >
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {(isLoading && messages.length === 0) ? (
+        {isLoading && messages.length === 0 ? (
           <div className="flex justify-center items-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
           </div>
@@ -377,13 +344,23 @@ export default function StreamChat({
             }
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            disabled={!isAuthenticated || isSending || !isConnected || reconnectAttempts >= 2}
+            disabled={
+              !isAuthenticated ||
+              isSending ||
+              !isConnected ||
+              reconnectAttempts >= 2
+            }
             className="w-full bg-black/50 text-white placeholder-white/50 px-4 py-2 pr-10 rounded-full focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
           />
           {isAuthenticated ? (
             <button
               type="submit"
-              disabled={isSending || !newMessage.trim() || !isConnected || reconnectAttempts >= 2}
+              disabled={
+                isSending ||
+                !newMessage.trim() ||
+                !isConnected ||
+                reconnectAttempts >= 2
+              }
               className="absolute right-2 text-white/80 hover:text-white disabled:text-white/40"
             >
               {isSending ? (
