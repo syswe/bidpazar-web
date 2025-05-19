@@ -1,18 +1,19 @@
 {
-    "cursor.cpp.disabledLanguages": [],
-    "cursor.general.globalCursorIgnoreList": [
-        "**/credentials.json",
-        "**/credentials.*.json",
-        "**/secret.json",
-        "**/secrets.json",
-        "**/*.key",
-        "**/*.pem",
-        "**/*.pfx",
-        "**/*.p12",
-        "**/*.crt",
-        "**/*.cer",
-        "**/id_rsa",
-        "**/id_dsa",
-        "**/.ssh/id_*"
-    ]
+  "cursor.cpp.disabledLanguages": [],
+  "cursor.general.globalCursorIgnoreList": [
+    "**/credentials.json",
+    "**/credentials.*.json",
+    "**/secret.json",
+    "**/secrets.json",
+    "**/*.key",
+    "**/*.pem",
+    "**/*.pfx",
+    "**/*.p12",
+    "**/*.crt",
+    "**/*.cer",
+    "**/id_rsa",
+    "**/id_dsa",
+    "**/.ssh/id_*"
+  ],
+  "java.compile.nullAnalysis.mode": "automatic"
 }

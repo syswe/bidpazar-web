@@ -144,6 +144,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Log success to check if message was saved
+    logger.info(
+      `[API][${urlPath}] Created new message with ID: ${message.id}`,
+      {
+        messageId: message.id,
+        senderId: payload.userId,
+        receiverId,
+        conversationId,
+        timestamp: message.createdAt,
+      }
+    );
+
     // Update conversation's updatedAt time
     await prisma.conversation.update({
       where: { id: conversationId },
@@ -164,16 +176,22 @@ export async function POST(req: NextRequest) {
     if (io) {
       logger.info(`[API][${urlPath}] Emitting socket events for new message`);
 
-      // Emit to conversation room
-      io.to(`conversation:${conversationId}`).emit("new-message", {
+      // Format message for socket emission
+      const socketMessage = {
         id: message.id,
         senderId: payload.userId,
         senderUsername: payload.username,
         receiverId: receiverId,
         content: content,
         conversationId: conversationId,
-        createdAt: message.createdAt,
-      });
+        createdAt: message.createdAt.toISOString(),
+      };
+
+      // Emit to conversation room
+      io.to(`conversation:${conversationId}`).emit(
+        "new-message",
+        socketMessage
+      );
 
       // Emit to receiver's personal room for notifications
       io.to(`user:${receiverId}`).emit("message-notification", {
@@ -181,7 +199,7 @@ export async function POST(req: NextRequest) {
         senderUsername: payload.username,
         conversationId: conversationId,
         content: content,
-        createdAt: message.createdAt,
+        createdAt: message.createdAt.toISOString(),
       });
     } else {
       logger.warn(

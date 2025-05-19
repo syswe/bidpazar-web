@@ -1,28 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { logger } from '@/lib/logger';
-import { prisma } from '@/lib/prisma';
+import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const urlPath = req.nextUrl.pathname;
   const headers = Object.fromEntries(req.headers.entries());
   const query = Object.fromEntries(req.nextUrl.searchParams.entries());
   logger.info(`[API][${urlPath}] GET request received`, { headers, query });
-  
+
   // Extract token from authorization header
-  const authorization = req.headers.get('authorization');
+  const authorization = req.headers.get("authorization");
   if (!authorization) {
-    logger.error(`[API][${urlPath}] Unauthorized (401): No authorization header`);
+    logger.error(
+      `[API][${urlPath}] Unauthorized (401): No authorization header`
+    );
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  
-  const parts = authorization.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    logger.error(`[API][${urlPath}] Unauthorized (401): Invalid authorization format`);
+
+  const parts = authorization.split(" ");
+  if (parts.length !== 2 || parts[0] !== "Bearer") {
+    logger.error(
+      `[API][${urlPath}] Unauthorized (401): Invalid authorization format`
+    );
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  
+
   const token = parts[1];
   logger.info(`[API][${urlPath}] Token found: ${!!token}`);
 
@@ -35,47 +39,53 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = payload.userId;
-    logger.info(`[API][${urlPath}] Fetching message notifications for user: ${userId}`);
+    logger.info(
+      `[API][${urlPath}] Fetching message notifications for user: ${userId}`
+    );
 
     // Query notifications from database using Prisma
     const notifications = await prisma.notification.findMany({
       where: {
         userId,
-        type: 'MESSAGE' // Filter to only message notifications
+        type: "MESSAGE", // Filter to only message notifications
       },
       orderBy: {
-        createdAt: 'desc'
+        createdAt: "desc",
       },
-      take: 20
+      take: 20,
     });
 
     // Get unread count
     const unreadCount = await prisma.notification.count({
-      where: { 
+      where: {
         userId,
-        type: 'MESSAGE',
-        isRead: false 
-      }
+        type: "MESSAGE",
+        isRead: false,
+      },
     });
 
-    logger.info(`[API][${urlPath}] Successfully processed ${notifications.length} message notifications.`, 
-      { count: notifications.length, unreadCount }
-    );
-    
+    // logger.info(`[API][${urlPath}] Successfully processed ${notifications.length} message notifications.`,
+    //   { count: notifications.length, unreadCount }
+    // );
+
     return NextResponse.json({
       notifications,
-      unreadCount
+      unreadCount,
     });
-
   } catch (error: any) {
     logger.error(`[API][${urlPath}] Unexpected error in GET handler:`, error);
     const errorMessage = error.message || "Internal Server Error";
     const errorStatus = error.status || 500;
-    logger.info(`[API][${urlPath}] Returning error response (${errorStatus}): ${errorMessage}`);
-    return NextResponse.json({ 
-      error: errorMessage, 
-      notifications: [], 
-      unreadCount: 0 
-    }, { status: errorStatus });
+    logger.info(
+      `[API][${urlPath}] Returning error response (${errorStatus}): ${errorMessage}`
+    );
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        notifications: [],
+        unreadCount: 0,
+      },
+      { status: errorStatus }
+    );
   }
-} 
+}
