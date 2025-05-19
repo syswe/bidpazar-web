@@ -64,6 +64,7 @@ export async function middleware(request: NextRequest) {
     path === "/login" ||
     path === "/register" ||
     path === "/auth/reset-password" ||
+    path === "/products" ||
     path.startsWith("/auth/reset-password/") ||
     path.startsWith("/auth/verify/") ||
     path.startsWith("/api/auth/") || // ALL auth API routes are public

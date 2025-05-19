@@ -792,15 +792,46 @@ function mapAuctionStatusToOrderStatus(status: string): string {
 
 // Admin işlemleri
 export const getAllUsers = async (): Promise<User[]> => {
-  return fetcher<User[]>(`users`, {
+  const response = await fetcher<{ users: User[]; pagination: any }>(`users`, {
     requireAuth: true,
     returnEmptyOnError: true,
-    defaultValue: [],
+    defaultValue: {
+      users: [],
+      pagination: { total: 0, page: 1, limit: 20, totalPages: 0 },
+    },
   });
+
+  // Return just the users array to maintain backward compatibility
+  return response.users;
 };
 
 export const getUserById = async (id: string): Promise<User> => {
   return fetcher<User>(`users/${id}`, { requireAuth: true });
+};
+
+export const createUser = async (userData: {
+  username: string;
+  email: string;
+  name?: string;
+  password: string;
+  isAdmin?: boolean;
+}): Promise<User> => {
+  return fetcher<User>(`users`, {
+    method: "POST",
+    body: userData,
+    requireAuth: true,
+  });
+};
+
+export const resetUserPassword = async (
+  userId: string,
+  newPassword: string
+): Promise<{ success: boolean }> => {
+  return fetcher<{ success: boolean }>(`users/${userId}/reset-password`, {
+    method: "POST",
+    body: { password: newPassword },
+    requireAuth: true,
+  });
 };
 
 export const updateUser = async (

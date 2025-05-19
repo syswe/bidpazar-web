@@ -16,6 +16,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  margin: 0 auto; /* Center the content */
+  max-width: 1280px; /* Limit width on large screens */
 }
 
 /* Jitsi container styles */
@@ -132,12 +134,11 @@ video {
 /* Actions on the right side of the screen */
 .stream-actions {
   position: absolute;
-  right: 1rem;
   top: 30%;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  z-index: 10;
+  gap: 16px;
+  z-index: 20;
 }
 
 /* Chat container positioned at bottom */
@@ -208,6 +209,26 @@ video {
   .vertical-stream-container {
     width: calc(100% - 64px); /* When sidebar is collapsed */
     margin-left: 64px;
+    display: flex;
+    justify-content: center; /* Center horizontally */
+  }
+
+  .stream-content-wrapper {
+    max-width: 800px; /* Limit width on desktop for TikTok-like feel */
+    position: relative;
+  }
+
+  /* Position action buttons and product section correctly for desktop */
+  .stream-actions {
+    right: calc(
+      50% - 400px + 16px
+    ); /* Position relative to centered container */
+  }
+
+  .product-section {
+    left: calc(
+      50% - 400px + 16px
+    ); /* Position relative to centered container */
   }
 }
 
@@ -216,6 +237,15 @@ video {
     width: calc(100% - 272px); /* When sidebar is expanded */
     margin-left: 272px;
   }
+
+  /* Adjust position calculations for sidebar expanded */
+  .sidebar-expanded .stream-actions {
+    right: calc(50% - 400px + 16px);
+  }
+
+  .sidebar-expanded .product-section {
+    left: calc(50% - 400px + 16px);
+  }
 }
 
 @media (min-width: 1024px) {
@@ -223,27 +253,53 @@ video {
     width: calc(100% - 256px); /* When sidebar is expanded */
     margin-left: 256px;
   }
+
+  .stream-content-wrapper {
+    max-width: 900px; /* Slightly wider on larger screens */
+  }
+
+  /* Adjust position calculations for larger screens */
+  .stream-actions {
+    right: calc(50% - 450px + 16px);
+  }
+
+  .product-section {
+    left: calc(50% - 450px + 16px);
+  }
 }
 
-/* Responsive adjustments */
+/* Responsive adjustments for mobile */
 @media (max-width: 768px) {
   .product-section {
     left: 16px;
     max-width: 180px;
+    top: 25%;
   }
 
   .chat-container {
     max-height: 250px;
   }
-}
 
-/* Product section styles */
-.product-section {
-  position: absolute;
-  left: 1rem;
-  top: 25%;
-  z-index: 10;
-  max-width: 240px;
+  .stream-content-wrapper {
+    max-width: 100%; /* Full width on mobile */
+  }
+
+  .stream-actions {
+    right: 16px;
+    top: 30%;
+  }
+
+  .permanent-chat-container {
+    max-width: 100%; /* Full width on mobile */
+  }
+
+  .streamer-content .product-section {
+    top: 20%;
+  }
+
+  .streamer-content .stream-actions {
+    top: 25%;
+  }
 }
 
 /* TikTok-style chat overlay */
@@ -423,6 +479,9 @@ video {
   z-index: 10;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   transition: height 0.3s ease;
+  max-width: 900px; /* Match the stream container width */
+  margin: 0 auto; /* Center horizontally */
+  width: 100%;
 }
 
 .permanent-chat-container.minimized {
@@ -441,7 +500,8 @@ video {
 
 /* Adjust layout for sidebar extended */
 .sidebar-expanded .stream-content-wrapper {
-  margin-left: 60px;
+  /* Remove the margin-left that was causing asymmetry */
+  margin-left: 0;
 }
 
 /* Streamer-specific adjustments */
@@ -480,20 +540,9 @@ iframe {
   bottom: 60px; /* Give space for the toolbox */
 }
 
-/* Update stream actions positioning to match product section */
-.stream-actions {
-  position: absolute;
-  right: 16px;
-  bottom: 200px; /* Match product section height */
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  z-index: 20;
-}
-
 /* For streamers, adjust the actions position */
 .streamer-content .stream-actions {
-  bottom: 240px; /* Move up for streamers */
+  top: 25%; /* Align with product section */
 }
 
 /* Position toolbox for streamer mode */
@@ -506,6 +555,14 @@ iframe {
   display: flex !important;
   justify-content: center !important;
   background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Product section positioning to match centered layout */
+.product-section {
+  position: absolute;
+  top: 25%;
+  z-index: 10;
+  max-width: 240px;
 }
 
 /* Transparent bidding interface - style the container */
@@ -543,18 +600,23 @@ iframe {
 @media (max-width: 768px) {
   .product-section {
     width: 180px;
-    bottom: 180px;
+    left: 16px; /* Reset for mobile */
   }
 
   .stream-actions {
-    bottom: 180px;
+    right: 16px; /* Reset for mobile */
+    top: 30%;
+  }
+
+  .permanent-chat-container {
+    max-width: 100%; /* Full width on mobile */
   }
 
   .streamer-content .product-section {
-    bottom: 220px;
+    top: 20%;
   }
 
   .streamer-content .stream-actions {
-    bottom: 220px;
+    top: 25%;
   }
 }

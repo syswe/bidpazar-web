@@ -316,7 +316,7 @@ export default function LiveStreamPage() {
       const response = await fetch(
         `${runtimeConfig.apiUrl}/live-streams/${streamId}/status`,
         {
-          method: "PUT",
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
