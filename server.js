@@ -2,7 +2,13 @@ const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
 const socketio = require("socket.io");
-const fetch = require("node-fetch");
+
+// Dynamic import for node-fetch (ESM module)
+let fetch;
+(async () => {
+  const { default: nodeFetch } = await import("node-fetch");
+  fetch = nodeFetch;
+})();
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";

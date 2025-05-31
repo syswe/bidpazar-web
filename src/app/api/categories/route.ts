@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 const createCategorySchema = z.object({
   name: z.string().min(1, "Kategori adı gereklidir"),
   description: z.string().optional(),
+  emoji: z.string().optional(),
   parentId: z.string().optional(),
 });
 
@@ -15,6 +16,7 @@ const createCategorySchema = z.object({
 const updateCategorySchema = z.object({
   name: z.string().min(1, "Kategori adı gereklidir").optional(),
   description: z.string().optional(),
+  emoji: z.string().optional(),
   parentId: z.string().optional(),
 });
 
@@ -24,15 +26,33 @@ export async function GET(request: Request) {
     url: request.url,
   });
   try {
+    const { searchParams } = new URL(request.url);
+    const withProductCount = searchParams.get('withProductCount') === 'true';
+
     const categories = await prisma.category.findMany({
       include: {
         parent: true,
         children: true,
-        products: true,
+        ...(withProductCount && {
+          _count: {
+            select: {
+              products: true,
+            },
+          },
+        }),
+      },
+      orderBy: {
+        name: 'asc',
       },
     });
 
-    return NextResponse.json(categories);
+    // Transform data to include product count in a more accessible format
+    const transformedCategories = categories.map(category => ({
+      ...category,
+      productCount: withProductCount ? category._count?.products || 0 : undefined,
+    }));
+
+    return NextResponse.json(transformedCategories);
   } catch (error: any) {
     // Check for database connection errors
     const isPrismaConnectionError =

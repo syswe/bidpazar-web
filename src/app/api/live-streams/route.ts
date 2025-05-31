@@ -58,11 +58,22 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") as StreamStatus | null;
     const userId = searchParams.get("userId");
+    const onlyActive = searchParams.get("onlyActive") === "true"; // New parameter for homepage
 
-    const where = {
-      ...(status && { status: status }),
-      ...(userId && { userId }),
-    };
+    // Build the where clause with proper typing
+    const where: Prisma.LiveStreamWhereInput = {};
+    
+    if (status) {
+      where.status = status;
+    }
+    
+    if (userId) {
+      where.userId = userId;
+    }
+    
+    if (onlyActive) {
+      where.status = "LIVE"; // Only get LIVE streams for homepage
+    }
 
     const streams = await prisma.liveStream.findMany({
       where,
@@ -76,16 +87,38 @@ export async function GET(request: Request) {
         },
         listings: {
           include: {
-            product: true,
+            product: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                price: true,
+                currency: true,
+              },
+            },
+          },
+          where: {
+            status: "ACTIVE", // Only active listings
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [
+        { status: "asc" }, // LIVE streams first
+        { createdAt: "desc" },
+      ],
+      ...(onlyActive && { take: 8 }), // Limit to 8 for homepage display
     });
 
-    return NextResponse.json(streams);
+    // Add additional metadata for homepage usage
+    const response = {
+      streams,
+      meta: {
+        totalLiveStreams: onlyActive ? streams.length : undefined,
+        hasActiveStreams: streams.length > 0,
+      },
+    };
+
+    return NextResponse.json(onlyActive ? response : streams);
   } catch (error: any) {
     // Check for database connection errors
     const isPrismaConnectionError =

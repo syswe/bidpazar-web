@@ -75,6 +75,9 @@ export interface Category {
   id: string;
   name: string;
   description?: string;
+  emoji?: string;
+  parentId?: string;
+  productCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -247,6 +250,24 @@ export interface Conversation {
   };
 }
 
+// Story interface for Instagram-like stories
+export interface Story {
+  id: string;
+  content: string;
+  type: "TEXT" | "IMAGE" | "VIDEO";
+  mediaUrl?: string;
+  userId: string;
+  user?: {
+    id: string;
+    username: string;
+    name?: string;
+  };
+  views: number;
+  isActive: boolean;
+  createdAt: string;
+  expiresAt: string;
+}
+
 /**
  * Generic fetch wrapper with authentication and error handling (Simplified)
  * Handles relative paths (assumed to be Next.js API routes) and absolute URLs.
@@ -413,8 +434,15 @@ export const fetcher = async <T>(
 };
 
 // Kategori işlemleri
-export const getCategories = async (): Promise<Category[]> => {
-  return fetcher<Category[]>(`categories`, {
+export const getCategories = async (options?: { withProductCount?: boolean }): Promise<Category[]> => {
+  const params = new URLSearchParams();
+  if (options?.withProductCount) {
+    params.append('withProductCount', 'true');
+  }
+
+  const url = params.toString() ? `categories?${params.toString()}` : 'categories';
+  
+  return fetcher<Category[]>(url, {
     returnEmptyOnError: true,
     defaultValue: [],
   });

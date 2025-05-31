@@ -71,6 +71,7 @@ export async function middleware(request: NextRequest) {
     path === "/api/products" || // Allow public access to products
     path === "/api/config" || // Allow public access to config
     path === "/api/live-streams" || // Allow public access to live streams list
+    path === "/api/stories" || // Allow public access to stories (GET only)
     path.startsWith("/api/health") || // Health checks should be public
     path.startsWith("/api/messages/") || // Allow authenticated messaging API access
     path.startsWith("/public/") ||
@@ -95,6 +96,7 @@ export async function middleware(request: NextRequest) {
     path === "/packages" ||
     path.startsWith("/download") ||
     // Allow anonymous access to live-streams pages and their data
+    path === "/live-streams" || // Allow access to main live streams page
     path.startsWith("/live-streams/") ||
     // Allow anonymous access to live-auctions-hls pages and API
     path.startsWith("/live-auctions-hls/") ||

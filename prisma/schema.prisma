@@ -55,6 +55,17 @@ enum SharePlatform {
   TELEGRAM
 }
 
+enum UserType {
+  MEMBER
+  SELLER
+}
+
+enum StoryType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
 model User {
   id               String        @id @default(cuid())
   email            String        @unique
@@ -65,6 +76,7 @@ model User {
   verificationCode String?
   isVerified       Boolean       @default(false)
   isAdmin          Boolean       @default(false)
+  userType         UserType      @default(MEMBER)
   videoDeviceId    String?       // Added for video device preference
   audioDeviceId    String?       // Added for audio device preference
   points           Int           @default(0)
@@ -77,6 +89,7 @@ model User {
   bids             Bid[]
   chatMessages     ChatMessage[]
   viewedStreams    LiveStream[]  @relation("StreamViewers")
+  stories          Story[]
   
   // Messaging relationships
   sentMessages     Message[]     @relation("SentMessages")
@@ -93,11 +106,30 @@ model User {
   moderations      StreamModeration[] @relation("UserModerations")
 }
 
+// Story model for Instagram-like stories
+model Story {
+  id          String    @id @default(cuid())
+  content     String    // Text content or media URL
+  type        StoryType @default(TEXT)
+  mediaUrl    String?   // URL for image/video content
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime  // Stories expire after 24 hours
+  
+  @@index([userId])
+  @@index([isActive, expiresAt])
+  @@index([createdAt])
+}
+
 // Ürün kategorileri
 model Category {
   id          String      @id @default(cuid())
   name        String
   description String?
+  emoji       String?     // Emoji for category display
   parentId    String?
   parent      Category?   @relation("CategoryToCategory", fields: [parentId], references: [id])
   children    Category[]  @relation("CategoryToCategory")
