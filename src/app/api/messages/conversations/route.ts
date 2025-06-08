@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
+
+// Enable debug logs with DEBUG_MESSAGES=true
+const DEBUG_MESSAGES = process.env.DEBUG_MESSAGES === 'true';
 
 /**
  * GET handler for user conversations
@@ -10,7 +12,11 @@ import { prisma } from '@/lib/prisma';
  */
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.pathname;
-  logger.info(`[API][${url}] GET request received for conversations`);
+  
+  // Only log detailed request info in debug mode
+  if (DEBUG_MESSAGES) {
+    logger.info(`[API][${url}] GET request received for conversations`);
+  }
   
   // Extract token from authorization header
   const authorization = req.headers.get('authorization');
@@ -42,7 +48,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     
-    logger.info(`[API][${url}] Authenticated user: ${userData.username}`);
+    // Only log successful auth in debug mode
+    if (DEBUG_MESSAGES) {
+      logger.info(`[API][${url}] Authenticated user: ${userData.username}`);
+    }
     
     // Fetch conversations for the user
     const conversations = await prisma.conversation.findMany({
@@ -94,7 +103,10 @@ export async function GET(req: NextRequest) {
       };
     });
     
-    logger.info(`[API][${url}] Successfully fetched ${conversations.length} conversations`);
+    // Only log success in debug mode
+    if (DEBUG_MESSAGES) {
+      logger.info(`[API][${url}] Successfully fetched ${conversations.length} conversations`);
+    }
     return NextResponse.json(processedConversations);
     
   } catch (error) {

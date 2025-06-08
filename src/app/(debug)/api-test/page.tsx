@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { env } from '@/lib/env';
 
 export default function ApiTestPage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [apiUrl, setApiUrl] = useState(env.API_URL);
+  const [apiUrl, setApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || '/api');
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Function to convert container hostnames to localhost
@@ -154,10 +153,9 @@ export default function ApiTestPage() {
             {
               NODE_ENV: process.env.NODE_ENV,
               // Display environment variables
-              NEXT_PUBLIC_API_URL: env.API_URL,
-              NEXT_PUBLIC_SOCKET_URL: env.SOCKET_URL,
-              NEXT_PUBLIC_APP_URL: env.APP_URL,
-              NEXT_PUBLIC_WEBRTC_SERVER: env.WEBRTC_SERVER,
+              NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+              NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
+              NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
             },
             null,
             2

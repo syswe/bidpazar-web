@@ -16,11 +16,9 @@ import {
   Sun,
   MessageCircle,
   Package,
-  X,
   Bell,
   ShieldAlert,
   Users,
-  Cat,
   Layers,
 } from "lucide-react";
 
@@ -31,14 +29,19 @@ const Sidebar = () => {
   const pathname = usePathname();
   const [notificationCount, setNotificationCount] = useState(0);
 
-  // Close sidebar on mobile by default
+  // Desktop-only resize logic
   useEffect(() => {
     const handleResize = () => {
-      setIsExpanded(window.innerWidth >= 768);
+      // Only apply to large screens (sidebar is hidden on mobile/tablet anyway)
+      if (window.innerWidth >= 1024) {
+        setIsExpanded(window.innerWidth >= 1024);
+      }
     };
 
-    // Set initial state
-    handleResize();
+    // Set initial state for large screens
+    if (window.innerWidth >= 1024) {
+      setIsExpanded(true);
+    }
 
     // Add event listener
     window.addEventListener("resize", handleResize);
@@ -46,13 +49,6 @@ const Sidebar = () => {
     // Clean up
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
-  // Close sidebar when navigating on mobile
-  useEffect(() => {
-    if (window.innerWidth < 768) {
-      setIsExpanded(false);
-    }
-  }, [pathname]);
 
   // Fetch notifications if user is authenticated
   useEffect(() => {
@@ -101,36 +97,18 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* Mobile overlay */}
-      <div
-        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${
-          isExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-        onClick={toggleSidebar}
-      />
 
-      {/* Mobile menu toggle button - only visible when sidebar is collapsed on mobile */}
-      <button
-        onClick={toggleSidebar}
-        className={`fixed top-4 left-4 z-50 p-2 rounded-full bg-[var(--accent)] text-white shadow-lg md:hidden ${
-          isExpanded ? "hidden" : "flex"
-        } items-center justify-center`}
-        aria-label="Open Menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
-      {/* Sidebar */}
+      {/* Sidebar - Hidden on mobile/tablet, visible on large screens */}
       <aside
         className={`
-          fixed md:sticky left-0 top-0 h-screen z-50 
+          hidden lg:sticky left-0 top-0 h-screen z-50 
           bg-[var(--background)] border-r border-[var(--border)]
-          transition-all duration-300 ease-in-out flex flex-col
+          transition-all duration-300 ease-in-out lg:flex flex-col
           overflow-hidden premium-shadow
           ${
             isExpanded
-              ? "w-[85vw] sm:w-72 md:w-64 translate-x-0"
-              : "w-16 -translate-x-full md:translate-x-0"
+              ? "lg:w-64"
+              : "lg:w-16"
           }
         `}
       >
@@ -154,23 +132,17 @@ const Sidebar = () => {
             )}
           </div>
 
-          {/* Close/Open button - different for mobile vs desktop */}
+          {/* Desktop-only toggle button */}
           <button
             onClick={toggleSidebar}
             className="absolute top-1/2 right-3 transform -translate-y-1/2 p-1.5 rounded-md hover:bg-[var(--secondary)] text-[var(--foreground)] transition-all"
             aria-label={isExpanded ? "Daralt" : "Genişlet"}
           >
             {isExpanded ? (
-              <>
-                {/* Show X icon on mobile, double chevron on desktop */}
-                <div className="md:hidden">
-                  <X className="h-5 w-5" />
-                </div>
-                <div className="hidden md:flex items-center">
-                  <ChevronLeft className="h-4 w-4" />
-                  <ChevronLeft className="h-4 w-4 -ml-2" />
-                </div>
-              </>
+              <div className="flex items-center">
+                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4 -ml-2" />
+              </div>
             ) : (
               <Menu className="h-4 w-4" />
             )}

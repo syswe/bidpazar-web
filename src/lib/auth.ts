@@ -5,6 +5,9 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { JWT } from "next-auth/jwt";
 import { jwtVerify, SignJWT, JWTPayload } from "jose";
 
+// Enable debug logs with DEBUG_AUTH=true
+const DEBUG_AUTH = process.env.DEBUG_AUTH === 'true';
+
 // App version for token validation
 export const APP_VERSION = process.env.APP_VERSION || "1.0.0";
 
@@ -111,11 +114,14 @@ export const authOptions: NextAuthOptions = {
 
 export async function verifyToken(token: string): Promise<JwtPayload | null> {
   const secret = process.env.JWT_SECRET;
-  console.log("[verifyToken] Attempting to verify token (using jose).");
-  console.log(
-    "[verifyToken] Using JWT_SECRET:",
-    secret ? "Exists" : "MISSING or undefined!"
-  );
+  
+  if (DEBUG_AUTH) {
+    console.log("[verifyToken] Attempting to verify token (using jose).");
+    console.log(
+      "[verifyToken] Using JWT_SECRET:",
+      secret ? "Exists" : "MISSING or undefined!"
+    );
+  }
 
   if (!secret) {
     console.error(
@@ -131,7 +137,10 @@ export async function verifyToken(token: string): Promise<JwtPayload | null> {
       token,
       secretKey
     );
-    console.log("[verifyToken] Token successfully decoded:", payload);
+    
+    if (DEBUG_AUTH) {
+      console.log("[verifyToken] Token successfully decoded:", payload);
+    }
 
     // Explicitly check types after decoding
     const userId = payload.userId as string | undefined;
@@ -148,7 +157,9 @@ export async function verifyToken(token: string): Promise<JwtPayload | null> {
       typeof isAdmin === "boolean";
 
     if (isValidPayload) {
-      console.log("[verifyToken] Payload structure is valid.");
+      if (DEBUG_AUTH) {
+        console.log("[verifyToken] Payload structure is valid.");
+      }
 
       // Only check version if it exists in the token (backward compatibility)
       if (appVersion && appVersion !== APP_VERSION) {
@@ -187,13 +198,18 @@ export async function getUserFromToken(token: string) {
   try {
     const payload = await verifyToken(token);
     if (!payload) {
-      console.log("[getUserFromToken] verifyToken returned null");
+      if (DEBUG_AUTH) {
+        console.log("[getUserFromToken] verifyToken returned null");
+      }
       return null;
     }
 
-    console.log(
-      `[getUserFromToken] Looking for user with ID: ${payload.userId}`
-    );
+    if (DEBUG_AUTH) {
+      console.log(
+        `[getUserFromToken] Looking for user with ID: ${payload.userId}`
+      );
+    }
+    
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
@@ -204,12 +220,15 @@ export async function getUserFromToken(token: string) {
         phoneNumber: true,
         isVerified: true,
         isAdmin: true,
+        userType: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    console.log(`[getUserFromToken] Prisma found user: ${!!user}`);
+    if (DEBUG_AUTH) {
+      console.log(`[getUserFromToken] Prisma found user: ${!!user}`);
+    }
     return user;
   } catch (error) {
     console.error("[getUserFromToken] Error fetching user from DB:", error);
@@ -222,13 +241,16 @@ export async function verifyAuthSession(
   token: string
 ): Promise<JWTPayload | null> {
   const secret = process.env.JWT_SECRET;
-  console.log(
-    "[verifyAuthSession:Edge] Attempting to verify token (using jose)."
-  );
-  console.log(
-    "[verifyAuthSession:Edge] Using JWT_SECRET:",
-    secret ? "Exists" : "MISSING or undefined!"
-  );
+  
+  if (DEBUG_AUTH) {
+    console.log(
+      "[verifyAuthSession:Edge] Attempting to verify token (using jose)."
+    );
+    console.log(
+      "[verifyAuthSession:Edge] Using JWT_SECRET:",
+      secret ? "Exists" : "MISSING or undefined!"
+    );
+  }
 
   if (!secret || !token) {
     // Also check if token is provided
@@ -245,16 +267,21 @@ export async function verifyAuthSession(
         algorithms: ["HS256"], // Specify expected algorithm
       }
     );
-    console.log(
-      "[verifyAuthSession:Edge] Token successfully decoded:",
-      payload
-    );
+    
+    if (DEBUG_AUTH) {
+      console.log(
+        "[verifyAuthSession:Edge] Token successfully decoded:",
+        payload
+      );
+    }
 
     // Basic structure check - does it have at least userId?
     if (typeof payload.userId === "string") {
-      console.log(
-        "[verifyAuthSession:Edge] Basic payload structure check passed."
-      );
+      if (DEBUG_AUTH) {
+        console.log(
+          "[verifyAuthSession:Edge] Basic payload structure check passed."
+        );
+      }
 
       // Check app version only if it exists (backward compatibility)
       if (payload.appVersion && payload.appVersion !== APP_VERSION) {
@@ -280,7 +307,9 @@ export async function verifyAuthSession(
     );
     // Log specific errors like expiration
     if (error.code === "ERR_JWT_EXPIRED") {
-      console.log("[verifyAuthSession:Edge] Token expired.");
+      if (DEBUG_AUTH) {
+        console.log("[verifyAuthSession:Edge] Token expired.");
+      }
     }
     return null;
   }
@@ -289,7 +318,10 @@ export async function verifyAuthSession(
 // Function for Node.js runtime: Verifies token AND fetches user data
 // Used by API routes, Server Components etc.
 export async function getUserFromTokenInNode(token: string) {
-  console.log("[getUserFromTokenInNode] Verifying token and fetching user.");
+  if (DEBUG_AUTH) {
+    console.log("[getUserFromTokenInNode] Verifying token and fetching user.");
+  }
+  
   if (!token) return null;
 
   try {
@@ -311,7 +343,10 @@ export async function getUserFromTokenInNode(token: string) {
       );
       return null;
     }
-    console.log(`[getUserFromTokenInNode] Token verified, payload:`, payload);
+    
+    if (DEBUG_AUTH) {
+      console.log(`[getUserFromTokenInNode] Token verified, payload:`, payload);
+    }
 
     // 3. Check app version only if it exists (backward compatibility)
     if (payload.appVersion && payload.appVersion !== APP_VERSION) {
@@ -323,9 +358,12 @@ export async function getUserFromTokenInNode(token: string) {
     }
 
     // 4. Fetch user from DB
-    console.log(
-      `[getUserFromTokenInNode] Looking for user with ID: ${payload.userId}`
-    );
+    if (DEBUG_AUTH) {
+      console.log(
+        `[getUserFromTokenInNode] Looking for user with ID: ${payload.userId}`
+      );
+    }
+    
     const user = await prisma.user.findUnique({
       where: { id: payload.userId as string },
       select: {
@@ -337,21 +375,28 @@ export async function getUserFromTokenInNode(token: string) {
         phoneNumber: true,
         isVerified: true,
         isAdmin: true,
+        userType: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    console.log(`[getUserFromTokenInNode] Prisma found user: ${!!user}`);
+    if (DEBUG_AUTH) {
+      console.log(`[getUserFromTokenInNode] Prisma found user: ${!!user}`);
+    }
     return user;
   } catch (error: any) {
     console.error("[getUserFromTokenInNode] Failed:", error.message || error);
     if (error.code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
-      console.log(
-        "[getUserFromTokenInNode] Invalid token signature or format."
-      );
+      if (DEBUG_AUTH) {
+        console.log(
+          "[getUserFromTokenInNode] Invalid token signature or format."
+        );
+      }
     } else if (error.code === "ERR_JWT_EXPIRED") {
-      console.log("[getUserFromTokenInNode] Token expired.");
+      if (DEBUG_AUTH) {
+        console.log("[getUserFromTokenInNode] Token expired.");
+      }
     } else {
       console.error(
         "[getUserFromTokenInNode] Error during verification or DB fetch:",

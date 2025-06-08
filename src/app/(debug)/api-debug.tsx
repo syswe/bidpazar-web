@@ -2,35 +2,24 @@
 
 import React, { useState, useEffect } from 'react';
 import { getAuth } from '@/lib/frontend-auth';
-// import { env } from '@/lib/env'; // Remove direct env import
-import { useRuntimeConfig } from '@/context/RuntimeConfigContext'; // Import the hook
 
 const ApiDebug: React.FC = () => {
-  const { config: runtimeConfig, isLoading: isConfigLoading } = useRuntimeConfig(); // Use the hook
   const [response, setResponse] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  
-  // Use the BACKEND_API_URL for backend calls (get from context)
-  // const url = env.BACKEND_API_URL; // Old way
 
   const testApi = async () => {
     setLoading(true);
     setError(null);
     setResponse(null);
     
-    if (isConfigLoading || !runtimeConfig) {
-      setError("Runtime config not loaded yet.");
-      setLoading(false);
-      return;
-    }
-    const apiUrl = runtimeConfig.apiUrl; // Use runtime config
-    const testEndpoint = `${apiUrl}/health`; // Construct full URL
+    // Use local API endpoint to avoid CORS issues
+    const testEndpoint = '/api/health';
 
     const { token } = getAuth();
     
     try {
-      const res = await fetch(testEndpoint, { // Use the constructed endpoint
+      const res = await fetch(testEndpoint, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -55,23 +44,31 @@ const ApiDebug: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">API Debug</h2>
-      <p className="mb-2">Testing API Endpoint: {isConfigLoading ? 'Loading...' : runtimeConfig?.apiUrl ? `${runtimeConfig.apiUrl}/health` : 'Config Error'}</p>
-      <button 
-        onClick={testApi} 
-        disabled={loading} 
-        className="bg-blue-500 text-white px-4 py-2 rounded mb-4 disabled:bg-blue-300"
-      >
-        {loading ? 'Testing...' : 'Test API Again'}
-      </button>
-      {loading && <p>Loading...</p>}
-      {error && <div className="text-red-500">Error: {error}</div>}
-      {response && (
-        <pre className="bg-gray-100 p-4 rounded">
-          {JSON.stringify(response, null, 2)}
-        </pre>
-      )}
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6">API Debug Tool</h1>
+      
+      <div className="space-y-4">
+        <button
+          onClick={testApi}
+          disabled={loading}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+        >
+          {loading ? 'Testing...' : 'Test API'}
+        </button>
+        
+        {error && (
+          <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
+        
+        {response && (
+          <div className="p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+            <strong>Response:</strong>
+            <pre className="mt-2 text-sm">{JSON.stringify(response, null, 2)}</pre>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

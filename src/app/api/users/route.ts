@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -107,19 +106,19 @@ export async function GET(req: NextRequest) {
             {
               username: {
                 contains: searchQuery,
-                mode: Prisma.QueryMode.insensitive,
+                mode: "insensitive" as const,
               },
             },
             {
               name: {
                 contains: searchQuery,
-                mode: Prisma.QueryMode.insensitive,
+                mode: "insensitive" as const,
               },
             },
             {
               email: {
                 contains: searchQuery,
-                mode: Prisma.QueryMode.insensitive,
+                mode: "insensitive" as const,
               },
             },
           ],

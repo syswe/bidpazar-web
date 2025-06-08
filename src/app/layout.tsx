@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "../components/Sidebar";
+import MobileLayout from "../components/MobileLayout";
 import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { Toaster } from "sonner";
-import { RuntimeConfigProvider } from "../context/RuntimeConfigContext";
+
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -42,28 +43,28 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className={`${inter.className} antialiased`}>
-        <RuntimeConfigProvider>
-          <ThemeProvider>
-            <AuthProvider>
-              <div className="flex h-full min-h-screen bg-[var(--background)]">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto w-full">
+        <ThemeProvider>
+          <AuthProvider>
+            <div className="flex h-full min-h-screen bg-[var(--background)]">
+              <Sidebar />
+              <main className="flex-1 overflow-y-auto w-full">
+                <MobileLayout>
                   {children}
-                </main>
-              </div>
-              <Toaster 
-                position="top-right" 
-                toastOptions={{
-                  style: {
-                    background: 'var(--background)',
-                    color: 'var(--foreground)',
-                    border: '1px solid var(--border)',
-                  }
-                }}
-              />
-            </AuthProvider>
-          </ThemeProvider>
-        </RuntimeConfigProvider>
+                </MobileLayout>
+              </main>
+            </div>
+            <Toaster 
+              position="top-right" 
+              toastOptions={{
+                style: {
+                  background: 'var(--background)',
+                  color: 'var(--foreground)',
+                  border: '1px solid var(--border)',
+                }
+              }}
+            />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

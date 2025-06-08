@@ -1,0 +1,444 @@
+# BidPazar - Live Auction Platform Rules
+
+## Project Overview
+- **Platform**: Next.js 15.3.2 with custom Node.js server
+- **Database**: PostgreSQL + Prisma ORM
+- **Real-time**: Socket.IO server with HTTP integration
+- **Authentication**: Custom JWT + NextAuth.js hybrid system
+- **UI**: TailwindCSS + custom CSS variable system
+- **Language**: TypeScript, Turkish interface
+- **Server**: Custom server.js with Socket.IO and CORS configuration
+
+## Core Components
+- **Live Streams**: LiveStream, AuctionListing, Bid models
+- **Stories**: Instagram-style Story system
+- **Messaging**: Conversation, Message models
+- **Users**: MEMBER and SELLER types
+- **Categories**: Hierarchical category structure
+
+## Environment Variable Management
+
+### Next.js Built-in System
+- **Use `.env` files**: Next.js automatically loads environment variables
+- **No custom abstraction**: Use `process.env` directly, NO custom env.ts wrapper
+- **Client vs Server**: Use `NEXT_PUBLIC_` prefix for client-side access
+
+### Environment Variable Rules
+- **Server-only**: `DATABASE_URL`, `JWT_SECRET`, `SMS_PASSWORD` - NEVER prefix with NEXT_PUBLIC_
+- **Client-accessible**: `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SOCKET_URL` - Build-time inlined
+- **Both environments**: Define both versions if needed (e.g., `API_URL` and `NEXT_PUBLIC_API_URL`)
+
+### Security Guidelines
+- **NEVER expose secrets**: Database credentials, API keys, JWT secrets must be server-only
+- **Git ignore**: All `.env*` files except `.env.example` should be in `.gitignore`
+- **Production**: Use environment-specific files (`.env.production`, `.env.development`)
+
+### Usage Examples
+```typescript
+// ✅ Correct - Direct process.env usage
+const dbUrl = process.env.DATABASE_URL; // Server-side only
+const apiUrl = process.env.NEXT_PUBLIC_API_URL; // Client-side accessible
+
+// ❌ Wrong - Custom env wrapper
+import { env } from '@/lib/env'; // Don't create this
+```
+
+### Debug Configuration
+- Use environment variables for debug modes:
+  - `DEBUG_AUTH=true` - Authentication debug logs
+  - `DEBUG_NOTIFICATIONS=true` - Notification polling logs
+  - `DEBUG_MESSAGES=true` - Message API logs
+  - `DEBUG_CHAT=true` - Chat system logs
+
+## Authentication Strategy
+- **Token Type**: JWT with jose library (Edge-compatible)
+- **Storage**: Dual strategy - localStorage + HTTP cookies
+- **Validation**: Server-side validation with app version checking
+- **Refresh**: Automatic token refresh with rate limiting
+- **Session**: 7-day expiration with automatic cleanup
+- **Security**: CSRF protection via cookies + Bearer token validation
+
+### Authentication Flow
+1. Login/Register → JWT created with app version
+2. Token stored in localStorage + set as HTTP cookie
+3. Client-side: AuthProvider validates on app initialization
+4. Server-side: Middleware validates via cookies
+5. Auto-refresh on token expiration
+6. Version mismatch → automatic logout
+
+### Cookie Strategy
+- Primary: localStorage for immediate client access
+- Backup: HTTP cookies for server-side validation
+- Cookie settings: `path=/; max-age=604800` (7 days)
+- Automatic cleanup on auth removal
+
+## Code Writing Rules
+
+### TypeScript/React
+- All components must be functional components
+- Define interfaces for all props
+- Mandatory error handling for API calls
+- Implement loading states
+
+### API Routes & Route Handlers
+- **Next.js 15**: Prefer App Router Route Handlers over Pages API Routes
+- **Structure**: Use RESTful structure under `src/app/api/`
+- **Organization**: Avoid monolithic `api.ts` files - create modular endpoints
+- **Error responses**: `{ error: string, details?: any }`
+- **Success responses**: `{ data: any, meta?: any }`
+- **Validation**: Use Zod schema for request validation
+
+#### Route Handlers (App Router - Preferred)
+```typescript
+// src/app/api/users/route.ts
+import { NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  return Response.json({ data: users })
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  return Response.json({ data: newUser }, { status: 201 })
+}
+```
+
+#### Dynamic Routes
+```typescript
+// src/app/api/users/[id]/route.ts
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const user = await getUser(params.id)
+  return Response.json({ data: user })
+}
+```
+
+#### API Routes (Pages Router - Legacy)
+```typescript
+// pages/api/users.ts
+import type { NextApiRequest, NextApiResponse } from 'next'
+
+export default function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method === 'GET') {
+    res.status(200).json({ data: users })
+  } else if (req.method === 'POST') {
+    res.status(201).json({ data: newUser })
+  } else {
+    res.setHeader('Allow', ['GET', 'POST'])
+    res.status(405).end(`Method ${req.method} Not Allowed`)
+  }
+}
+```
+
+#### API Organization Rules
+- **Modular Structure**: One endpoint per file/folder
+- **HTTP Methods**: Handle multiple methods in single route file
+- **Middleware**: Create reusable middleware functions
+- **Types**: Define response types for each endpoint
+- **Error Handling**: Consistent error response format
+- **Authentication**: Use middleware for protected routes
+
+### Database/Prisma
+- Careful use of cascade deletion for model relationships
+- Descriptive names for migrations
+- Use select in queries to avoid unnecessary data fetching
+
+### Styling
+- CSS variables: `var(--background)`, `var(--foreground)`, `var(--accent)`, etc.
+- Maintain dark/light theme support
+- Mobile-first responsive design
+- Premium UI element classes: `.premium-button`, `.premium-input`, etc.
+
+### Real-time Features (Socket.IO)
+- **Custom Server**: Node.js HTTP server with Socket.IO integration
+- **Room Management**: Stream rooms, conversation rooms, user rooms
+- **Event Types**: Stream chat, private messaging, bidding, countdown timers
+- **Authentication**: Socket handshake with token validation
+- **Persistence**: Messages saved via API before socket emission
+- **Global Access**: `global.socketIO` available in API routes
+- Use namespaces for Socket.io events
+- Client-side socket connections with error handling
+- Optimistic updates for real-time state changes
+
+### Authentication Implementation
+- Use `useAuth()` hook for authentication state
+- Implement `withAuthHeader()` for authenticated requests
+- Handle token refresh automatically via `validateToken()`
+- Protected routes must validate tokens server-side
+- Use `AuthProvider` for global auth state management
+
+### Middleware Patterns
+- **Edge Runtime**: Default to Edge Runtime for better performance
+- **WebSocket Detection**: Skip middleware for Socket.IO and WebSocket requests
+- **Public Path Organization**: Group paths by category (static, auth, pages, API)
+- **Debug Logging**: Use environment variables for conditional logging
+- **Error Handling**: Consistent error handling with login redirects
+- **Token Validation**: Support both cookies and Authorization headers
+
+#### Middleware Structure
+```typescript
+// Organized public paths by category
+const PUBLIC_PATHS = {
+  static: ["/", "/_next/", "/favicon", "/public/"],
+  auth: ["/login", "/register", "/auth/"],
+  pages: ["/about", "/contact", "/faq"],
+  api: ["/api/auth/", "/api/public/", "/api/health"],
+  dynamic: [
+    { pattern: /^\/auth\/(?:reset-password|verify)\//, public: true },
+    { pattern: /^\/api\/live-streams\/[^/]+$/, public: true }
+  ]
+};
+
+// Static asset detection
+function isStaticAsset(path: string): boolean {
+  return /\.(jpg|jpeg|png|gif|svg|ico|css|js|woff|woff2|ttf|eot)$/i.test(path);
+}
+
+// Simplified WebSocket detection
+function isWebSocketRequest(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  const upgradeHeader = request.headers.get("upgrade");
+  
+  if (upgradeHeader?.toLowerCase() === "websocket") return true;
+  
+  if (path.startsWith("/socket.io/") || path === "/socket.io") {
+    return request.nextUrl.searchParams.has("EIO") ||
+           request.nextUrl.searchParams.has("transport");
+  }
+  
+  return false;
+}
+
+// Clean auth verification
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  
+  if (isWebSocketRequest(request)) return NextResponse.next();
+  if (isPublicPath(path)) return NextResponse.next();
+  
+  const token = getTokenFromRequest(request);
+  if (!token || !await verifyToken(token)) {
+    return redirectToLogin(request);
+  }
+  
+  return NextResponse.next();
+}
+
+// Fixed matcher - no capturing groups
+export const config = {
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:jpg|jpeg|png|gif|svg|ico|css|js|woff|woff2|ttf|eot)).*)',
+  ],
+};
+```
+
+#### Middleware Best Practices
+- **Organized Path Matching**: Group public paths by logical categories
+- **Simplified WebSocket Handling**: Basic detection without complex conditions
+- **Clean Token Extraction**: Support multiple token sources (cookies, headers)
+- **Consistent Redirects**: Single redirect function for maintainability
+- **Debug Controls**: Environment-based logging with DEBUG_NOTIFICATIONS
+- **Edge Compatibility**: Use Edge-compatible libraries (jose for JWT)
+
+## File Structure
+```
+├── server.js          # Custom Node.js server with Socket.IO
+├── package.json       # Dependencies and scripts
+├── .env               # Environment variables (git ignored)
+├── .env.example       # Environment template (committed)
+src/
+├── app/
+│   ├── api/           # Route Handlers (Next.js 15 App Router)
+│   │   ├── auth/      # Authentication endpoints
+│   │   │   ├── login/route.ts
+│   │   │   ├── register/route.ts
+│   │   │   └── logout/route.ts
+│   │   ├── users/     # User management
+│   │   │   ├── route.ts        # GET /api/users, POST /api/users
+│   │   │   └── [id]/route.ts   # GET /api/users/[id], PUT, DELETE
+│   │   ├── messages/  # Message API with Socket.IO integration
+│   │   │   ├── route.ts
+│   │   │   └── [conversationId]/route.ts
+│   │   ├── streams/   # Live stream endpoints
+│   │   │   ├── route.ts
+│   │   │   └── [id]/route.ts
+│   │   └── socket/    # Socket.IO utility endpoints
+│   ├── (auth)/        # Auth pages (login, register)
+│   ├── (pages)/       # App router pages
+│   └── globals.css    # Global styles
+├── components/        # Reusable components
+│   ├── AuthProvider.tsx # Auth context provider
+│   └── Sidebar.tsx    # Navigation with auth-aware UI
+├── context/          # React contexts
+└── lib/              # Utility functions
+    ├── auth.ts       # Server-side auth utilities
+    ├── frontend-auth.ts # Client-side auth utilities
+    ├── api-middleware.ts # API middleware functions
+    └── prisma.ts     # Database client
+```
+
+## Authentication Utilities
+- **Server-side**: `auth.ts` - JWT verification, user fetching
+- **Client-side**: `frontend-auth.ts` - Login, register, token management
+- **React Context**: `AuthProvider.tsx` - Global auth state
+- **Middleware**: Token validation for protected routes
+
+## Important Notes
+- All form validations must be both client and server-side
+- File size and type controls for image uploads
+- Authentication middleware required on all protected routes
+- Use Turkish locale (tr-TR)
+- Include SEO meta tags
+- Handle app version mismatches with automatic logout
+- Custom server setup: Use `npm run dev` or `npm start` (not `next dev`)
+- Socket.IO global instance available in API routes via `global.socketIO`
+- Real-time features require message persistence before socket emission
+- **Environment variables**: Use Next.js built-in system, NO custom env.ts wrapper
+
+## Common Patterns
+- Loading states: `const [loading, setLoading] = useState(false)`
+- Error handling: `try-catch` blocks with user-friendly messages
+- Modal components: Create overlays using Portal
+- Form submissions: Use `react-hook-form` with validation
+- Auth checks: `const { user, isAuthenticated } = useAuth()`
+- Protected API calls: `fetch(url, withAuthHeader())`
+- Environment access: `process.env.VARIABLE_NAME` (server) or `process.env.NEXT_PUBLIC_VARIABLE_NAME` (client)
+
+### API Patterns
+- **Route Structure**: `src/app/api/[resource]/route.ts` for collections, `src/app/api/[resource]/[id]/route.ts` for items
+- **HTTP Methods**: Export named functions (GET, POST, PUT, DELETE, PATCH)
+- **Request Handling**: Use `NextRequest` for parsing body, params, searchParams
+- **Response Format**: Use `Response.json()` with consistent data structure
+- **Error Responses**: Return appropriate HTTP status codes with error messages
+- **Type Safety**: Define interfaces for request bodies and response data
+- **Validation**: Validate input with Zod schemas before processing
+- **Authentication**: Check auth status in protected routes before processing
+
+### API Error Handling
+```typescript
+// Consistent error response format
+try {
+  const data = await processRequest()
+  return Response.json({ data }, { status: 200 })
+} catch (error) {
+  console.error('API Error:', error)
+  return Response.json(
+    { error: 'Internal server error', details: error.message },
+    { status: 500 }
+  )
+}
+```
+
+### API Middleware Pattern
+```typescript
+// src/lib/api-middleware.ts
+import { NextRequest } from 'next/server'
+import { verifyToken } from '@/lib/auth'
+
+export async function withAuth(
+  request: NextRequest,
+  handler: (req: NextRequest, user: User) => Promise<Response>
+) {
+  try {
+    const user = await verifyToken(request)
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return handler(request, user)
+  } catch (error) {
+    return Response.json({ error: 'Authentication failed' }, { status: 401 })
+  }
+}
+```
+
+### Socket.IO Patterns
+- **Room Management**: Use structured room names (`stream:${id}`, `user:${id}`, `conversation:${id}`)
+- **Event Handling**: Handle join/leave events with proper cleanup
+- **Message Persistence**: Always save messages via API before socket emission
+- **Authentication**: Pass token and user info in socket handshake query
+- **Error Handling**: Emit error events back to client with proper error objects
+- **Cleanup**: Handle disconnect events and remove from active tracking maps
+
+#### Socket.IO Server Configuration
+```typescript
+// Custom server with Socket.IO integration
+const io = socketio(server, {
+  cors: {
+    origin: dev ? `http://${hostname}:${port}` : process.env.NEXT_PUBLIC_APP_URL,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  path: process.env.WS_URL || "/socket.io",
+});
+
+// Make available globally for API routes
+global.socketIO = io;
+
+// Track active connections
+const activeStreams = new Map();
+const activeUsers = new Map(); 
+const activeConversations = new Map();
+```
+
+#### Socket Event Patterns
+```typescript
+// Room joining with user tracking
+socket.on("join-stream", (streamId) => {
+  socket.join(`stream:${streamId}`);
+  trackUserInStream(streamId, user);
+  notifyViewerJoined(streamId, user);
+});
+
+// Message handling with API persistence
+socket.on("private-message", async (data) => {
+  // Save to database first via API
+  const savedMessage = await saveMessageViaAPI(data);
+  
+  // Then emit socket events
+  io.to(`conversation:${data.conversationId}`).emit("new-message", savedMessage);
+  io.to(`user:${data.receiverId}`).emit("message-notification", savedMessage);
+});
+```
+
+#### Server Patterns
+- **Custom Server**: Node.js HTTP server with Next.js integration
+- **Global Socket Access**: `global.socketIO` available in API routes
+- **CORS Configuration**: Environment-based CORS settings
+- **Connection Tracking**: Map-based tracking for active users/streams
+- **Debug Logging**: Environment-controlled debug logs (DEBUG_CHAT)
+- **API Integration**: Messages saved via API before socket emission
+
+## Security Best Practices
+- Never expose JWT secrets in client code
+- Validate tokens on both client and server
+- Implement proper CORS policies
+- Use secure cookie settings in production
+- Handle token expiration gracefully
+- Clear auth data on app version changes
+- **Environment Security**: Never use NEXT_PUBLIC_ prefix for secrets or sensitive data
+
+## Avoid
+- Console.log statements in production code
+- Hard-coded strings instead of constants
+- Inline styles instead of CSS classes
+- Using `any` type
+- Storing sensitive data in localStorage
+- Direct token manipulation without proper validation
+- **Custom env.ts wrappers**: Use process.env directly
+- **NEXT_PUBLIC_ for secrets**: This exposes variables to the browser bundle
+- **Monolithic API files**: Don't create giant `api.ts` files with all endpoints
+- **App Router for new APIs**: Use App Router Route Handlers for Next.js 15
+- **Unhandled HTTP methods**: Always handle unsupported methods with 405 status
+- **Missing error handling**: Every API route must have proper error handling
+- **Inconsistent response formats**: Maintain consistent JSON response structure
+- **Missing request validation**: Always validate incoming request data
+- **Direct database queries in components**: Use API routes for data operations
+- **Complex middleware**: Keep middleware simple and organized with clear path categorization
+- **Blocking WebSocket requests**: Always skip middleware for Socket.IO and WebSocket paths
+- **Hard-coded public paths**: Use organized path structures instead of long conditional chains
+- **Missing debug controls**: Use environment variables for conditional logging in middleware

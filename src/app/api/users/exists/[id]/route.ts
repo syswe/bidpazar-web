@@ -4,14 +4,14 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const url = request.nextUrl.pathname;
   console.log(`[API][${url}] GET request received`);
 
   try {
     // Extract userId from the URL path
-    const userId = params.id;
+    const { id: userId } = await params;
 
     if (!userId) {
       console.warn(

@@ -30,20 +30,21 @@ export async function GET(request: Request) {
             id: true,
             username: true,
             name: true,
+            userType: true,
           },
         },
       },
     });
 
     // Add images property to each product by filtering media items of type 'image'
-    const productsWithImages = products.map((product) => ({
+    const productsWithImages = products.map((product: any) => ({
       ...product,
-      images: product.media?.filter((m) => m.type === "image") || [],
+      images: product.media?.filter((m: any) => m.type === "image") || [],
     }));
 
     logger.info("Successfully retrieved products", {
       count: products.length,
-      productIds: products.map((p) => p.id),
+      productIds: products.map((p: any) => p.id),
     });
 
     return NextResponse.json(productsWithImages);

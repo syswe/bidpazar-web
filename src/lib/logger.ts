@@ -1,5 +1,3 @@
-import { env } from "./env";
-
 // Define log levels
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
@@ -13,10 +11,10 @@ interface LoggerConfig {
 
 // Default configuration
 const defaultConfig: LoggerConfig = {
-  level: env.NODE_ENV === 'production' ? 'warn' : 'debug',
+  level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug',
   enableConsole: true,
   enableServerLogging: false,
-  serverLogEndpoint: `${env.BACKEND_API_URL}/logs`,
+  serverLogEndpoint: `${process.env.BACKEND_API_URL}/logs`,
 };
 
 // Current configuration (can be updated at runtime)

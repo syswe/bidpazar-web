@@ -60,6 +60,12 @@ enum UserType {
   SELLER
 }
 
+enum SellerRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum StoryType {
   TEXT
   IMAGE
@@ -104,6 +110,9 @@ model User {
   streamShares     StreamShare[]
   streamViewTimes  StreamViewTime[]
   moderations      StreamModeration[] @relation("UserModerations")
+  
+  // Seller requests
+  sellerRequests   SellerRequest[]
 }
 
 // Story model for Instagram-like stories
@@ -388,4 +397,26 @@ model ProductAuction {
   winningBid     Bid?         @relation("WinningProductBid", fields: [winningBidId], references: [id])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+}
+
+// Seller requests
+model SellerRequest {
+  id                String              @id @default(cuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  fullName          String
+  phoneNumber       String
+  email             String
+  productCategories String              // Comma-separated category IDs or names
+  notes             String?
+  status            SellerRequestStatus @default(PENDING)
+  reviewedAt        DateTime?
+  reviewedBy        String?             // Admin user ID who reviewed
+  reviewNotes       String?             // Admin notes for approval/rejection
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

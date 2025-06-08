@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 
+// Enable debug logs with DEBUG_CHAT=true
+const DEBUG_CHAT = process.env.DEBUG_CHAT === 'true';
+
 // Validation schema
 const chatMessageSchema = z.object({
   message: z.string().min(1).max(500),
@@ -17,7 +20,11 @@ export async function GET(
 ) {
   const params = await paramsPromise;
   const streamId = params.id;
-  logger.info(`[API][/api/live-streams/${streamId}/chat] GET request received`);
+  
+  // Only log detailed request info in debug mode
+  if (DEBUG_CHAT) {
+    logger.info(`[API][/api/live-streams/${streamId}/chat] GET request received`);
+  }
 
   try {
     // Fetch chat messages from database
@@ -37,7 +44,7 @@ export async function GET(
     });
 
     // Transform data to match the Socket.IO chat format
-    const formattedMessages = messages.map((msg) => ({
+    const formattedMessages = messages.map((msg: any) => ({
       id: msg.id,
       streamId: msg.liveStreamId,
       userId: msg.userId,
@@ -73,9 +80,13 @@ export async function POST(
 ) {
   const params = await paramsPromise;
   const streamId = params.id;
-  logger.info(
-    `[API][/api/live-streams/${streamId}/chat] POST request received`
-  );
+  
+  // Only log detailed request info in debug mode
+  if (DEBUG_CHAT) {
+    logger.info(
+      `[API][/api/live-streams/${streamId}/chat] POST request received`
+    );
+  }
 
   try {
     const body = await request.json();
@@ -110,7 +121,9 @@ export async function POST(
             authenticatedUser.username || authenticatedUser.name || "User";
         }
       } catch (authError) {
-        logger.warn("Invalid token in chat message POST", { error: authError });
+        if (DEBUG_CHAT) {
+          logger.warn("Invalid token in chat message POST", { error: authError });
+        }
       }
     }
 

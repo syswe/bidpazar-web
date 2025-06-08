@@ -3,10 +3,17 @@ import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 
+// Enable debug logs with DEBUG_NOTIFICATIONS=true
+const DEBUG_NOTIFICATIONS = process.env.DEBUG_NOTIFICATIONS === 'true';
+
 export async function POST(req: NextRequest) {
   const urlPath = req.nextUrl.pathname;
-  const headers = Object.fromEntries(req.headers.entries());
-  logger.info(`[API][${urlPath}] POST request received`, { headers });
+  
+  // Only log detailed request info in debug mode
+  if (DEBUG_NOTIFICATIONS) {
+    const headers = Object.fromEntries(req.headers.entries());
+    logger.info(`[API][${urlPath}] POST request received`, { headers });
+  }
   
   // Extract token from authorization header
   const authorization = req.headers.get('authorization');
@@ -22,7 +29,11 @@ export async function POST(req: NextRequest) {
   }
   
   const token = parts[1];
-  logger.info(`[API][${urlPath}] Token found: ${!!token}`);
+  
+  // Only log token presence in debug mode
+  if (DEBUG_NOTIFICATIONS) {
+    logger.info(`[API][${urlPath}] Token found: ${!!token}`);
+  }
 
   try {
     // Verify the token
@@ -36,7 +47,11 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.json();
       notificationIds = body.notificationIds;
-      logger.info(`[API][${urlPath}] Request body parsed`, { notificationIds });
+      
+      // Only log body parsing in debug mode
+      if (DEBUG_NOTIFICATIONS) {
+        logger.info(`[API][${urlPath}] Request body parsed`, { notificationIds });
+      }
     } catch (parseError) {
       logger.error(`[API][${urlPath}] Bad Request (400): Failed to parse request body.`, parseError);
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
@@ -48,7 +63,11 @@ export async function POST(req: NextRequest) {
     }
     
     const userId = payload.userId;
-    logger.info(`[API][${urlPath}] Marking notifications as read for user: ${userId}`, { notificationIds });
+    
+    // Only log operation details in debug mode
+    if (DEBUG_NOTIFICATIONS) {
+      logger.info(`[API][${urlPath}] Marking notifications as read for user: ${userId}`, { notificationIds });
+    }
 
     // Mark specific notifications as read if IDs provided
     if (notificationIds.length > 0) {
@@ -61,7 +80,11 @@ export async function POST(req: NextRequest) {
           isRead: true
         }
       });
-      logger.info(`[API][${urlPath}] Marked ${notificationIds.length} notifications as read`);
+      
+      // Only log success in debug mode
+      if (DEBUG_NOTIFICATIONS) {
+        logger.info(`[API][${urlPath}] Marked ${notificationIds.length} notifications as read`);
+      }
     } 
     // Or mark all as read if no specific IDs
     else {
@@ -74,7 +97,11 @@ export async function POST(req: NextRequest) {
           isRead: true
         }
       });
-      logger.info(`[API][${urlPath}] Marked all notifications as read for user: ${userId}`);
+      
+      // Only log success in debug mode
+      if (DEBUG_NOTIFICATIONS) {
+        logger.info(`[API][${urlPath}] Marked all notifications as read for user: ${userId}`);
+      }
     }
 
     return NextResponse.json({ 

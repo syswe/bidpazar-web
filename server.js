@@ -14,6 +14,9 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT, 10) || 3000;
 
+// Enable debug logs
+const DEBUG_SERVER = process.env.DEBUG_CHAT === 'true' || dev;
+
 // Initialize Next.js
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -46,7 +49,9 @@ app.prepare().then(() => {
   // Make Socket.IO instance available globally for API routes to use
   global.socketIO = io;
 
-  console.log(`> Socket.IO server integrated with HTTP server`);
+  if (DEBUG_SERVER) {
+    console.log(`> Socket.IO server integrated with HTTP server`);
+  }
 
   // Track active streams and users
   const activeStreams = new Map();
@@ -90,9 +95,14 @@ app.prepare().then(() => {
     };
   };
 
+  // Enable debug logs with DEBUG_CHAT=true
+  const DEBUG_CHAT = process.env.DEBUG_CHAT === 'true';
+
   // Socket.IO event handling for chat and bidding
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
+    if (DEBUG_CHAT) {
+      console.log("Client connected:", socket.id);
+    }
 
     // Extract user information from query params
     const { streamId, userId, username } = socket.handshake.query;
@@ -104,28 +114,34 @@ app.prepare().then(() => {
 
     // Track user connection for messaging
     if (userId) {
-      console.log(`User ${username} (${userId}) connected to socket`);
+      if (DEBUG_CHAT) {
+        console.log(`User ${username} (${userId}) connected to socket`);
+      }
       // Add user to active users map
       activeUsers.set(userId, socket.id);
       // Join user's personal room for direct messages
       socket.join(`user:${userId}`);
 
       // Log active rooms
-      const socketRooms = Array.from(socket.rooms).filter(
-        (r) => r !== socket.id
-      );
-      if (socketRooms.length > 0) {
-        console.log(
-          `User ${username} (${userId}) joined rooms: ${socketRooms.join(", ")}`
+      if (DEBUG_CHAT) {
+        const socketRooms = Array.from(socket.rooms).filter(
+          (r) => r !== socket.id
         );
+        if (socketRooms.length > 0) {
+          console.log(
+            `User ${username} (${userId}) joined rooms: ${socketRooms.join(", ")}`
+          );
+        }
       }
     }
 
     // Join a stream room
     socket.on("join-stream", (streamId) => {
-      console.log(
-        `User ${user.username} (${socket.id}) joined stream: ${streamId}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `User ${user.username} (${socket.id}) joined stream: ${streamId}`
+        );
+      }
       socket.join(`stream:${streamId}`);
 
       // Track users in stream
@@ -146,9 +162,11 @@ app.prepare().then(() => {
 
     // Leave a stream room
     socket.on("leave-stream", (streamId) => {
-      console.log(
-        `User ${user.username} (${socket.id}) left stream: ${streamId}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `User ${user.username} (${socket.id}) left stream: ${streamId}`
+        );
+      }
       handleStreamLeave(socket, streamId);
     });
 
@@ -428,6 +446,8 @@ app.prepare().then(() => {
   // Start the server
   server.listen(port, hostname, (err) => {
     if (err) throw err;
-    console.log(`> Ready on http://${hostname}:${port}`);
+    if (DEBUG_SERVER) {
+      console.log(`> Ready on http://${hostname}:${port}`);
+    }
   });
 });

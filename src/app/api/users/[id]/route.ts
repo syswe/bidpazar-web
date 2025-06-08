@@ -7,9 +7,9 @@ import { hash } from "bcryptjs";
 // GET /api/users/[id] - Get user by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = params.id;
+  const { id: userId } = await params;
   const url = req.nextUrl.pathname;
   logger.info(`[API][${url}] GET request received for userId: ${userId}`);
 
@@ -77,9 +77,9 @@ export async function GET(
 // PUT /api/users/[id] - Update user by ID
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = params.id;
+  const { id: userId } = await params;
   const url = req.nextUrl.pathname;
   logger.info(`[API][${url}] PUT request received for userId: ${userId}`);
 
@@ -169,9 +169,9 @@ export async function PUT(
 // DELETE /api/users/[id] - Delete user by ID
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = params.id;
+  const { id: userId } = await params;
   const url = req.nextUrl.pathname;
   logger.info(`[API][${url}] DELETE request received for userId: ${userId}`);
 

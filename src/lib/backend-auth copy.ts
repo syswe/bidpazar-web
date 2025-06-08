@@ -4,10 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { env } from './env';
 
-// Use the API_URL from env utility (always same as API_URL for simplicity)
-const BACKEND_API_URL = env.BACKEND_API_URL;
+// Use environment variable directly (as per repo rules: no custom env wrapper)
+const BACKEND_API_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 console.log("Server-side auth initialized with backend URL:", BACKEND_API_URL);
 

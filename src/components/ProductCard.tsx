@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Product } from '@/lib/api';
+import VerifiedSellerBadge from './VerifiedSellerBadge';
 
 interface ProductCardProps {
   product: Product;
@@ -61,7 +62,10 @@ export default function ProductCard({ product }: ProductCardProps) {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                {product.user.username}
+                <span className="flex items-center">
+                  {product.user.username}
+                  <VerifiedSellerBadge userType={product.user.userType} variant="inline" className="scale-75" />
+                </span>
               </span>
             )}
 

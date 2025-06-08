@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { logger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 

@@ -22,8 +22,7 @@ const nextConfig = {
     ],
     unoptimized: true,
   },
-  // Migrate experimental options to root level when available
-  optimizePackageImports: ["@mui/material", "@mui/icons-material", "date-fns"],
+  // This option has been moved to experimental in latest Next.js
   // Specify any packages that should not be bundled
   serverExternalPackages: [],
   // Disable static optimization to ensure runtime environment variables are used
@@ -131,20 +130,9 @@ const nextConfig = {
       },
     ];
   },
-  // Enhanced rewrites for Socket.IO and WebSocket paths
+  // Socket.IO paths are handled by custom server, no rewrites needed
   async rewrites() {
-    return [
-      // Explicit rewrites for Socket.IO paths
-      {
-        source: "/socket.io/:path*",
-        destination: "/socket.io/:path*",
-      },
-      // Add support for Socket.IO with query parameters (no trailing slash)
-      {
-        source: "/socket.io",
-        destination: "/socket.io",
-      },
-    ];
+    return [];
   },
   // Add redirects to fix route confusion between different auth paths
   async redirects() {
@@ -172,17 +160,16 @@ const nextConfig = {
     ];
   },
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    // !! WARN !!
-    ignoreBuildErrors: true,
+    // Enable TypeScript checking for better development experience
+    ignoreBuildErrors: false,
   },
   experimental: {
     // Configure server actions
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    // Optimize package imports for better bundle size
+    optimizePackageImports: ["@mui/material", "@mui/icons-material", "date-fns"],
     // Remaining experimental options that haven't been stabilized
     forceSwcTransforms: true,
   },

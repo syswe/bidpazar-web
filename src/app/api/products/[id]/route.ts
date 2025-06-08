@@ -37,6 +37,7 @@ export async function GET(
             id: true,
             username: true,
             name: true,
+            userType: true,
           },
         },
       },
@@ -53,7 +54,7 @@ export async function GET(
     // Add images property by mapping the media array to maintain backward compatibility
     const productWithImages = {
       ...product,
-      images: product.media?.filter(m => m.type === 'image') || []
+      images: product.media?.filter((m: any) => m.type === 'image') || []
     };
 
     logger.info('Product retrieved successfully', { 

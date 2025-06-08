@@ -520,27 +520,34 @@ export default function Home() {
       try {
         // Load products, stories, live streams, and categories in parallel
         const [productsData, storiesData, liveStreamsData, categoriesData] = await Promise.all([
-          getProducts(),
-          getStories(),
-          getLiveStreamsForHomepage(),
-          getCategories({ withProductCount: true }),
+          getProducts().catch(() => []),
+          getStories().catch(() => []),
+          getLiveStreamsForHomepage().catch(() => ({ streams: [], meta: { totalLiveStreams: 0, hasActiveStreams: false } })),
+          getCategories({ withProductCount: true }).catch(() => []),
         ]);
 
         console.log("Data loaded successfully:", {
           products: productsData.length,
           stories: storiesData.length,
           liveStreams: liveStreamsData.streams.length,
-          categories: categoriesData.length,
+          categories: Array.isArray(categoriesData) ? categoriesData.length : 0,
         });
 
-        setProducts(productsData);
-        setStories(storiesData);
-        setLiveStreams(liveStreamsData.streams);
-        setLiveStreamsMeta(liveStreamsData.meta);
-        setCategories(categoriesData);
+        setProducts(Array.isArray(productsData) ? productsData : []);
+        setStories(Array.isArray(storiesData) ? storiesData : []);
+        setLiveStreams(Array.isArray(liveStreamsData.streams) ? liveStreamsData.streams : []);
+        setLiveStreamsMeta(liveStreamsData.meta || { totalLiveStreams: 0, hasActiveStreams: false });
+        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       } catch (error) {
         console.error("Error loading data:", error);
         setError('Veriler yüklenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
+        
+        // Ensure all state variables are arrays
+        setProducts([]);
+        setStories([]);
+        setLiveStreams([]);
+        setCategories([]);
+        setLiveStreamsMeta({ totalLiveStreams: 0, hasActiveStreams: false });
         
         // Set mock data for development
         if (process.env.NODE_ENV === 'development') {

@@ -11,6 +11,7 @@ export interface User {
   phoneNumber?: string;
   isVerified?: boolean;
   isAdmin?: boolean;
+  userType?: 'MEMBER' | 'SELLER';
 }
 
 export interface AuthResponse {
@@ -22,8 +23,6 @@ export interface AuthResponse {
   phoneNumber?: string;
   smsSent?: boolean;
 }
-
-import { env } from "./env";
 
 // Define app version - this should match the server APP_VERSION
 export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0";

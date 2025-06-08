@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { prisma } from '@/lib/prisma';
 
 // Add a type for users
@@ -71,7 +70,7 @@ export async function GET(req: NextRequest) {
       take: limit
     });
     // Mark all as "online" for this example
-    const onlineUsers = recentUsers.map((user) => ({
+    const onlineUsers = recentUsers.map((user: any) => ({
       ...user,
       isOnline: true
     }));

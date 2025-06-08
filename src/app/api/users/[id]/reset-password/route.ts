@@ -6,9 +6,9 @@ import { hash } from "bcryptjs";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const userId = params.id;
+  const { id: userId } = await params;
   const url = req.nextUrl.pathname;
   logger.info(`[API][${url}] POST request received for userId: ${userId}`);
 
