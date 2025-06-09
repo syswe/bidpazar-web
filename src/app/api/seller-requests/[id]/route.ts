@@ -26,7 +26,7 @@ function extractToken(request: NextRequest): string | null {
 // PUT - Update seller request status (admin only)
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const token = extractToken(request);
@@ -39,7 +39,7 @@ export async function PUT(
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await context.params;
     const body = await request.json();
     const { status, reviewNotes } = body;
 
