@@ -1,6 +1,7 @@
 "use client";
 
 import React, { ReactNode, useState, lazy, Suspense } from "react";
+import { usePathname } from "next/navigation";
 import LoadingSpinner from "./LoadingSpinner";
 
 // Lazy load mobile components for better performance
@@ -14,6 +15,10 @@ interface MobileLayoutProps {
 
 const MobileLayout = ({ children }: MobileLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Check if current page is a live stream page
+  const isStreamPage = pathname?.includes('/live-streams/') && pathname !== '/live-streams';
 
   const handleMenuClick = () => {
     setSidebarOpen(true);
@@ -36,30 +41,44 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
 
   return (
     <>
-      {/* Mobile Sidebar */}
-      <Suspense fallback={<LoadingFallback />}>
-        <MobileSidebar isOpen={sidebarOpen} onClose={handleSidebarClose} />
-      </Suspense>
+      {/* Mobile Sidebar - Hidden on stream pages */}
+      {!isStreamPage && (
+        <Suspense fallback={<LoadingFallback />}>
+          <MobileSidebar isOpen={sidebarOpen} onClose={handleSidebarClose} />
+        </Suspense>
+      )}
       
-      {/* Top mobile bar */}
-      <Suspense fallback={<LoadingFallback />}>
-        <TopMobileBar onMenuClick={handleMenuClick} />
-      </Suspense>
+      {/* Top mobile bar - Hidden on stream pages */}
+      {!isStreamPage && (
+        <Suspense fallback={<LoadingFallback />}>
+          <TopMobileBar onMenuClick={handleMenuClick} />
+        </Suspense>
+      )}
       
       {/* Main content with mobile-aware padding */}
-      <div className="mobile-layout-content">
+      <div className={`mobile-layout-content ${isStreamPage ? 'stream-page' : ''}`}>
         {children}
       </div>
       
-      {/* Bottom navigation */}
-      <Suspense fallback={<LoadingFallback />}>
-        <BottomNavigation />
-      </Suspense>
+      {/* Bottom navigation - Hidden on stream pages */}
+      {!isStreamPage && (
+        <Suspense fallback={<LoadingFallback />}>
+          <BottomNavigation />
+        </Suspense>
+      )}
 
       <style jsx>{`
         .mobile-layout-content {
           width: 100%;
           min-height: 100vh;
+        }
+
+        /* Stream page specific styles - full screen */
+        .mobile-layout-content.stream-page {
+          padding: 0 !important;
+          min-height: 100vh !important;
+          height: 100vh !important;
+          overflow: hidden !important;
         }
 
         /* Mobile layout adjustments */
@@ -70,6 +89,12 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
             /* No top padding needed since top bar is relative now */
             /* Ensure content fills remaining space */
             min-height: calc(100vh - 56px - 68px);
+          }
+
+          /* Stream page overrides mobile padding */
+          .mobile-layout-content.stream-page {
+            padding-bottom: 0 !important;
+            min-height: 100vh !important;
           }
         }
 
@@ -85,16 +110,24 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
             min-height: calc(100vh - 64px - 68px);
           }
 
+          /* Stream page overrides tablet padding */
+          .mobile-layout-content.stream-page {
+            padding: 0 !important;
+            min-height: 100vh !important;
+          }
+
           /* Safe area support for iOS */
           @supports (padding-bottom: env(safe-area-inset-bottom)) {
             .mobile-layout-content {
               padding-bottom: calc(68px + env(safe-area-inset-bottom));
               min-height: calc(100vh - 68px - env(safe-area-inset-bottom));
             }
+
+            .mobile-layout-content.stream-page {
+              padding-bottom: env(safe-area-inset-bottom) !important;
+            }
           }
         }
-
-
 
         /* Large screens (Desktop) - no mobile components */
         @media (min-width: 1024px) {

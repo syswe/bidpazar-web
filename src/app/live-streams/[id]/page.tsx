@@ -40,13 +40,15 @@ export default function LiveStreamPage() {
   // Local UI state
   const [likeCount, setLikeCount] = useState<number>(0);
   const [isLiked, setIsLiked] = useState<boolean>(false);
-  const [chatExpanded, setChatExpanded] = useState<boolean>(false);
   const [apiObj, setApiObj] = useState<any>(null);
   const [isCurrentUserStreamer, setIsCurrentUserStreamer] =
     useState<boolean>(false);
   const [isJoining, setIsJoining] = useState<boolean>(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
+
+  // Chat input state
+  const [chatInput, setChatInput] = useState<string>("");
 
   // Check sidebar state
   useEffect(() => {
@@ -142,6 +144,48 @@ export default function LiveStreamPage() {
     console.log("User navigating back to home");
     router.push("/live-streams");
   }, [router]);
+
+
+
+  // Handle chat message send
+  const handleChatSend = useCallback(async (message: string) => {
+    if (!message.trim()) return;
+    
+    try {
+      // Check if socket is available and user is authenticated
+      const socket = (window as any).streamChatSocket;
+      const connected = (window as any).streamChatConnected;
+      const authenticated = (window as any).streamChatAuthenticated;
+
+      if (!authenticated) {
+        toast.error("You must be logged in to send messages");
+        return;
+      }
+
+      if (!socket || !connected) {
+        toast.error("Chat not connected. Please wait a moment.");
+        return;
+      }
+
+      // Create message object
+      const messageData = {
+        streamId,
+        userId: userId || "anonymous",
+        username: username || "Anonymous",
+        message: message.trim(),
+      };
+
+      // Send message via socket.io
+      socket.emit("stream-message", messageData);
+      
+      // Clear input on successful send
+      setChatInput("");
+      console.log('Message sent successfully:', message);
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+      toast.error("Failed to send message. Please try again.");
+    }
+  }, [streamId, userId, username]);
 
   // Handle Jitsi API ready event
   const handleApiReady = (apiObject: any) => {
@@ -595,6 +639,17 @@ export default function LiveStreamPage() {
       className={`vertical-stream-container ${
         isSidebarExpanded ? "sidebar-expanded" : ""
       }`}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        zIndex: 1000
+      }}
     >
       <div
         className={`stream-content-wrapper ${
@@ -733,59 +788,69 @@ export default function LiveStreamPage() {
             likeCount={likeCount}
           />
 
-          {/* Chat toggle button - Now toggles between expanded and minimized */}
-          <button
-            onClick={() => setChatExpanded(!chatExpanded)}
-            className="action-button"
-          >
-            <MessageCircle
-              className={`w-5 h-5 ${
-                chatExpanded ? "text-[var(--accent)]" : "text-white"
-              }`}
-            />
-          </button>
+
         </div>
 
-        {/* Always visible chat container at the bottom - TikTok/Instagram style */}
-        <div
-          className={`permanent-chat-container ${
-            chatExpanded ? "expanded" : "minimized"
-          } ${isCurrentUserStreamer ? "streamer-chat" : ""}`}
-        >
-          <div className="chat-header border-b border-white/10 flex justify-between items-center p-2">
-            <h3 className="text-white text-sm font-medium">Canlı Sohbet</h3>
-            <button onClick={() => setChatExpanded(!chatExpanded)}>
-              {chatExpanded ? (
-                <X className="w-4 h-4 text-white/70 hover:text-white" />
-              ) : (
-                <MessageCircle className="w-4 h-4 text-white/70 hover:text-white" />
-              )}
-            </button>
-          </div>
-
-          <div
-            className={`chat-body ${chatExpanded ? "h-[250px]" : "h-[120px]"}`}
-          >
+                {/* TikTok/Instagram style transparent chat overlay */}
+        <div className="tiktok-chat-overlay">
+          {/* Messages area - shows last 3 messages */}
+          <div className="chat-messages-overlay">
             <StreamChat
               streamId={streamId}
               currentUserId={userId || "anonymous"}
               currentUsername={username || "Anonymous Viewer"}
-              className="w-full h-full"
+              className="transparent-chat"
+              showInput={false}
+              isCompact={true}
+              maxVisibleMessages={3}
+              onSendMessage={handleChatSend}
             />
           </div>
+
+          {/* Input area at bottom */}
+          {user && (
+            <div className="fixed-chat-input">
+              <div className="chat-input-wrapper">
+                <input
+                  type="text"
+                  placeholder="Mesajınızı yazın..."
+                  className="chat-input-minimal"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && chatInput.trim()) {
+                      handleChatSend(chatInput);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="chat-send-minimal"
+                  onClick={() => {
+                    if (chatInput.trim()) {
+                      handleChatSend(chatInput);
+                    }
+                  }}
+                  disabled={!chatInput.trim()}
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Show login prompt for anonymous users */}
         {!user && (
-          <div className="absolute bottom-4 left-0 right-0 text-center z-40">
-            <div className="bg-black/70 mx-auto max-w-md px-4 py-2 rounded-lg text-white">
-              <p>
+          <div className="absolute bottom-24 left-4 right-4 text-center z-40">
+            <div className="bg-black/80 mx-auto max-w-md px-4 py-3 rounded-xl text-white backdrop-blur-lg border border-white/20 shadow-lg">
+              <p className="text-sm mb-3">
                 Açık arttırmalara katılmak ve sohbet etmek için giriş
                 yapmalısınız
               </p>
               <button
                 onClick={() => router.push("/login")}
-                className="mt-2 px-4 py-2 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-md text-sm"
+                className="px-6 py-2 bg-[var(--accent)] text-white rounded-full text-sm font-medium hover:bg-[var(--accent)]/90 transition-colors"
               >
                 Giriş Yap
               </button>

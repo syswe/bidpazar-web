@@ -22,6 +22,10 @@ interface StreamChatProps {
   currentUserId: string;
   currentUsername: string;
   className?: string;
+  onSendMessage?: (message: string) => void;
+  showInput?: boolean;
+  maxVisibleMessages?: number;
+  isCompact?: boolean;
 }
 
 export default function StreamChat({
@@ -29,6 +33,10 @@ export default function StreamChat({
   currentUserId,
   currentUsername,
   className = "",
+  onSendMessage,
+  showInput = true,
+  maxVisibleMessages = 50,
+  isCompact = false,
 }: StreamChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -36,18 +44,124 @@ export default function StreamChat({
   const [isSending, setIsSending] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [fadingMessages, setFadingMessages] = useState<Set<string>>(new Set());
+  const [hiddenMessages, setHiddenMessages] = useState<Set<string>>(new Set());
+  const [showAllMessages, setShowAllMessages] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageTimeouts = useRef<Map<string, number>>(new Map());
+  const expandTimeoutRef = useRef<number | null>(null);
 
   const { user, isLoading: isAuthLoading } = useAuth();
   const socketRef = useRef<Socket | null>(null);
 
   const isAuthenticated = !!user && !!user.id && !!currentUserId;
 
+  // Detect mobile device
   useEffect(() => {
-    if (messagesEndRef.current) {
+    const checkIsMobile = () => {
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                            window.innerWidth <= 768 ||
+                            'ontouchstart' in window;
+      setIsMobile(isMobileDevice);
+      console.log('Mobile detection:', { 
+        isMobileDevice, 
+        userAgent: navigator.userAgent, 
+        width: window.innerWidth, 
+        hasTouch: 'ontouchstart' in window 
+      });
+    };
+
+    checkIsMobile();
+    window.addEventListener('resize', checkIsMobile);
+    return () => window.removeEventListener('resize', checkIsMobile);
+  }, []);
+
+  useEffect(() => {
+    if (messagesEndRef.current && (!isCompact || showAllMessages || isExpanded)) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, isCompact, showAllMessages, isExpanded]);
+
+  // Handle mobile tap to expand
+  const handleTouchInteraction = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isMobile) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
+    setShowAllMessages(newExpanded);
+    
+    console.log('Mobile chat interaction:', { newExpanded, hiddenCount: hiddenMessages.size });
+    
+    // Clear any existing timeout
+    if (expandTimeoutRef.current) {
+      clearTimeout(expandTimeoutRef.current);
+      expandTimeoutRef.current = null;
+    }
+    
+    // Auto-collapse after 8 seconds on mobile (longer time)
+    if (newExpanded) {
+      expandTimeoutRef.current = window.setTimeout(() => {
+        setIsExpanded(false);
+        setShowAllMessages(false);
+        console.log('Auto-collapsing mobile chat');
+      }, 8000);
+    }
+  };
+
+  // Handle desktop hover
+  const handleMouseEnter = () => {
+    if (isMobile) return;
+    setShowAllMessages(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (isMobile) return;
+    setShowAllMessages(false);
+  };
+
+  // Auto-fade messages after 3 seconds (only in compact mode)
+  useEffect(() => {
+    if (!isCompact) return;
+
+    // Set up fade timers for new messages
+    messages.forEach((message) => {
+      const messageId = message.id || `${message.timestamp}-${message.userId}`;
+      
+      // Skip if already has a timer
+      if (messageTimeouts.current.has(messageId)) return;
+
+      const timer = setTimeout(() => {
+        setFadingMessages(prev => new Set([...prev, messageId]));
+        
+        // Hide message after fade animation (don't remove from messages array)
+        setTimeout(() => {
+          setHiddenMessages(prev => new Set([...prev, messageId]));
+          setFadingMessages(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(messageId);
+            return newSet;
+          });
+          messageTimeouts.current.delete(messageId);
+        }, 300); // Wait for fade animation to complete
+      }, 3000); // 3 seconds before fade
+
+      messageTimeouts.current.set(messageId, timer);
+    });
+
+    // Cleanup function
+    return () => {
+      messageTimeouts.current.forEach(timer => clearTimeout(timer));
+      messageTimeouts.current.clear();
+      if (expandTimeoutRef.current) {
+        clearTimeout(expandTimeoutRef.current);
+      }
+    };
+  }, [messages, isCompact]);
 
   // Fetch initial messages via REST API
   useEffect(() => {
@@ -160,7 +274,11 @@ export default function StreamChat({
             timestamp: message.timestamp,
           };
 
-          setMessages((prev) => [...prev, normalizedMessage]);
+          setMessages((prev) => {
+            const newMessages = [...prev, normalizedMessage];
+            // Keep only recent messages to prevent memory issues
+            return newMessages.slice(-maxVisibleMessages);
+          });
         });
 
         newSocket.on("disconnect", (reason) => {
@@ -208,80 +326,103 @@ export default function StreamChat({
     currentUserId,
     currentUsername,
     reconnectAttempts,
+    maxVisibleMessages,
   ]);
+
+  // Expose socket and functions to parent for external message sending
+  useEffect(() => {
+    if (onSendMessage && socketRef.current) {
+      // Expose socket and auth status to parent
+      (window as any).streamChatSocket = socketRef.current;
+      (window as any).streamChatConnected = isConnected;
+      (window as any).streamChatAuthenticated = isAuthenticated;
+    }
+  }, [onSendMessage, socketRef.current, isConnected, isAuthenticated]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
-
-    if (!isAuthenticated) {
-      toast.error("You must be logged in to send messages");
-      return;
-    }
-
-    if (!socketRef.current || !socketRef.current.connected) {
-      toast.error("Chat not connected. Please wait or refresh the page.");
-      return;
-    }
-
-    setIsSending(true);
-
-    try {
-      // Create message object
-      const messageData = {
-        streamId,
-        userId: currentUserId,
-        username: currentUsername,
-        message: newMessage.trim(), // Use 'message' to match server expectations
-      };
-
-      // Send message via socket.io
-      socketRef.current.emit("stream-message", messageData);
-
-      // Locally add message for immediate display
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `local-${Date.now()}`,
-          streamId,
-          userId: currentUserId,
-          username: currentUsername,
-          content: newMessage.trim(),
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-
-      setNewMessage("");
-    } catch (error) {
-      console.error("StreamChat: Error sending message:", error);
-      toast.error("Failed to send message. Please try again.");
-    } finally {
-      setIsSending(false);
-    }
+    // This component no longer handles sending messages directly
+    // Message sending is handled by parent component
+    console.log("StreamChat: handleSendMessage called but not implemented");
   };
 
-  // Simplified UI when chat is unavailable
-  const renderChatUnavailableUI = () => {
-    if (isLoading) return null;
-
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-4">
-        <MessageCircle className="h-8 w-8 text-white/30 mb-2" />
-        <p className="text-white/70 text-center text-sm">
-          Chat is currently unavailable. You can still watch the stream.
-        </p>
-      </div>
-    );
-  };
+  // Get visible messages (compact mode shows fewer)
+  const visibleMessages = isCompact 
+    ? (showAllMessages || isExpanded)
+      ? messages // Show all messages when hovering/expanded
+      : messages.filter(msg => {
+          const msgId = msg.id || `${msg.timestamp}-${msg.userId}`;
+          return !hiddenMessages.has(msgId);
+        }).slice(-3) // Show only last 3 visible messages in compact mode
+    : messages;
 
   // Render a more user-friendly loading state
   if (isAuthLoading) {
     return (
       <div
-        className={`flex flex-col h-full bg-opacity-70 bg-black rounded-lg overflow-hidden items-center justify-center ${className}`}
+        className={`flex flex-col h-full items-center justify-center ${className}`}
       >
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
-        <p className="text-white/70 mt-2 text-sm">Loading chat...</p>
+        <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+        <p className="text-white/50 mt-2 text-xs">Loading chat...</p>
+      </div>
+    );
+  }
+
+  if (isCompact) {
+    // Compact mode for TikTok/Instagram style overlay
+    return (
+      <div className={`flex flex-col h-full ${className}`}>
+        <div 
+          className={`flex-1 flex flex-col justify-end space-y-2 p-2 ${(showAllMessages || isExpanded) ? 'chat-expanded' : ''} ${isMobile ? 'mobile-chat' : ''}`}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onTouchStart={isMobile ? handleTouchInteraction : undefined}
+          style={isMobile && isExpanded ? {
+            touchAction: 'pan-y',
+            overflowY: 'auto',
+            maxHeight: '60vh',
+            minHeight: '300px'
+          } : undefined}
+        >
+          {/* Mobile expand indicator */}
+          {isMobile && !isExpanded && hiddenMessages.size > 0 && (
+            <div 
+              className="text-center text-white/80 py-2 text-sm mobile-expand-hint"
+              onTouchStart={handleTouchInteraction}
+            >
+              👆 Tap to see all messages ({hiddenMessages.size} hidden)
+            </div>
+          )}
+          
+          {visibleMessages.length === 0 ? (
+            <div className="text-center text-white/50 py-2 text-xs">
+              No messages yet
+            </div>
+          ) : (
+            visibleMessages.map((message, index) => {
+              const messageId = message.id || `${message.timestamp}-${message.userId}`;
+              const isFading = fadingMessages.has(messageId);
+              const isHidden = hiddenMessages.has(messageId);
+              
+              // Don't show hidden messages unless hovering/expanded
+              if (isHidden && !showAllMessages && !isExpanded) {
+                return null;
+              }
+              
+              return (
+                <div
+                  key={message.id || index}
+                  className={`chat-message animate-in fade-in duration-300 ${isFading ? 'fading' : ''} ${isHidden ? 'was-hidden' : ''}`}
+                  style={{ animationDelay: `${index * 100}ms` }}
+                >
+                  <div className="username">{message.username}</div>
+                  <div className="message-text">{message.content}</div>
+                </div>
+              );
+            })
+          )}
+          {(showAllMessages || isExpanded) && <div ref={messagesEndRef} />}
+        </div>
       </div>
     );
   }
@@ -296,15 +437,11 @@ export default function StreamChat({
             <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
           </div>
         ) : messages.length === 0 ? (
-          reconnectAttempts >= 2 ? (
-            renderChatUnavailableUI()
-          ) : (
-            <div className="text-center text-white/70 py-4 text-sm">
-              No messages yet. Be the first to chat!
-            </div>
-          )
+          <div className="text-center text-white/70 py-4 text-sm">
+            No messages yet. Be the first to chat!
+          </div>
         ) : (
-          messages.map((message, index) => (
+          visibleMessages.map((message, index) => (
             <div
               key={message.id || index}
               className={`flex items-start space-x-2 ${
@@ -329,51 +466,53 @@ export default function StreamChat({
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSendMessage} className="p-2 bg-black/30">
-        <div className="relative flex items-center">
-          <input
-            type="text"
-            placeholder={
-              isAuthenticated
-                ? isConnected
-                  ? "Send a message..."
-                  : "Connecting chat..."
-                : "Login to chat..."
-            }
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            disabled={
-              !isAuthenticated ||
-              isSending ||
-              !isConnected ||
-              reconnectAttempts >= 2
-            }
-            className="w-full bg-black/50 text-white placeholder-white/50 px-4 py-2 pr-10 rounded-full focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-          />
-          {isAuthenticated ? (
-            <button
-              type="submit"
+      {showInput && (
+        <form onSubmit={handleSendMessage} className="p-2 bg-black/30">
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              placeholder={
+                isAuthenticated
+                  ? isConnected
+                    ? "Send a message..."
+                    : "Connecting chat..."
+                  : "Login to chat..."
+              }
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
               disabled={
+                !isAuthenticated ||
                 isSending ||
-                !newMessage.trim() ||
                 !isConnected ||
                 reconnectAttempts >= 2
               }
-              className="absolute right-2 text-white/80 hover:text-white disabled:text-white/40"
-            >
-              {isSending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </button>
-          ) : (
-            <div className="absolute right-2 text-white/50">
-              <LogIn className="h-5 w-5" />
-            </div>
-          )}
-        </div>
-      </form>
+              className="w-full bg-black/50 text-white placeholder-white/50 px-4 py-2 pr-10 rounded-full focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+            />
+            {isAuthenticated ? (
+              <button
+                type="submit"
+                disabled={
+                  isSending ||
+                  !newMessage.trim() ||
+                  !isConnected ||
+                  reconnectAttempts >= 2
+                }
+                className="absolute right-2 text-white/80 hover:text-white disabled:text-white/40"
+              >
+                {isSending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </button>
+            ) : (
+              <div className="absolute right-2 text-white/50">
+                <LogIn className="h-5 w-5" />
+              </div>
+            )}
+          </div>
+        </form>
+      )}
     </div>
   );
 }

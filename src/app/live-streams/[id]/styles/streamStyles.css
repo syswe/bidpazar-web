@@ -1,13 +1,18 @@
 /* Stream layout styles */
 
 .vertical-stream-container {
-  position: relative;
-  width: 100%;
-  height: calc(100vh - 60px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background-color: #000;
   overflow: hidden;
+  z-index: 1;
 }
 
 .stream-content-wrapper {
@@ -16,8 +21,9 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  margin: 0 auto; /* Center the content */
-  max-width: 1280px; /* Limit width on large screens */
+  margin: 0 auto;
+  max-width: 1280px;
+  overflow: hidden;
 }
 
 /* Jitsi container styles */
@@ -28,6 +34,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 /* Make sure Jitsi iframe takes full height and width */
@@ -178,10 +185,15 @@ video {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .action-button:hover {
   background-color: rgba(0, 0, 0, 0.7);
+  transform: scale(1.1);
 }
 
 .back-button {
@@ -194,140 +206,233 @@ video {
   transition: all 0.2s;
   display: flex;
   align-items: center;
-  justify-center: center;
+  justify-content: center;
   width: 2rem;
   height: 2rem;
   pointer-events: auto;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .back-button:hover {
   background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
 }
 
-/* Sidebar compatibility for stream container */
-@media (min-width: 768px) {
-  .vertical-stream-container {
-    width: calc(100% - 64px); /* When sidebar is collapsed */
-    margin-left: 64px;
-    display: flex;
-    justify-content: center; /* Center horizontally */
-  }
-
-  .stream-content-wrapper {
-    max-width: 800px; /* Limit width on desktop for TikTok-like feel */
-    position: relative;
-  }
-
-  /* Position action buttons and product section correctly for desktop */
-  .stream-actions {
-    right: calc(
-      50% - 400px + 16px
-    ); /* Position relative to centered container */
-  }
-
-  .product-section {
-    left: calc(
-      50% - 400px + 16px
-    ); /* Position relative to centered container */
-  }
+/* TikTok/Instagram style chat overlay */
+.tiktok-chat-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 30;
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  .vertical-stream-container.sidebar-expanded {
-    width: calc(100% - 272px); /* When sidebar is expanded */
-    margin-left: 272px;
-  }
-
-  /* Adjust position calculations for sidebar expanded */
-  .sidebar-expanded .stream-actions {
-    right: calc(50% - 400px + 16px);
-  }
-
-  .sidebar-expanded .product-section {
-    left: calc(50% - 400px + 16px);
-  }
+.chat-messages-overlay {
+  position: relative;
+  pointer-events: auto; /* Enable pointer events by default */
+  padding: 16px;
+  margin-bottom: 20px; /* Much less space from bottom */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 120px; /* Smaller height to keep messages lower */
+  max-height: 200px; /* Limit max height */
+  overflow: visible; /* Allow overflow by default */
 }
 
-@media (min-width: 1024px) {
-  .vertical-stream-container.sidebar-expanded {
-    width: calc(100% - 256px); /* When sidebar is expanded */
-    margin-left: 256px;
-  }
-
-  .stream-content-wrapper {
-    max-width: 900px; /* Slightly wider on larger screens */
-  }
-
-  /* Adjust position calculations for larger screens */
-  .stream-actions {
-    right: calc(50% - 450px + 16px);
-  }
-
-  .product-section {
-    left: calc(50% - 450px + 16px);
-  }
+.chat-expanded {
+  pointer-events: auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-height: 350px !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-radius: 12px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent !important;
+  transition: all 0.3s ease-in-out !important;
+  -webkit-overflow-scrolling: touch !important; /* Enable smooth scrolling on iOS */
+  justify-content: flex-start !important;
 }
 
-/* Responsive adjustments for mobile */
+.chat-expanded::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.chat-expanded::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.chat-expanded::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3) !important;
+  border-radius: 2px !important;
+}
+
+.chat-expanded::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Mobile-specific chat styles */
+.mobile-chat {
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.mobile-chat.chat-expanded {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border-radius: 12px !important;
+  padding: 8px !important;
+  margin: 4px !important;
+  max-height: 60vh !important; /* Better mobile height */
+}
+
+.mobile-expand-hint {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 16px !important;
+  padding: 8px 12px !important;
+  margin: 4px 0 !important;
+  animation: pulse 2s infinite !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Touch-friendly scrollbar for mobile */
 @media (max-width: 768px) {
-  .product-section {
-    left: 16px;
-    max-width: 180px;
-    top: 25%;
+  .chat-messages-overlay {
+    pointer-events: auto !important;
+    touch-action: auto !important;
   }
 
-  .chat-container {
-    max-height: 250px;
+  .chat-expanded {
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    touch-action: pan-y !important;
+    max-height: 60vh !important;
   }
 
-  .stream-content-wrapper {
-    max-width: 100%; /* Full width on mobile */
+  .chat-expanded::-webkit-scrollbar {
+    width: 8px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+  
+  .chat-expanded::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5) !important;
+    border-radius: 4px !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
   }
 
-  .stream-actions {
-    right: 16px;
-    top: 30%;
+  .chat-expanded::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2) !important;
+    border-radius: 4px !important;
   }
 
-  .permanent-chat-container {
-    max-width: 100%; /* Full width on mobile */
-  }
-
-  .streamer-content .product-section {
-    top: 20%;
-  }
-
-  .streamer-content .stream-actions {
-    top: 25%;
+  /* Force scrollable content */
+  .mobile-chat.chat-expanded {
+    min-height: 300px !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 }
 
-/* TikTok-style chat overlay */
-/* Remove the old chat side panel styles */
-.chat-side-panel {
-  display: none; /* Hide this completely */
+.fixed-chat-input {
+  position: relative;
+  pointer-events: auto;
+  padding: 12px 16px 16px 16px; /* Less top padding */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.7) 50%,
+    transparent 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-/* Chat message styles for overlay */
-.chat-message {
-  animation: slideIn 0.3s ease forwards;
-  margin-bottom: 0.75rem;
+.chat-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-.system-message {
-  font-style: italic;
-  opacity: 0.8;
-  text-align: center;
-  padding: 0.25rem 0.5rem;
-  margin: 0.5rem 0;
-  background-color: rgba(0, 0, 0, 0.05);
-  border-radius: 0.5rem;
+.chat-input-minimal {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 25px;
+  padding: 12px 20px;
+  color: white;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
+
+.chat-input-minimal::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chat-input-minimal:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--accent), 0.2);
+}
+
+.chat-send-minimal {
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.chat-send-minimal:hover:not(:disabled) {
+  transform: scale(1.05);
+  background: var(--accent-hover, var(--accent));
+}
+
+.chat-send-minimal:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Legacy chat styles removed - using new TikTok/Instagram style */
 
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -335,99 +440,174 @@ video {
   }
 }
 
-/* Animation for chat messages appearing */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateX(20px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
 
-/* Bidding interface styles */
+.chat-message {
+  animation: slideIn 0.3s ease-out;
+}
+
 .bidding-interface {
-  background-color: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 0.75rem;
-  padding: 1rem;
-  margin-top: 0.5rem;
-  transition: all 0.3s ease;
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .countdown-timer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: 0.5rem;
-  border-radius: 0.5rem;
+  background: rgba(255, 0, 0, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
   font-weight: bold;
-  margin-bottom: 0.5rem;
+  font-size: 12px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .countdown-timer.ending {
-  background-color: rgba(220, 38, 38, 0.7);
   animation: pulse 1s infinite;
 }
 
 @keyframes pulse {
   0% {
-    opacity: 0.7;
+    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    opacity: 1;
+    opacity: 0.8;
+    transform: scale(1.05);
   }
   100% {
-    opacity: 0.7;
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
-/* Responsive adjustments */
+/* Mobile responsive adjustments */
 @media (max-width: 768px) {
   .vertical-stream-container {
     height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile */
   }
 
-  .product-section {
-    max-width: 250px;
+  .stream-actions {
+    right: 12px;
+    top: 25%;
+    gap: 12px;
   }
 
   .action-button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .permanent-chat-container.minimized {
+    height: 140px;
+  }
+
+  .permanent-chat-container.expanded {
+    height: 280px;
+  }
+
+  .product-section {
+    left: 12px;
+  }
+
+  .streamer-content .product-section {
+    left: 12px;
+    top: 50%;
+  }
+
+  .streamer-content .stream-actions {
+    right: 12px;
   }
 }
 
-/* Additional Jitsi styles to replace script injection */
+/* Tablet adjustments */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .vertical-stream-container.sidebar-expanded {
+    margin-left: 256px;
+    width: calc(100vw - 256px);
+  }
 
-/* Streamer toolbar styling */
+  .sidebar-expanded .stream-actions {
+    right: 24px;
+  }
+
+  .sidebar-expanded .product-section {
+    left: 24px;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 1024px) {
+  .vertical-stream-container.sidebar-expanded {
+    margin-left: 256px;
+    width: calc(100vw - 256px);
+  }
+
+  .stream-content-wrapper {
+    margin: 0 auto;
+  }
+
+  .stream-actions {
+    right: 32px;
+  }
+
+  .product-section {
+    left: 32px;
+  }
+}
+
+.chat-side-panel {
+  /* Removed - using permanent chat container instead */
+  display: none;
+}
+
+.system-message {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  margin: 8px 0;
+  font-style: italic;
+  background: none;
+  padding: 4px 0;
+}
+
 .streamer-mode .new-toolbox,
+.streamer-mode .toolbar,
 .streamer-mode #new-toolbox {
   z-index: 9999 !important;
   pointer-events: auto !important;
-  display: flex !important;
-  bottom: 25px !important;
 }
 
 .streamer-mode .toolbar-button,
-.streamer-mode .toolbox-content,
 .streamer-mode .toolbox-button {
   pointer-events: auto !important;
-  cursor: pointer !important;
   z-index: 10000 !important;
 }
 
 .streamer-mode .button-group-container {
-  z-index: 10000 !important;
   pointer-events: auto !important;
+  z-index: 10000 !important;
 }
 
-/* Hide viewer elements */
 .viewer-mode .new-toolbox,
-.viewer-mode #new-toolbox {
+.viewer-mode .toolbar {
   display: none !important;
 }
 
@@ -436,29 +616,16 @@ video {
 }
 
 .viewer-mode .subject,
-.viewer-mode .circular-label,
-.viewer-mode .subject-info-container,
-.viewer-mode .video-state-indicator,
-.viewer-mode .connection-indicator {
+.viewer-mode .conference-timer,
+.viewer-mode .participants-count,
+.viewer-mode .watermark {
   display: none !important;
 }
 
-/* Center video for both modes */
 .streamer-mode #largeVideoContainer,
-.viewer-mode #largeVideoContainer {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  z-index: 10 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
 .streamer-mode #largeVideoWrapper,
-.viewer-mode #largeVideoWrapper {
+.streamer-mode #videospace {
+  position: relative !important;
   width: 100% !important;
   height: 100% !important;
   display: flex !important;
@@ -466,157 +633,223 @@ video {
   justify-content: center !important;
 }
 
-/* Add these styles */
-
-/* Permanent chat container at the bottom of the screen */
-.permanent-chat-container {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(10px);
-  z-index: 10;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  transition: height 0.3s ease;
-  max-width: 900px; /* Match the stream container width */
-  margin: 0 auto; /* Center horizontally */
-  width: 100%;
+.streamer-mode #largeVideoWrapper,
+.streamer-mode #largeVideo {
+  background-color: black !important;
 }
 
-.permanent-chat-container.minimized {
-  height: 150px; /* Smaller height when minimized */
-}
-
-.permanent-chat-container.expanded {
-  height: 300px; /* Larger height when expanded */
-}
-
-.chat-body {
-  overflow-y: auto;
-  padding: 0.5rem;
-  transition: height 0.3s ease;
-}
-
-/* Adjust layout for sidebar extended */
-.sidebar-expanded .stream-content-wrapper {
-  /* Remove the margin-left that was causing asymmetry */
-  margin-left: 0;
-}
-
-/* Streamer-specific adjustments */
-.streamer-mode {
-  height: 100%;
-}
-
-.stream-content-wrapper.streamer-content .product-section {
-  top: 20%; /* Move product section higher for streamers */
-}
-
-.permanent-chat-container.streamer-chat {
-  height: 200px; /* Fixed height for streamers */
-}
-
-/* Make sure the chat overlay is always above the video */
-iframe {
-  z-index: 5 !important;
-}
-
-/* Streamer chat positioning */
 .streamer-chat {
-  position: absolute;
-  bottom: 0;
-  z-index: 50; /* Lower z-index to not interfere with toolbox */
-  margin-bottom: 60px; /* Add margin at bottom to make room for Jitsi controls */
-  max-height: 250px !important; /* Reduced max height for streamer */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.7) 50%,
+    rgba(0, 0, 0, 0.3) 80%,
+    transparent 100%
+  );
 }
 
 .streamer-chat.expanded {
-  max-height: 200px !important;
+  height: 350px;
 }
 
-/* Ensure chat doesn't overlap with Jitsi toolbox */
 .streamer-mode .permanent-chat-container {
-  bottom: 60px; /* Give space for the toolbox */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.7) 60%,
+    transparent 100%
+  );
 }
 
-/* For streamers, adjust the actions position */
 .streamer-content .stream-actions {
-  top: 25%; /* Align with product section */
+  right: 20px;
+  top: 30%;
 }
 
-/* Position toolbox for streamer mode */
-.streamer-mode .new-toolbox {
-  z-index: 99 !important;
-  position: absolute !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  background-color: rgba(0, 0, 0, 0.5) !important;
+iframe {
+  border: none !important;
+  background-color: black !important;
 }
 
-/* Product section positioning to match centered layout */
 .product-section {
   position: absolute;
-  top: 25%;
-  z-index: 10;
-  max-width: 240px;
+  top: 40%;
+  left: 20px;
+  transform: translateY(-50%);
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-width: 280px;
 }
 
-/* Transparent bidding interface - style the container */
-.bidding-interface {
-  background-color: rgba(0, 0, 0, 0.4) !important;
-  backdrop-filter: blur(4px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
-}
-
-/* Ensure videos are visible through the transparent chat */
 #largeVideo {
   object-fit: contain !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  background-color: black !important;
 }
 
-/* Additional transparency for chat when video is playing */
-.permanent-chat-container {
-  background-color: rgba(0, 0, 0, 0.5);
+/* Transparent chat specific styles */
+.transparent-chat {
+  background: transparent !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  pointer-events: auto !important;
 }
 
-/* Make chat messages more readable on transparent background */
-.permanent-chat-container .text-sm {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+.transparent-chat > div {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  padding: 0 !important;
 }
 
-/* Adjust input field to be more visible */
-.permanent-chat-container input {
-  background-color: rgba(0, 0, 0, 0.6) !important;
+.chat-message {
+  background: rgba(0, 0, 0, 0.8) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  margin: 4px 0 !important;
+  padding: 8px 12px !important;
+  border-radius: 18px !important;
+  color: white !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  max-width: 85% !important;
+  word-wrap: break-word !important;
+  animation: slideInUp 0.3s ease-out !important;
+  transition: opacity 0.3s ease-out !important;
 }
 
-/* Responsive adjustments */
+.chat-message.fading {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.chat-message.was-hidden {
+  opacity: 0.7 !important;
+  transform: scale(0.95) !important;
+  filter: brightness(0.8) !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.chat-expanded .chat-message.was-hidden {
+  opacity: 0.9 !important;
+  transform: scale(1) !important;
+  filter: brightness(1) !important;
+}
+
+.chat-message .username {
+  font-weight: 600 !important;
+  color: var(--accent) !important;
+  margin-right: 8px !important;
+  font-size: 12px !important;
+}
+
+.chat-message .message-text {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.transparent-chat .system-message {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  text-align: center !important;
+  font-style: italic !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Prevent scrollbar on mobile for smooth experience */
+@media (max-width: 768px) {
+  .vertical-stream-container {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .stream-content-wrapper {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+/* Additional mobile optimizations */
 @media (max-width: 768px) {
   .product-section {
-    width: 180px;
-    left: 16px; /* Reset for mobile */
+    max-width: 240px;
+    padding: 12px;
   }
 
   .stream-actions {
-    right: 16px; /* Reset for mobile */
-    top: 30%;
+    gap: 10px;
   }
 
   .permanent-chat-container {
-    max-width: 100%; /* Full width on mobile */
+    border-radius: 12px 12px 0 0;
   }
 
   .streamer-content .product-section {
-    top: 20%;
+    max-width: 220px;
   }
 
   .streamer-content .stream-actions {
-    top: 25%;
+    gap: 8px;
   }
 }
+
+/* iOS safe area support */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .permanent-chat-container {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  
+  .chat-input-container {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Performance optimizations */
+.vertical-stream-container {
+  contain: layout style;
+  will-change: transform;
+}
+
+.permanent-chat-container {
+  contain: layout style;
+  will-change: height, opacity;
+}
+
+.action-button,
+.chat-send-button {
+  will-change: transform;
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  .permanent-chat-container,
+  .action-button,
+  .chat-send-button,
+  .chat-message {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+

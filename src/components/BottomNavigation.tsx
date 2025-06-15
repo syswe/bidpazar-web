@@ -13,6 +13,7 @@ const BottomNavigation = () => {
   const [isTablet, setIsTablet] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -30,6 +31,35 @@ const BottomNavigation = () => {
     // Cleanup
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Effect to check and listen for guest mode status from the WebView host
+  useEffect(() => {
+    const checkGuestMode = () => {
+      const guestMode = localStorage.getItem('isGuestMode') === 'true';
+      if (isGuest !== guestMode) {
+        setIsGuest(guestMode);
+      }
+    };
+
+    const handleAuthStateChange = (event: Event) => {
+      const guestMode = (event as CustomEvent).detail?.isGuestMode;
+      if (guestMode !== undefined && isGuest !== guestMode) {
+        setIsGuest(guestMode);
+      }
+    };
+
+    checkGuestMode(); // Initial check
+
+    // Listen for custom events dispatched from the React Native WebView
+    window.addEventListener('authStateChanged', handleAuthStateChange);
+    // Use the 'storage' event as a fallback
+    window.addEventListener('storage', checkGuestMode);
+
+    return () => {
+      window.removeEventListener('authStateChanged', handleAuthStateChange);
+      window.removeEventListener('storage', checkGuestMode);
+    };
+  }, [isGuest]);
 
   // Reset navigation loading state when pathname changes
   useEffect(() => {
@@ -70,32 +100,41 @@ const BottomNavigation = () => {
     router.push(href);
   }, [pathname, router, triggerHaptic]);
 
-  const navItems = useMemo(() => [
-    {
-      icon: Home,
-      label: "Ana Sayfa",
-      href: "/",
-      isActive: pathname === "/",
-    },
-    {
-      icon: ShoppingBag,
-      label: "Ürünler",
-      href: "/products",
-      isActive: pathname.startsWith("/products"),
-    },
-    {
-      icon: Tv,
-      label: "Yayınlar",
-      href: "/live-streams",
-      isActive: pathname.startsWith("/live-streams"),
-    },
-    {
-      icon: User,
-      label: "Hesabım",
-      href: "/dashboard",
-      isActive: pathname.startsWith("/dashboard"),
-    },
-  ], [pathname]);
+  const navItems = useMemo(() => {
+    const allItems = [
+      {
+        icon: Home,
+        label: "Ana Sayfa",
+        href: "/",
+        isActive: pathname === "/",
+      },
+      {
+        icon: ShoppingBag,
+        label: "Ürünler",
+        href: "/products",
+        isActive: pathname.startsWith("/products"),
+      },
+      {
+        icon: Tv,
+        label: "Yayınlar",
+        href: "/live-streams",
+        isActive: pathname.startsWith("/live-streams"),
+      },
+      {
+        icon: User,
+        label: "Hesabım",
+        href: "/dashboard",
+        isActive: pathname.startsWith("/dashboard"),
+      },
+    ];
+    
+    // If in guest mode, filter out the "Hesabım" (Account) link
+    if (isGuest) {
+      return allItems.filter(item => item.href !== '/dashboard');
+    }
+
+    return allItems;
+  }, [pathname, isGuest]);
 
   // Swipe navigation
   const handleSwipeLeft = useCallback(() => {
