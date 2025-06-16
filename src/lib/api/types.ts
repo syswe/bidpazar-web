@@ -24,6 +24,7 @@ export interface Product {
   title: string;
   description: string;
   price: number;
+  buyNowPrice?: number;
   currency: string;
   userId: string;
   categoryId: string;

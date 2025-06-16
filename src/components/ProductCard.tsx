@@ -1,13 +1,18 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { useState } from 'react';
 import { Product } from '@/lib/api';
 import VerifiedSellerBadge from './VerifiedSellerBadge';
+import { useAuth } from './AuthProvider';
 
 interface ProductCardProps {
   product: Product;
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
+  const { user } = useAuth();
+  const [isBuying, setIsBuying] = useState(false);
+
   // Ürün resmi varsa ilkini al, yoksa placeholder kullan
   const imageUrl = product.images && product.images.length > 0
     ? product.images[0].url
@@ -19,6 +24,53 @@ export default function ProductCard({ product }: ProductCardProps) {
     currency: 'TRY'
   }).format(product.price);
 
+  const formattedBuyNowPrice = product.buyNowPrice ? new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY'
+  }).format(product.buyNowPrice) : null;
+
+  const handleBuyNow = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!user) {
+      window.location.href = `/login?redirect=${encodeURIComponent(`/products/${product.id}`)}`;
+      return;
+    }
+
+    if (user.id === product.userId) {
+      alert('Kendi ürününüzü satın alamazsınız.');
+      return;
+    }
+
+    try {
+      setIsBuying(true);
+      // TODO: Implement buy now API call
+      const response = await fetch(`/api/products/${product.id}/buy-now`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Satın alma işlemi başarısız oldu');
+      }
+
+      const result = await response.json();
+      alert('Ürün başarıyla satın alındı!');
+      // Optionally refresh the page or redirect to orders
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Buy now error:', error);
+      alert(error.message || 'Satın alma işlemi sırasında bir hata oluştu');
+    } finally {
+      setIsBuying(false);
+    }
+  };
+
   return (
     <div className="group relative rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg hover:border-[var(--accent)] transition-all duration-300">
       <Link href={`/products/${product.id}`} className="block h-full">
@@ -29,16 +81,34 @@ export default function ProductCard({ product }: ProductCardProps) {
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-105"
           />
-          {/* Price badge */}
-          <div className="absolute bottom-3 right-3 bg-[var(--background)] px-3 py-1.5 rounded-full shadow-md font-bold text-[var(--accent)]">
-            {formattedPrice}
+          {/* Price badges */}
+          <div className="absolute bottom-3 right-3 space-y-1">
+            <div className="bg-[var(--background)] px-3 py-1.5 rounded-full shadow-md font-bold text-[var(--accent)]">
+              {formattedPrice}
+            </div>
+            {formattedBuyNowPrice && (
+              <div className="bg-green-600 px-3 py-1.5 rounded-full shadow-md font-bold text-white text-sm">
+                Hemen Al: {formattedBuyNowPrice}
+              </div>
+            )}
           </div>
 
-          {/* Quick view button */}
+          {/* Quick view and buy now buttons */}
           <div className="absolute inset-0 bg-black bg-opacity-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <span className="bg-white text-[var(--accent)] px-4 py-2 rounded-md font-medium transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-              İncele
-            </span>
+            <div className="flex flex-col gap-2 items-center transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+              <span className="bg-white text-[var(--accent)] px-4 py-2 rounded-md font-medium">
+                İncele
+              </span>
+              {formattedBuyNowPrice && (
+                <button
+                  onClick={handleBuyNow}
+                  disabled={isBuying}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isBuying ? 'İşleniyor...' : 'Hemen Al'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

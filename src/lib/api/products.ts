@@ -31,6 +31,7 @@ export const createProduct = async (data: {
   title: string;
   description: string;
   price: number;
+  buyNowPrice?: number;
   categoryId: string;
 }): Promise<Product> => {
   return fetcher<Product>("products", {

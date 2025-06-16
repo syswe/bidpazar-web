@@ -653,25 +653,25 @@ export default function Home() {
         onPrevious={handlePreviousStory}
       />
 
-      <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto">
+      <main className="flex-1 p-3 md:p-6 max-w-7xl mx-auto">
         {/* Hero Banner - Only show to non-authenticated users */}
         {!authLoading && !user && (
-          <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] text-white mb-10 relative">
-            <div className="p-8 md:p-12 md:w-2/3">
-              <h1 className="text-3xl md:text-4xl font-bold mb-4">BidPazar'a Hoş Geldiniz</h1>
-              <p className="text-lg mb-6 opacity-90">
+          <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] text-white mb-6 md:mb-10 relative">
+            <div className="p-6 md:p-12 md:w-2/3">
+              <h1 className="text-2xl md:text-4xl font-bold mb-3 md:mb-4">BidPazar'a Hoş Geldiniz</h1>
+              <p className="text-base md:text-lg mb-4 md:mb-6 opacity-90">
                 Canlı yayın müzayede platformunda benzersiz ürünleri keşfedin, teklif verin ve koleksiyonunuzu genişletin.
               </p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Link 
                   href="/live-streams" 
-                  className="bg-white text-[var(--accent)] font-medium px-6 py-2.5 rounded-lg hover:bg-opacity-90 transition-colors"
+                  className="bg-white text-[var(--accent)] font-medium px-6 py-2.5 rounded-lg hover:bg-opacity-90 transition-colors text-center"
                 >
                   Canlı Yayınları Keşfet
                 </Link>
                 <Link
                   href="/auth/register"
-                  className="bg-transparent text-white border border-white font-medium px-6 py-2.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors"
+                  className="bg-transparent text-white border border-white font-medium px-6 py-2.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-center"
                 >
                   Üye Ol
                 </Link>
@@ -686,38 +686,38 @@ export default function Home() {
         )}
 
         {/* Instagram-like Stories Section */}
-        <section className="mb-10">
-          <div className="flex items-center mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Hikayeler</span>
             </h2>
           </div>
 
           {storiesLoading ? (
-            <div className="flex space-x-6 overflow-x-auto pb-4">
+            <div className="flex space-x-4 md:space-x-6 overflow-x-auto pb-4">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="flex flex-col items-center">
-                  <div className="w-20 h-20 relative flex-shrink-0">
+                  <div className="w-16 h-16 md:w-20 md:h-20 relative flex-shrink-0">
                     <div className="w-full h-full rounded-full bg-[var(--secondary)] animate-pulse"></div>
                   </div>
-                  <div className="w-16 h-4 bg-[var(--secondary)] rounded mt-2 animate-pulse"></div>
+                  <div className="w-14 md:w-16 h-3 md:h-4 bg-[var(--secondary)] rounded mt-2 animate-pulse"></div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex space-x-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
+            <div className="flex space-x-4 md:space-x-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
               {/* Add Story Button - Only show to authenticated users */}
               {user && (
                 <div className="flex flex-col items-center">
                   <button
                     onClick={() => setStoryCreateModalOpen(true)} 
-                    className="w-20 h-20 relative flex-shrink-0"
+                    className="w-16 h-16 md:w-20 md:h-20 relative flex-shrink-0"
                   >
                     <div className="w-full h-full rounded-full flex items-center justify-center bg-[var(--secondary)] border-2 border-[var(--accent)] hover:opacity-90 transition-opacity cursor-pointer">
-                      <Plus className="h-8 w-8 text-[var(--accent)]" />
+                      <Plus className="h-6 w-6 md:h-8 md:w-8 text-[var(--accent)]" />
                     </div>
                   </button>
-                  <span className="text-sm mt-2 text-center text-[var(--foreground)] font-medium">Hikaye Ekle</span>
+                  <span className="text-xs md:text-sm mt-2 text-center text-[var(--foreground)] font-medium">Hikaye Ekle</span>
                 </div>
               )}
 
@@ -727,26 +727,26 @@ export default function Home() {
                   <div key={story.id} className="flex flex-col items-center">
                     <button
                       onClick={(e) => handleStoryClick(stories.indexOf(story))}
-                      className="w-20 h-20 relative flex-shrink-0"
+                      className="w-16 h-16 md:w-20 md:h-20 relative flex-shrink-0"
                     >
                       <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] p-[2px]">
                         <div className="w-full h-full rounded-full border-2 border-[var(--background)] overflow-hidden bg-[var(--background)]">
                           <div className="w-full h-full bg-[var(--secondary)] flex items-center justify-center">
-                            <span className="text-xl font-bold text-[var(--foreground)]">
+                            <span className="text-lg md:text-xl font-bold text-[var(--foreground)]">
                               {(story.user?.username || story.user?.name || 'A').charAt(0).toUpperCase()}
                             </span>
                           </div>
                         </div>
                       </div>
                     </button>
-                    <span className="text-sm mt-2 text-center truncate w-20 text-[var(--foreground)]">
+                    <span className="text-xs md:text-sm mt-2 text-center truncate w-16 md:w-20 text-[var(--foreground)]">
                       {story.user?.username || story.user?.name || 'Anonim'}
                     </span>
                   </div>
                 ))
               ) : (
-                <div className="flex-1 text-center py-8">
-                  <p className="text-[var(--foreground)] opacity-70">
+                <div className="flex-1 text-center py-6 md:py-8">
+                  <p className="text-[var(--foreground)] opacity-70 text-sm md:text-base">
                     {user ? 'İlk hikayeyi siz oluşturun!' : 'Henüz hikaye paylaşılmamış'}
                   </p>
                 </div>
@@ -756,35 +756,35 @@ export default function Home() {
         </section>
 
         {/* Trending Categories */}
-        <section className="mb-10 bg-[var(--background)] border border-[var(--border)] p-6 rounded-xl">
-          <div className="flex items-center mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10 bg-[var(--background)] border border-[var(--border)] p-4 md:p-6 rounded-xl">
+          <div className="flex items-center mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Trend Kategoriler</span>
             </h2>
           </div>
 
           {categoriesLoading ? (
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
               {[...Array(12)].map((_, i) => (
-                <div key={i} className="flex flex-col items-center p-4 border border-[var(--border)] rounded-lg bg-[var(--muted)] animate-pulse min-w-[120px]">
-                  <div className="w-8 h-8 bg-[var(--secondary)] rounded mb-2"></div>
-                  <div className="w-16 h-4 bg-[var(--secondary)] rounded mb-1"></div>
-                  <div className="w-12 h-3 bg-[var(--secondary)] rounded"></div>
+                <div key={i} className="flex flex-col items-center p-3 md:p-4 border border-[var(--border)] rounded-lg bg-[var(--muted)] animate-pulse min-w-[100px] md:min-w-[120px] flex-shrink-0">
+                  <div className="w-6 h-6 md:w-8 md:h-8 bg-[var(--secondary)] rounded mb-2"></div>
+                  <div className="w-12 md:w-16 h-3 md:h-4 bg-[var(--secondary)] rounded mb-1"></div>
+                  <div className="w-8 md:w-12 h-2 md:h-3 bg-[var(--secondary)] rounded"></div>
                 </div>
               ))}
             </div>
           ) : categories.length > 0 ? (
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
+            <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
               {categories.map(category => (
                 <Link 
                   href={`/categories/${category.id}`}
                   key={category.id}
-                  className="flex flex-col items-center p-4 border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-colors bg-[var(--muted)] hover:bg-[var(--background)] group min-w-[120px] flex-shrink-0"
+                  className="flex flex-col items-center p-3 md:p-4 border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-colors bg-[var(--muted)] hover:bg-[var(--background)] group min-w-[100px] md:min-w-[120px] flex-shrink-0"
                 >
-                  <span className="text-3xl mb-2 group-hover:scale-110 transition-transform">
+                  <span className="text-2xl md:text-3xl mb-2 group-hover:scale-110 transition-transform">
                     {category.emoji || '📦'}
                   </span>
-                  <span className="font-medium text-[var(--foreground)] text-center text-sm leading-tight mb-1">
+                  <span className="font-medium text-[var(--foreground)] text-center text-xs md:text-sm leading-tight mb-1">
                     {category.name}
                   </span>
                   <span className="text-xs text-[var(--foreground)] opacity-70">
@@ -794,11 +794,11 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8">
-              <div className="mx-auto w-16 h-16 bg-[var(--secondary)] rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">📦</span>
+            <div className="text-center py-6 md:py-8">
+              <div className="mx-auto w-12 h-12 md:w-16 md:h-16 bg-[var(--secondary)] rounded-full flex items-center justify-center mb-4">
+                <span className="text-xl md:text-2xl">📦</span>
               </div>
-              <p className="text-[var(--foreground)] opacity-70">
+              <p className="text-[var(--foreground)] opacity-70 text-sm md:text-base">
                 Henüz kategori bulunmuyor.
               </p>
             </div>
@@ -806,41 +806,41 @@ export default function Home() {
         </section>
 
         {/* Live Streams Section */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Canlı Müzayedeler</span>
             </h2>
             <Link 
               href="/live-streams" 
-              className="text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
+              className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
-              Tümünü Gör <ChevronRight className="h-4 w-4 ml-1" />
+              Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
             </Link>
           </div>
 
           {liveStreamsLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)]">
-                  <div className="h-48 bg-[var(--secondary)] animate-pulse"></div>
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 bg-[var(--secondary)] rounded animate-pulse"></div>
-                    <div className="h-3 bg-[var(--secondary)] rounded animate-pulse w-2/3"></div>
-                    <div className="h-6 bg-[var(--secondary)] rounded animate-pulse w-1/2"></div>
+                  <div className="h-32 md:h-48 bg-[var(--secondary)] animate-pulse"></div>
+                  <div className="p-3 md:p-4 space-y-2">
+                    <div className="h-3 md:h-4 bg-[var(--secondary)] rounded animate-pulse"></div>
+                    <div className="h-2 md:h-3 bg-[var(--secondary)] rounded animate-pulse w-2/3"></div>
+                    <div className="h-4 md:h-6 bg-[var(--secondary)] rounded animate-pulse w-1/2"></div>
                   </div>
                 </div>
               ))}
             </div>
           ) : liveStreams.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {liveStreams.map(stream => (
                 <Link 
                   href={`/live-streams/${stream.id}`}
                   key={stream.id} 
                   className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-md transition group cursor-pointer"
                 >
-                  <div className="relative h-48 bg-[var(--secondary)]">
+                  <div className="relative h-32 md:h-48 bg-[var(--secondary)]">
                     {stream.thumbnailUrl ? (
                       <Image
                         src={stream.thumbnailUrl}
@@ -851,41 +851,41 @@ export default function Home() {
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[var(--foreground)] text-opacity-70">Yayın Görseli</span>
+                        <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Yayın Görseli</span>
                       </div>
                     )}
 
                     {/* Live Badge */}
-                    <div className="absolute top-3 left-3 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md flex items-center">
-                      <span className="mr-1.5 flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-white opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                    <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                      <span className="mr-1 flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-white opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
                       </span>
                       CANLI
                     </div>
 
                     {/* Viewer Count */}
-                    <div className="absolute top-3 right-3 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded-md flex items-center">
-                      <Eye className="h-3 w-3 mr-1" />
+                    <div className="absolute top-2 right-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                      <Eye className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                       {stream.viewerCount || 0}
                     </div>
 
                     {/* Play Button Overlay */}
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-30">
-                      <div className="bg-white bg-opacity-90 rounded-full p-3">
-                        <Video className="h-8 w-8 text-[var(--accent)]" />
+                      <div className="bg-white bg-opacity-90 rounded-full p-2 md:p-3">
+                        <Video className="h-4 w-4 md:h-8 md:w-8 text-[var(--accent)]" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-4">
-                    <h3 className="font-semibold text-[var(--foreground)] mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{stream.title}</h3>
-                    <p className="text-sm text-[var(--foreground)] opacity-80 mb-3">{stream.user?.username || stream.user?.name || 'Anonim Yayıncı'}</p>
+                  <div className="p-3 md:p-4">
+                    <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{stream.title}</h3>
+                    <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{stream.user?.username || stream.user?.name || 'Anonim Yayıncı'}</p>
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-[var(--foreground)] opacity-70">
                         {stream.listings && stream.listings.length > 0 ? `${stream.listings.length} ürün` : 'Henüz ürün yok'}
                       </span>
-                      <span className="font-bold text-[var(--primary)]">
+                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">
                         {stream.listings && stream.listings.length > 0 && stream.listings[0].product
                           ? `${stream.listings[0].product.price.toLocaleString()} ₺` 
                           : 'Başlıyor'
@@ -897,17 +897,17 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 bg-[var(--muted)] rounded-xl">
-              <div className="mx-auto w-16 h-16 bg-[var(--secondary)] rounded-full flex items-center justify-center mb-4">
-                <Video className="h-8 w-8 text-[var(--foreground)] opacity-50" />
+            <div className="text-center py-8 md:py-12 bg-[var(--muted)] rounded-xl">
+              <div className="mx-auto w-12 h-12 md:w-16 md:h-16 bg-[var(--secondary)] rounded-full flex items-center justify-center mb-4">
+                <Video className="h-6 w-6 md:h-8 md:w-8 text-[var(--foreground)] opacity-50" />
               </div>
-              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">Henüz Aktif Yayın Yok</h3>
-              <p className="text-[var(--foreground)] opacity-70 mb-4">
+              <h3 className="text-base md:text-lg font-semibold text-[var(--foreground)] mb-2">Henüz Aktif Yayın Yok</h3>
+              <p className="text-[var(--foreground)] opacity-70 mb-4 text-sm md:text-base px-4">
                 Şu anda canlı müzayede yayını bulunmuyor. Yakında başlayacak yayınlar için takipte kalın!
               </p>
               <Link
                 href="/live-streams"
-                className="inline-flex items-center px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-opacity-90 transition-colors text-sm md:text-base"
               >
                 Tüm Yayınları Görüntüle
               </Link>
@@ -916,56 +916,56 @@ export default function Home() {
         </section>
 
         {/* Featured Auctions Section */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Öne Çıkan Açık Arttırmalar</span>
             </h2>
             <Link 
               href="/auctions" 
-              className="text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
+              className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
-              Tümünü Gör <ChevronRight className="h-4 w-4 ml-1" />
+              Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
             {featuredAuctions.map(auction => (
               <Link 
                 href={`/auctions/${auction.id}`}
                 key={auction.id} 
                 className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg transition group cursor-pointer relative"
               >
-                <div className="absolute top-3 right-3 z-10">
-                  <button className="bg-white bg-opacity-90 rounded-full p-2 shadow-md hover:bg-[var(--accent)] hover:text-white transition-colors">
-                    <Bookmark className="h-4 w-4" />
+                <div className="absolute top-2 right-2 z-10">
+                  <button className="bg-white bg-opacity-90 rounded-full p-1.5 md:p-2 shadow-md hover:bg-[var(--accent)] hover:text-white transition-colors">
+                    <Bookmark className="h-3 w-3 md:h-4 md:w-4" />
                   </button>
                 </div>
-                <div className="relative h-52 bg-[var(--secondary)]">
+                <div className="relative h-32 md:h-52 bg-[var(--secondary)]">
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[var(--foreground)] text-opacity-70">Ürün Görseli</span>
+                    <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
                   </div>
                   
                   {/* Countdown Badge */}
-                  <div className="absolute bottom-3 right-3 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-2 py-1 rounded-md flex items-center">
-                    <Clock className="h-3 w-3 mr-1" />
+                  <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                    <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                     {auction.endTime} kaldı
                   </div>
                 </div>
 
-                <div className="p-4">
-                  <h3 className="font-semibold text-[var(--foreground)] mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{auction.title}</h3>
-                  <p className="text-sm text-[var(--foreground)] opacity-80 mb-3">{auction.sellerName}</p>
+                <div className="p-3 md:p-4">
+                  <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{auction.title}</h3>
+                  <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{auction.sellerName}</p>
                   
-                  <div className="flex justify-between items-center mb-3">
+                  <div className="flex justify-between items-center mb-2 md:mb-3">
                     <div className="flex items-center text-xs text-[var(--foreground)] opacity-70">
-                      <TrendingUp className="h-3 w-3 mr-1" />
+                      <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                       <span>{auction.bidCount} teklif</span>
                     </div>
-                    <span className="font-bold text-[var(--primary)]">{auction.currentBid.toLocaleString()} ₺</span>
+                    <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{auction.currentBid.toLocaleString()} ₺</span>
                   </div>
                   
-                  <button className="w-full py-2 bg-[var(--accent)] text-white rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors">
+                  <button className="w-full py-1.5 md:py-2 bg-[var(--accent)] text-white rounded-md text-xs md:text-sm font-medium hover:bg-opacity-90 transition-colors">
                     Teklif Ver
                   </button>
                 </div>
@@ -975,32 +975,32 @@ export default function Home() {
         </section>
 
         {/* Popular Streamers Section */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Popüler Yayıncılar</span>
             </h2>
             <Link 
               href="/streamers" 
-              className="text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
+              className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
-              Tümünü Gör <ChevronRight className="h-4 w-4 ml-1" />
+              Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {popularStreamers.map(streamer => (
               <Link 
                 href={`/streamers/${streamer.id}`}
                 key={streamer.id} 
                 className="rounded-xl border border-[var(--border)] overflow-hidden hover:border-[var(--accent)] transition-colors bg-[var(--background)] cursor-pointer"
               >
-                <div className="bg-gradient-to-b from-[var(--accent)] to-[var(--primary)] p-3">
+                <div className="bg-gradient-to-b from-[var(--accent)] to-[var(--primary)] p-2 md:p-3">
                   <div className="flex justify-center">
-                    <div className="w-16 h-16 rounded-full border-2 border-white overflow-hidden">
+                    <div className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white overflow-hidden">
                       {/* Placeholder for streamer image */}
                       <div className="w-full h-full bg-[var(--muted)] flex items-center justify-center">
-                        <span className="text-xl font-bold text-[var(--foreground)]">
+                        <span className="text-base md:text-xl font-bold text-[var(--foreground)]">
                           {streamer.username.charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -1008,16 +1008,16 @@ export default function Home() {
                   </div>
                 </div>
                 
-                <div className="p-4 text-center">
-                  <h3 className="font-semibold text-[var(--foreground)] mb-1">{streamer.username}</h3>
-                  <p className="text-xs text-[var(--foreground)] opacity-70 mb-3">{streamer.category}</p>
+                <div className="p-3 md:p-4 text-center">
+                  <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1">{streamer.username}</h3>
+                  <p className="text-xs text-[var(--foreground)] opacity-70 mb-2 md:mb-3">{streamer.category}</p>
                   
-                  <div className="flex items-center justify-center text-sm">
-                    <Users className="h-4 w-4 mr-1 text-[var(--accent)]" />
+                  <div className="flex items-center justify-center text-xs md:text-sm mb-2 md:mb-3">
+                    <Users className="h-3 w-3 md:h-4 md:w-4 mr-1 text-[var(--accent)]" />
                     <span className="text-[var(--foreground)]">{(streamer.followers / 1000).toFixed(1)}K takipçi</span>
                   </div>
                   
-                  <button className="mt-3 w-full py-1.5 text-xs border border-[var(--accent)] text-[var(--accent)] rounded-md font-medium hover:bg-[var(--accent)] hover:text-white transition-colors">
+                  <button className="w-full py-1 md:py-1.5 text-xs border border-[var(--accent)] text-[var(--accent)] rounded-md font-medium hover:bg-[var(--accent)] hover:text-white transition-colors">
                     Takip Et
                   </button>
                 </div>
@@ -1027,37 +1027,37 @@ export default function Home() {
         </section>
 
         {/* Products Section -> Renamed to Auctions */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Açık Arttırmalar</span>
             </h2>
             <Link 
               href="/auctions" 
-              className="text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
+              className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
-              Tümünü Gör <ChevronRight className="h-4 w-4 ml-1" />
+              Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
             </Link>
           </div>
 
           {loading ? (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[var(--secondary)] border-t-[var(--primary)]"></div>
-              <p className="mt-2 text-[var(--foreground)]">Açık arttırmalar yükleniyor...</p>
+            <div className="text-center py-6 md:py-8">
+              <div className="inline-block animate-spin rounded-full h-6 w-6 md:h-8 md:w-8 border-4 border-[var(--secondary)] border-t-[var(--primary)]"></div>
+              <p className="mt-2 text-[var(--foreground)] text-sm md:text-base">Açık arttırmalar yükleniyor...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-8 text-red-500">{error}</div>
+            <div className="text-center py-6 md:py-8 text-red-500 text-sm md:text-base">{error}</div>
           ) : products.length === 0 ? (
-            <div className="text-center py-8 text-[var(--foreground)]">Henüz açık arttırma bulunmuyor.</div>
+            <div className="text-center py-6 md:py-8 text-[var(--foreground)] text-sm md:text-base">Henüz açık arttırma bulunmuyor.</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
               {products.map(product => (
                 <Link
                   href={`/products/${product.id}`}
                   key={product.id}
                   className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-md transition block group"
                 >
-                  <div className="h-48 relative bg-[var(--secondary)]">
+                  <div className="h-32 md:h-48 relative bg-[var(--secondary)]">
                     {product.images && product.images.length > 0 ? (
                       <Image
                         src={product.images[0].url}
@@ -1068,32 +1068,32 @@ export default function Home() {
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[var(--foreground)] text-opacity-70">Ürün Görseli</span>
+                        <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
                       </div>
                     )}
                     
                     {/* Bid Count Badge */}
-                    <div className="absolute bottom-3 left-3 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded-md flex items-center">
-                      <TrendingUp className="h-3 w-3 mr-1" />
+                    <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                      <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                       {Math.floor(Math.random() * 50) + 5} teklif
                     </div>
                     
                     {/* Time Left Badge */}
-                    <div className="absolute bottom-3 right-3 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-2 py-1 rounded-md flex items-center">
-                      <Clock className="h-3 w-3 mr-1" />
+                    <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                      <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                       {Math.floor(Math.random() * 12) + 1} saat
                     </div>
                   </div>
 
-                  <div className="p-4">
+                  <div className="p-3 md:p-4">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors">{product.title}</h3>
-                      <span className="bg-[var(--secondary)] text-[var(--foreground)] text-xs px-2 py-1 rounded">
+                      <h3 className="font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors text-xs md:text-base flex-1 mr-2">{product.title}</h3>
+                      <span className="bg-[var(--secondary)] text-[var(--foreground)] text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded flex-shrink-0">
                         {product.category?.name || 'Kategori'}
                       </span>
                     </div>
 
-                    <p className="text-sm text-[var(--foreground)] opacity-80 mb-3 line-clamp-2">
+                    <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3 line-clamp-2">
                       {product.description}
                     </p>
 
@@ -1101,7 +1101,7 @@ export default function Home() {
                       <span className="text-xs text-[var(--foreground)] opacity-70">
                         {product.user?.name || product.user?.username || 'Anonim'}
                       </span>
-                      <span className="font-bold text-[var(--primary)]">{product.price.toLocaleString()} ₺</span>
+                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{product.price.toLocaleString()} ₺</span>
                     </div>
                   </div>
                 </Link>
@@ -1111,36 +1111,36 @@ export default function Home() {
         </section>
 
         {/* Favorite Sellers Section */}
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+        <section className="mb-6 md:mb-10">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Favori Satıcılar</span>
             </h2>
             <Link 
               href="/sellers" 
-              className="text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
+              className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
-              Tümünü Gör <ChevronRight className="h-4 w-4 ml-1" />
+              Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {favoriteSellers.map(seller => (
               <Link 
                 href={`/sellers/${seller.id}`}
                 key={seller.id} 
                 className="bg-[var(--background)] border border-[var(--border)] rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer group"
               >
-                <div className="p-4 flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] text-white flex items-center justify-center mb-3 font-bold text-xl">
+                <div className="p-3 md:p-4 flex flex-col items-center">
+                  <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] text-white flex items-center justify-center mb-2 md:mb-3 font-bold text-base md:text-xl">
                     {seller.name.charAt(0)}
                   </div>
-                  <h3 className="font-medium text-center mb-1 group-hover:text-[var(--accent)] transition-colors">{seller.name}</h3>
+                  <h3 className="font-medium text-center mb-1 group-hover:text-[var(--accent)] transition-colors text-xs md:text-sm">{seller.name}</h3>
                   <div className="flex items-center text-amber-500 mb-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 md:h-4 md:w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118l-2.8-2.034c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                     </svg>
-                    <span className="ml-1 text-sm">{seller.rating}</span>
+                    <span className="ml-1 text-xs md:text-sm">{seller.rating}</span>
                   </div>
                   <div className="text-xs text-[var(--foreground)] opacity-70 flex justify-between w-full mt-2">
                     <span>{seller.products} Ürün</span>
@@ -1152,29 +1152,50 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Newsletter Section */}
-        <section className="mb-10 bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] rounded-xl p-8 text-white">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-2xl font-bold mb-4">BidPazar'ın Ayrıcalıklarından Yararlanın</h2>
-            <p className="mb-6 opacity-90">
-              Özel teklifler, yeni açık arttırmalar ve canlı yayın duyuruları için bültenimize abone olun.
-            </p>
-            
-            <form className="flex flex-col sm:flex-row gap-3 justify-center">
-              <input 
-                type="email" 
-                placeholder="E-posta adresiniz" 
-                className="px-4 py-2.5 rounded-lg text-[var(--foreground)] bg-white w-full sm:w-auto sm:min-w-[300px]"
-              />
-              <button
-                type="submit"
-                className="px-6 py-2.5 bg-white text-[var(--accent)] font-medium rounded-lg hover:bg-opacity-90 transition-colors"
-              >
-                Abone Ol
-              </button>
-            </form>
-          </div>
-        </section>
+        {/* Become Seller Section - Only show to non-sellers */}
+        {user?.userType !== 'SELLER' && (
+          <section className="mb-6 md:mb-10 bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] rounded-xl p-4 md:p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 rounded-full flex items-center justify-center mr-4">
+                  <svg className="w-5 h-5 md:w-6 md:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-bold mb-1">BidPazar'da Satıcı Olun</h3>
+                  <p className="text-sm opacity-90">
+                    Canlı yayın müzayedeleriyle koleksiyonunuzu satışa sunun
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex-shrink-0">
+                {user ? (
+                  <Link
+                    href="/dashboard/seller-request"
+                    className="inline-flex items-center px-4 py-2 md:px-6 md:py-3 bg-white text-[var(--accent)] font-medium rounded-lg hover:bg-opacity-90 transition-colors text-sm"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-4 4" />
+                    </svg>
+                    Başvuru Yap
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login?redirect=seller"
+                    className="inline-flex items-center px-4 py-2 md:px-6 md:py-3 bg-white text-[var(--accent)] font-medium rounded-lg hover:bg-opacity-90 transition-colors text-sm"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1" />
+                    </svg>
+                    Giriş Yap
+                  </Link>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <Footer />

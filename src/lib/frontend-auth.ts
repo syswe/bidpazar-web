@@ -657,6 +657,45 @@ export const resendVerificationCode = async (
 };
 
 /**
+ * Delete user account
+ */
+export const deleteAccount = async (): Promise<{ message: string }> => {
+  const token = getToken();
+  
+  if (!token) {
+    throw new Error('Hesap silmek için giriş yapmalısınız');
+  }
+
+  try {
+    console.log('Sending delete account request...');
+
+    const response = await fetch(`${AUTH_API_BASE}/delete-account`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Hesap silinirken bir hata oluştu');
+    }
+
+    // Clear auth data after successful deletion
+    removeAuth();
+    console.log('Account deleted successfully and auth data cleared');
+
+    return data;
+  } catch (error) {
+    console.error('Delete account error:', error);
+    throw error;
+  }
+};
+
+/**
  * Check if a session is still valid and refresh if needed
  * Call this on app initialization or when loading protected pages
  */

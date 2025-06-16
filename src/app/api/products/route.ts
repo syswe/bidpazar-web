@@ -9,7 +9,16 @@ const createProductSchema = z.object({
   title: z.string().min(1, "Başlık gereklidir"),
   description: z.string().min(1, "Açıklama gereklidir"),
   price: z.number().positive("Fiyat pozitif olmalıdır"),
+  buyNowPrice: z.number().positive("Hemen al fiyatı pozitif olmalıdır").optional(),
   categoryId: z.string().min(1, "Kategori gereklidir"),
+}).refine((data) => {
+  if (data.buyNowPrice && data.buyNowPrice <= data.price) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Hemen al fiyatı, başlangıç fiyatından yüksek olmalıdır",
+  path: ["buyNowPrice"],
 });
 
 export async function GET(request: Request) {

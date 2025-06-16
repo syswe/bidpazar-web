@@ -23,6 +23,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams.get('redirect') || '/dashboard';
+  const isSellerRedirect = searchParams.get('redirect') === 'seller';
   const { setUser, isLoggedIn, isLoading: authLoading } = useAuth();
 
   // Log initial state and props
@@ -73,9 +74,12 @@ function LoginContent() {
         // No verification needed, set the user in context
         setUser(response.user);
         console.log('[LoginContent] User set in AuthContext:', response.user);
-        console.log('[LoginContent] Redirecting via window.location.href to:', redirectPath);
+        
+        // Handle seller redirect
+        const finalRedirectPath = isSellerRedirect ? '/dashboard/seller-request' : redirectPath;
+        console.log('[LoginContent] Redirecting via window.location.href to:', finalRedirectPath);
         // Use window.location.href for a full page reload
-        window.location.href = redirectPath;
+        window.location.href = finalRedirectPath;
       }
     } catch (err) {
       console.error('[LoginContent] Login API error:', err);
@@ -103,9 +107,12 @@ function LoginContent() {
       // Set the user in context directly
       setUser(response.user);
       console.log('[LoginContent] User set in AuthContext after verification:', response.user);
-      console.log('[LoginContent] Redirecting via window.location.href to:', redirectPath);
+      
+      // Handle seller redirect
+      const finalRedirectPath = isSellerRedirect ? '/dashboard/seller-request' : redirectPath;
+      console.log('[LoginContent] Redirecting via window.location.href to:', finalRedirectPath);
       // Use window.location.href for a full page reload
-      window.location.href = redirectPath;
+      window.location.href = finalRedirectPath;
     } catch (err) {
       console.error('[LoginContent] verifyCode API error:', err);
       setError(err instanceof Error ? err.message : 'Doğrulama başarısız');
@@ -225,11 +232,33 @@ function LoginContent() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-[var(--background)]">
       <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">
+        {/* Seller redirect message */}
+        {isSellerRedirect && (
+          <div className="bg-gradient-to-r from-[var(--accent)] to-[var(--primary)] p-4 rounded-lg text-white text-center mb-6">
+            <div className="flex items-center justify-center mb-2">
+              <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="font-semibold">Satıcı Olmak İçin</span>
+            </div>
+            <p className="text-sm opacity-90">
+              Giriş yaparak satıcı başvurunuzu yapabilirsiniz. Koleksiyonunuzdaki nadir eşyaları satışa sunun!
+            </p>
+          </div>
+        )}
+
         <div className="text-center">
           <h1 className="text-4xl font-bold mb-2 text-[var(--foreground)]">
-            <span className="bg-clip-text text-transparent premium-gradient">Bidpazar&apos;a Giriş Yap</span>
+            <span className="bg-clip-text text-transparent premium-gradient">
+              {isSellerRedirect ? 'Satıcı Olmak İçin Giriş Yapın' : 'Bidpazar\'a Giriş Yap'}
+            </span>
           </h1>
-          <p className="text-[var(--muted-foreground)]">Hesabınıza erişmek için bilgilerinizi girin</p>
+          <p className="text-[var(--muted-foreground)]">
+            {isSellerRedirect 
+              ? 'Satıcı başvurunuz için hesabınıza giriş yapın' 
+              : 'Hesabınıza erişmek için bilgilerinizi girin'
+            }
+          </p>
         </div>
 
         {error && (
@@ -278,7 +307,7 @@ function LoginContent() {
               disabled={isLoading}
               className="premium-button premium-button-primary w-full"
             >
-              {isLoading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+              {isLoading ? 'Giriş yapılıyor...' : (isSellerRedirect ? 'Giriş Yap ve Satıcı Başvurusuna Git' : 'Giriş Yap')}
             </button>
           </div>
         </form>
@@ -286,11 +315,35 @@ function LoginContent() {
         <div className="text-center mt-4">
           <p className="text-sm text-[var(--muted-foreground)]">
             Hesabınız yok mu?{' '}
-            <Link href="/register" className="text-[var(--accent)] hover:underline transition-all">
-              Kayıt Ol
+            <Link 
+              href={isSellerRedirect ? "/register?redirect=seller" : "/register"} 
+              className="text-[var(--accent)] hover:underline transition-all"
+            >
+              {isSellerRedirect ? 'Hesap Oluştur ve Satıcı Ol' : 'Kayıt Ol'}
             </Link>
           </p>
         </div>
+
+        {/* Additional seller info */}
+        {isSellerRedirect && (
+          <div className="mt-6 p-4 bg-[var(--muted)] rounded-lg border border-[var(--border)]">
+            <h3 className="font-semibold text-[var(--foreground)] mb-2 text-sm">Satıcı Olmanın Avantajları:</h3>
+            <ul className="text-xs text-[var(--muted-foreground)] space-y-1">
+              <li className="flex items-center">
+                <span className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full mr-2"></span>
+                Canlı yayın müzayedeleri yapın
+              </li>
+              <li className="flex items-center">
+                <span className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full mr-2"></span>
+                Yüksek kazanç potansiyeli
+              </li>
+              <li className="flex items-center">
+                <span className="w-1.5 h-1.5 bg-[var(--accent)] rounded-full mr-2"></span>
+                Geniş koleksiyoncu kitlesine ulaşın
+              </li>
+            </ul>
+          </div>
+        )}
 
         {debugInfo && (
           <div className="mt-8 p-4 bg-[var(--secondary)] rounded-md">

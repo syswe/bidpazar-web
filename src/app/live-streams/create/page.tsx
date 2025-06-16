@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { ArrowLeft, Calendar, Upload } from 'lucide-react';
 import { getToken } from '@/lib/frontend-auth';
 import { v4 as uuidv4 } from 'uuid';
+import StreamTermsModal from '@/components/StreamTermsModal';
 
 export default function CreateLiveStreamPage() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function CreateLiveStreamPage() {
   });
 
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   
   // Handle browser-only code in useEffect
   useEffect(() => {
@@ -86,17 +88,28 @@ export default function CreateLiveStreamPage() {
     setFormData((prev) => ({ ...prev, thumbnailUrl: 'dummy-url' }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmitClick = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.title) {
+      setError('Yayın başlığı gereklidir.');
+      return;
+    }
+
+    // Check if terms were already accepted
+    const termsAccepted = localStorage.getItem('streamTermsAccepted');
+    if (termsAccepted === 'true') {
+      handleConfirmSubmit();
+    } else {
+      setShowTermsModal(true);
+    }
+  };
+
+  const handleConfirmSubmit = async () => {
+    setShowTermsModal(false);
     setLoading(true);
     setError(null);
     setSuccess(null);
-
-    if (!formData.title) {
-      setError('Yayın başlığı gereklidir.');
-      setLoading(false);
-      return;
-    }
 
     try {
       // In a real implementation, you would first upload the thumbnail
@@ -169,7 +182,7 @@ export default function CreateLiveStreamPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmitClick} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-6">
                 <div>
@@ -316,6 +329,13 @@ export default function CreateLiveStreamPage() {
           </form>
         </div>
       </div>
+
+      {/* Stream Terms Modal */}
+      <StreamTermsModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        onConfirm={handleConfirmSubmit}
+      />
     </div>
   );
 } 

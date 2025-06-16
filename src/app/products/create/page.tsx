@@ -13,6 +13,7 @@ export default function CreateProductPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [buyNowPrice, setBuyNowPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
 
   // File upload states
@@ -156,6 +157,12 @@ export default function CreateProductPage() {
       return;
     }
 
+    // Validate buyNowPrice if provided
+    if (buyNowPrice && parseFloat(buyNowPrice) <= parseFloat(price)) {
+      setError('Hemen al fiyatı, başlangıç fiyatından yüksek olmalıdır.');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -172,6 +179,7 @@ export default function CreateProductPage() {
         title,
         description,
         price: parseFloat(price),
+        buyNowPrice: buyNowPrice ? parseFloat(buyNowPrice) : undefined,
         categoryId
       });
       
@@ -316,7 +324,7 @@ export default function CreateProductPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="price" className="block text-[var(--foreground)] font-medium mb-2">
-                        Fiyat (TL) <span className="text-red-500">*</span>
+                        Başlangıç Fiyatı (TL) <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -337,23 +345,47 @@ export default function CreateProductPage() {
                     </div>
 
                     <div>
-                      <label htmlFor="category" className="block text-[var(--foreground)] font-medium mb-2">
-                        Kategori <span className="text-red-500">*</span>
+                      <label htmlFor="buyNowPrice" className="block text-[var(--foreground)] font-medium mb-2">
+                        Hemen Al Fiyatı (TL) <span className="text-[var(--foreground)] opacity-70 text-sm font-normal">(opsiyonel)</span>
                       </label>
-                      <select
-                        id="category"
-                        value={categoryId}
-                        onChange={(e) => setCategoryId(e.target.value)}
-                        className="w-full px-4 py-3 border rounded-lg bg-[var(--background)] border-[var(--border)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
-                        required
-                      >
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <span className="text-[var(--foreground)] opacity-70">₺</span>
+                        </div>
+                        <input
+                          type="number"
+                          id="buyNowPrice"
+                          value={buyNowPrice}
+                          onChange={(e) => setBuyNowPrice(e.target.value)}
+                          min="0"
+                          step="0.01"
+                          className="w-full pl-10 pr-4 py-3 border rounded-lg bg-[var(--background)] border-[var(--border)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <p className="text-xs text-[var(--foreground)] opacity-70 mt-1">
+                        Belirlerseniz, kullanıcılar ürünü hemen satın alabilir
+                      </p>
                     </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="category" className="block text-[var(--foreground)] font-medium mb-2">
+                      Kategori <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="category"
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg bg-[var(--background)] border-[var(--border)] text-[var(--foreground)] focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-all"
+                      required
+                    >
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
