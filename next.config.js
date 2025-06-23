@@ -18,7 +18,8 @@ const nextConfig = {
       "bidpazar-storage.s3.amazonaws.com",
       "loremflickr.com",
       "placekitten.com",
-      "meet.bidpazar.com", // Added Jitsi server domain
+      "meet.bidpazar.com",
+      "live.bidpazar.com",
     ],
     unoptimized: true,
   },
@@ -169,7 +170,11 @@ const nextConfig = {
       bodySizeLimit: "10mb",
     },
     // Optimize package imports for better bundle size
-    optimizePackageImports: ["@mui/material", "@mui/icons-material", "date-fns"],
+    optimizePackageImports: [
+      "@mui/material",
+      "@mui/icons-material",
+      "date-fns",
+    ],
     // Remaining experimental options that haven't been stabilized
     forceSwcTransforms: true,
   },
