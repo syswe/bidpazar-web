@@ -11,7 +11,7 @@ export interface User {
   phoneNumber?: string;
   isVerified?: boolean;
   isAdmin?: boolean;
-  userType?: 'MEMBER' | 'SELLER';
+  userType?: "MEMBER" | "SELLER";
 }
 
 export interface AuthResponse {
@@ -661,36 +661,36 @@ export const resendVerificationCode = async (
  */
 export const deleteAccount = async (): Promise<{ message: string }> => {
   const token = getToken();
-  
+
   if (!token) {
-    throw new Error('Hesap silmek için giriş yapmalısınız');
+    throw new Error("Hesap silmek için giriş yapmalısınız");
   }
 
   try {
-    console.log('Sending delete account request...');
+    console.log("Sending delete account request...");
 
     const response = await fetch(`${AUTH_API_BASE}/delete-account`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      credentials: 'include',
+      credentials: "include",
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || 'Hesap silinirken bir hata oluştu');
+      throw new Error(data.message || "Hesap silinirken bir hata oluştu");
     }
 
     // Clear auth data after successful deletion
     removeAuth();
-    console.log('Account deleted successfully and auth data cleared');
+    console.log("Account deleted successfully and auth data cleared");
 
     return data;
   } catch (error) {
-    console.error('Delete account error:', error);
+    console.error("Delete account error:", error);
     throw error;
   }
 };

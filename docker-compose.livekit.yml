@@ -1,0 +1,23 @@
+# docker-compose.livekit.yml
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880" # Signal
+      - "7881:7881/udp" # Media (UDP)
+      - "7882:7882/tcp" # Media (TCP/TURN)
+      - "5349:5349/udp" # Media (UDP)
+      - "3478:3478/udp" # TURN (UDP)
+    environment:
+      LIVEKIT_KEYS: "devkey: dev-secret-key-at-least-32-characters-long-for-security"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+    networks:
+      - livekit-network
+
+networks:
+  livekit-network:
+    driver: bridge

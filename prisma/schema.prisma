@@ -39,6 +39,7 @@ model User {
   receivedRewards  StreamReward[]     @relation("RewardRecipients")
   viewedStreams    LiveStream[]       @relation("StreamViewers")
   conversations    Conversation[]     @relation("UserConversations")
+  liveStreamBids   LiveStreamBid[]    @relation("LiveStreamBids")
 }
 
 model Story {
@@ -100,27 +101,28 @@ model ProductMedia {
 }
 
 model LiveStream {
-  id           String             @id @default(cuid())
-  title        String
-  description  String?
-  thumbnailUrl String?
-  startTime    DateTime?
-  endTime      DateTime?
-  userId       String
-  viewerCount  Int                @default(0)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  status       StreamStatus       @default(SCHEDULED)
-  listings     AuctionListing[]
-  chatMessages ChatMessage[]
-  user         User               @relation("HostedStreams", fields: [userId], references: [id])
-  analytics    StreamAnalytics[]
-  highlights   StreamHighlight[]
-  moderations  StreamModeration[]
-  rewards      StreamReward[]
-  shares       StreamShare[]
-  viewTimes    StreamViewTime[]
-  viewers      User[]             @relation("StreamViewers")
+  id                String                @id @default(cuid())
+  title             String
+  description       String?
+  thumbnailUrl      String?
+  startTime         DateTime?
+  endTime           DateTime?
+  userId            String
+  viewerCount       Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  status            StreamStatus            @default(SCHEDULED)
+  listings          AuctionListing[]
+  chatMessages      ChatMessage[]
+  user              User                    @relation("HostedStreams", fields: [userId], references: [id])
+  analytics         StreamAnalytics[]
+  highlights        StreamHighlight[]
+  moderation        StreamModeration[]
+  rewards           StreamReward[]
+  shares            StreamShare[]
+  viewTimes         StreamViewTime[]
+  viewers           User[]                  @relation("StreamViewers")
+  liveStreamProducts LiveStreamProduct[]
 }
 
 model AuctionListing {
@@ -323,6 +325,61 @@ model SellerRequest {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+model LiveStreamProduct {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  basePrice         Float
+  currentPrice      Float      @default(0)
+  imageUrl          String?
+  stock             Int        @default(1)
+  category          String?
+  tags              String[]   @default([])
+  
+  // Live stream specific fields
+  liveStreamId      String
+  isActive          Boolean    @default(false)
+  isAuctionMode     Boolean    @default(true)  // false for direct buy
+  auctionDuration   Int?       // in seconds
+  startTime         DateTime?
+  endTime           DateTime?
+  
+  // Auction results
+  winningBidId      String?    @unique
+  isSold            Boolean    @default(false)
+  soldAt            DateTime?
+  soldPrice         Float?
+  
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  // Relations
+  liveStream        LiveStream @relation(fields: [liveStreamId], references: [id], onDelete: Cascade)
+  bids              LiveStreamBid[]
+  winningBid        LiveStreamBid? @relation("WinningLiveStreamBid", fields: [winningBidId], references: [id])
+  
+  @@index([liveStreamId])
+  @@index([isActive])
+}
+
+model LiveStreamBid {
+  id                    String            @id @default(cuid())
+  amount                Float
+  userId                String
+  liveStreamProductId   String
+  isWinning             Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  
+  // Relations
+  user                  User              @relation("LiveStreamBids", fields: [userId], references: [id])
+  liveStreamProduct     LiveStreamProduct @relation(fields: [liveStreamProductId], references: [id], onDelete: Cascade)
+  wonProduct            LiveStreamProduct? @relation("WinningLiveStreamBid")
+  
+  @@index([liveStreamProductId])
+  @@index([userId])
 }
 
 enum StreamStatus {

@@ -1,3 +1,4 @@
+// src/app/api/live-streams/[id]/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";

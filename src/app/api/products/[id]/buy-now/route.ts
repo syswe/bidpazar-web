@@ -5,10 +5,10 @@ import { logger } from "@/lib/logger";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const productId = params.id;
-  
+  const { id: productId } = await params;
+
   logger.info("API POST /api/products/[id]/buy-now", {
     productId,
     url: request.url,
@@ -18,7 +18,9 @@ export async function POST(
     // Verify authentication
     const token = request.headers.get("authorization")?.split(" ")[1];
     if (!token) {
-      logger.warn("Buy now attempt without authentication token", { productId });
+      logger.warn("Buy now attempt without authentication token", {
+        productId,
+      });
       return NextResponse.json(
         { error: "Kimlik doğrulama gereklidir" },
         { status: 401 }
@@ -39,27 +41,24 @@ export async function POST(
       where: { id: productId },
       include: {
         user: {
-          select: { id: true, username: true, email: true }
-        }
-      }
+          select: { id: true, username: true, email: true },
+        },
+      },
     });
 
     if (!product) {
-      logger.warn("Buy now attempt for non-existent product", { 
-        productId, 
-        userId: user.id 
+      logger.warn("Buy now attempt for non-existent product", {
+        productId,
+        userId: user.id,
       });
-      return NextResponse.json(
-        { error: "Ürün bulunamadı" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Ürün bulunamadı" }, { status: 404 });
     }
 
     // Check if product has buy now price
     if (!product.buyNowPrice) {
-      logger.warn("Buy now attempt for product without buyNowPrice", { 
-        productId, 
-        userId: user.id 
+      logger.warn("Buy now attempt for product without buyNowPrice", {
+        productId,
+        userId: user.id,
       });
       return NextResponse.json(
         { error: "Bu ürün için hemen al özelliği bulunmuyor" },
@@ -69,9 +68,9 @@ export async function POST(
 
     // Check if user is trying to buy their own product
     if (product.userId === user.id) {
-      logger.warn("User trying to buy their own product", { 
-        productId, 
-        userId: user.id 
+      logger.warn("User trying to buy their own product", {
+        productId,
+        userId: user.id,
       });
       return NextResponse.json(
         { error: "Kendi ürününüzü satın alamazsınız" },
@@ -96,7 +95,7 @@ export async function POST(
           content: `${user.username} kullanıcısı "${product.title}" ürününüzü ${product.buyNowPrice} ₺ karşılığında satın aldı.`,
           type: "PURCHASE",
           relatedId: productId,
-        }
+        },
       });
 
       // Create notification for buyer
@@ -106,7 +105,7 @@ export async function POST(
           content: `"${product.title}" ürününü başarıyla satın aldınız. Satıcı ile iletişime geçebilirsiniz.`,
           type: "PURCHASE",
           relatedId: productId,
-        }
+        },
       });
 
       // You might want to mark the product as sold or reduce inventory
@@ -131,9 +130,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       purchase,
-      message: "Ürün başarıyla satın alındı!"
+      message: "Ürün başarıyla satın alındı!",
     });
-
   } catch (error: any) {
     logger.error("Buy now purchase failed", {
       productId,
@@ -146,4 +144,4 @@ export async function POST(
       { status: 500 }
     );
   }
-} 
+}

@@ -1,14 +1,29 @@
 // src/app/(streams)/live-streams/[id]/page.tsx
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
-import { getAuth } from "@/lib/frontend-auth";
+import { getToken, getUser, isAuthenticated } from "@/lib/frontend-auth";
 import { toast } from "sonner";
+import io from "socket.io-client";
 
-import { Loader2, X, MessageCircle } from "lucide-react";
-import { JitsiMeeting } from "@jitsi/react-sdk";
+import { Loader2, MessageCircle, Settings, X } from "lucide-react";
+import {
+  LiveKitRoom,
+  VideoConference,
+  GridLayout,
+  ParticipantTile,
+  ControlBar,
+  useLocalParticipant,
+  RoomAudioRenderer,
+  useRoomContext,
+  useTracks,
+  MediaDeviceMenu,
+  DisconnectButton,
+} from "@livekit/components-react";
+import "@livekit/components-styles";
+import { Track, Room } from "livekit-client";
 
 // Import components
 import StreamChat from "./components/StreamChat";
@@ -28,96 +43,100 @@ import { useActiveBid } from "./hooks/useActiveBid";
 // Import CSS
 import "./styles/streamStyles.css";
 
+// Import our WebRTC configuration utilities
+import {
+  livekitRoomOptions,
+  livekitConnectOptions,
+  getBrowserInfo,
+  checkWebRTCSupport,
+  initializeAudioContext,
+} from "@/lib/webrtc-config";
+
+// Debug component to help identify auth issues
+function AuthDebugInfo() {
+  const { user, isLoading, isAuthenticated: authProviderAuth } = useAuth();
+  const token = getToken();
+  const storedUser = getUser();
+  const clientAuth = isAuthenticated();
+
+  return (
+    <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg text-xs max-w-md z-50">
+      <h3 className="font-bold mb-2">Auth Debug Info</h3>
+      <div className="space-y-1">
+        <div>AuthProvider loading: {isLoading ? "true" : "false"}</div>
+        <div>
+          AuthProvider authenticated: {authProviderAuth ? "true" : "false"}
+        </div>
+        <div>Client authenticated: {clientAuth ? "true" : "false"}</div>
+        <div>Has token: {token ? "true" : "false"}</div>
+        <div>Token length: {token?.length || 0}</div>
+        <div>Has user from AuthProvider: {user ? "true" : "false"}</div>
+        <div>Username from AuthProvider: {user?.username || "none"}</div>
+        <div>Has stored user: {storedUser ? "true" : "false"}</div>
+        <div>Username from storage: {storedUser?.username || "none"}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function LiveStreamPage() {
   const router = useRouter();
   const params = useParams();
   const streamId = params.id as string;
   const { user } = useAuth();
-  const { token } = getAuth();
-  const userId = user?.id;
-  const username = user?.username;
+  const [token, setToken] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(true);
 
   // Local UI state
   const [likeCount, setLikeCount] = useState<number>(0);
   const [isLiked, setIsLiked] = useState<boolean>(false);
-  const [apiObj, setApiObj] = useState<any>(null);
-  const [isCurrentUserStreamer, setIsCurrentUserStreamer] =
-    useState<boolean>(false);
-  const [isJoining, setIsJoining] = useState<boolean>(true);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
 
   // Chat input state
   const [chatInput, setChatInput] = useState<string>("");
 
+  // Stable logMessage function to prevent infinite re-renders
+  const logMessage = useCallback(
+    (msg: string, level: string = "info", data?: any) => {
+      console.log(`[LiveStreamPage] ${msg}`, data);
+    },
+    []
+  );
+
+  // Memoize the auth token to prevent unnecessary re-renders
+  const authToken = useMemo(() => getToken() || undefined, [user]);
+
   // Check sidebar state
   useEffect(() => {
     const checkSidebarState = () => {
-      // Create a MutationObserver to watch for sidebar changes
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          if (
-            mutation.type === "attributes" &&
-            mutation.attributeName === "class"
-          ) {
-            const sidebar = document.querySelector("aside");
-            if (sidebar) {
-              const width = window.getComputedStyle(sidebar).width;
-              setIsSidebarExpanded(parseInt(width) > 70);
-            }
-          }
-        });
-      });
-
-      // Start observing the sidebar element
       const sidebar = document.querySelector("aside");
       if (sidebar) {
-        observer.observe(sidebar, { attributes: true });
-        // Initial check
         const width = window.getComputedStyle(sidebar).width;
         setIsSidebarExpanded(parseInt(width) > 70);
       }
-
-      return () => observer.disconnect();
     };
 
-    // Add a small delay to ensure sidebar is rendered
     const timer = setTimeout(checkSidebarState, 500);
-    return () => clearTimeout(timer);
+    const interval = setInterval(checkSidebarState, 1000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, []);
 
-  // Initialize custom hooks
+  // Initialize custom hooks with stabilized dependencies
   const {
     streamDetails,
     isLoading: isStreamDetailsLoading,
     error: streamDetailsError,
-    fetchStreamDetails,
   } = useStreamDetails({
     streamId,
-    token: token || undefined,
-    logMessage: console.log,
+    token: authToken,
+    logMessage,
   });
-
-  const { activeProductBid, fetchActiveBid } = useActiveBid({
-    streamId,
-    token: token || undefined,
-    isStreamer: isCurrentUserStreamer,
-    logMessage: console.log,
-    socket: apiObj,
-  });
-
-  // Update isCurrentUserStreamer when stream details are loaded
-  useEffect(() => {
-    if (streamDetails) {
-      const isStreamer = userId === streamDetails.creatorId;
-      setIsCurrentUserStreamer(isStreamer);
-      console.log("Streamer status updated", {
-        isStreamer,
-        userId,
-        creatorId: streamDetails.creatorId,
-      });
-    }
-  }, [streamDetails, userId]);
 
   // Handle like button
   const handleLike = useCallback(() => {
@@ -145,718 +164,531 @@ export default function LiveStreamPage() {
     router.push("/live-streams");
   }, [router]);
 
-
-
   // Handle chat message send
-  const handleChatSend = useCallback(async (message: string) => {
-    if (!message.trim()) return;
-    
-    try {
-      // Check if socket is available and user is authenticated
-      const socket = (window as any).streamChatSocket;
-      const connected = (window as any).streamChatConnected;
-      const authenticated = (window as any).streamChatAuthenticated;
-
-      if (!authenticated) {
-        toast.error("You must be logged in to send messages");
-        return;
-      }
-
-      if (!socket || !connected) {
-        toast.error("Chat not connected. Please wait a moment.");
-        return;
-      }
-
-      // Create message object
-      const messageData = {
-        streamId,
-        userId: userId || "anonymous",
-        username: username || "Anonymous",
-        message: message.trim(),
-      };
-
-      // Send message via socket.io
-      socket.emit("stream-message", messageData);
-      
-      // Clear input on successful send
-      setChatInput("");
-      console.log('Message sent successfully:', message);
-    } catch (error) {
-      console.error('Error sending chat message:', error);
-      toast.error("Failed to send message. Please try again.");
-    }
-  }, [streamId, userId, username]);
-
-  // Handle Jitsi API ready event
-  const handleApiReady = (apiObject: any) => {
-    setApiObj(apiObject);
-    setIsJoining(false);
-
-    // Register viewer when they join the stream
-    const registerViewer = async () => {
-      if (!streamId) return;
+  const handleChatSend = useCallback(
+    async (message: string) => {
+      if (!message.trim()) return;
 
       try {
-        const response = await fetch(`/api/live-streams/${streamId}/viewers`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        // Check if socket is available and user is authenticated
+        const socket = (window as any).streamChatSocket;
+        const connected = (window as any).streamChatConnected;
+        const authenticated = (window as any).streamChatAuthenticated;
 
-        if (response.ok) {
-          console.log("Viewer registered for stream");
+        if (!authenticated) {
+          toast.error("You must be logged in to send messages");
+          return;
         }
+
+        if (!socket || !connected) {
+          toast.error("Chat not connected. Please wait a moment.");
+          return;
+        }
+
+        // Create message object
+        const messageData = {
+          streamId,
+          userId: user?.id || "anonymous",
+          username: user?.username || "Anonymous",
+          message: message.trim(),
+        };
+
+        // Send message via socket.io
+        socket.emit("stream-message", messageData);
+
+        // Clear input on successful send
+        setChatInput("");
+        console.log("Message sent successfully:", message);
       } catch (error) {
-        console.error("Failed to register viewer:", error);
+        console.error("Error sending chat message:", error);
+        toast.error("Failed to send message. Please try again.");
       }
-    };
+    },
+    [streamId, user]
+  );
 
-    // Unregister viewer when they leave
-    const unregisterViewer = async () => {
-      if (!streamId) return;
-
-      try {
-        await fetch(`/api/live-streams/${streamId}/viewers`, {
-          method: "DELETE",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        console.log("Viewer unregistered from stream");
-      } catch (error) {
-        console.error("Failed to unregister viewer:", error);
-      }
-    };
-
-    // Register viewer when joining
-    registerViewer();
-
-    // Set up event to unregister on page unload
-    window.addEventListener("beforeunload", unregisterViewer);
-
-    // Set up event listeners
-    apiObject.addListener("videoConferenceJoined", () => {
-      console.log("Local user joined the conference");
-      toast.success("Yayına bağlandınız!");
-
-      // If streamer, adjust interface
-      if (isCurrentUserStreamer) {
-        // Set display name
-        apiObject.executeCommand("displayName", username || "Yayıncı");
-
-        // Make sure streamer starts with video on
-        apiObject.executeCommand("toggleVideo", true);
-
-        // Make sure streamer starts with audio on
-        apiObject.executeCommand("toggleAudio", true);
-
-        // Additional commands to enforce proper UI
-        apiObject.executeCommand("overwriteConfig", {
-          toolbarButtons: ["microphone", "camera", "desktop", "settings"],
-          toolbarConfig: {
-            alwaysVisible: true,
-          },
-        });
-      } else {
-        // For viewers - enforce view-only mode
-        apiObject.executeCommand("displayName", username || "İzleyici");
-
-        // Additional viewer-specific event listeners to ensure they remain in view-only mode
-        setTimeout(() => {
-          // Ensure viewer stays muted by listening for audio mute state changes
-          apiObject.addListener("audioMuteStatusChanged", (muted: boolean) => {
-            if (!muted) {
-              console.log("Viewer attempted to unmute, forcing mute");
-              apiObject.executeCommand("toggleAudio", true);
-            }
-          });
-
-          // Ensure viewer stays video off by listening for video mute state changes
-          apiObject.addListener("videoMuteStatusChanged", (muted: boolean) => {
-            if (!muted) {
-              console.log(
-                "Viewer attempted to enable video, forcing video off"
-              );
-              apiObject.executeCommand("toggleVideo", true);
-            }
-          });
-
-          // Handle when conference is joined to force correct settings for viewers
-          apiObject.addListener("participantRoleChanged", (event: any) => {
-            if (event.role === "participant") {
-              console.log("Ensuring viewer settings are applied");
-              apiObject.executeCommand("toggleAudio", true); // Ensure muted
-              apiObject.executeCommand("toggleVideo", true); // Ensure video off
-            }
-          });
-        }, 1000);
-      }
-    });
-
-    apiObject.addListener("participantJoined", (participant: any) => {
-      console.log("A participant joined:", participant);
-    });
-
-    apiObject.addListener("videoConferenceLeft", () => {
-      console.log("Local user left the conference");
-      toast.info("Yayından ayrıldınız");
-
-      // Unregister viewer when leaving the conference
-      unregisterViewer();
-    });
-
-    apiObject.addListener("readyToClose", () => {
-      console.log("Jitsi Meet is ready to close");
-
-      // Unregister viewer before redirecting
-      unregisterViewer().then(() => {
-        router.push("/live-streams");
-      });
-    });
-
-    // Clean up function to remove event listener
-    return () => {
-      window.removeEventListener("beforeunload", unregisterViewer);
-      unregisterViewer();
-    };
-  };
-
-  // Function to update stream status (for streamers only)
-  const updateStreamStatus = async (
-    newStatus: "SCHEDULED" | "STARTING" | "LIVE" | "ENDED"
-  ) => {
-    if (!isCurrentUserStreamer || !streamDetails || !token) {
-      console.error("Cannot update stream status: missing required data", {
-        isCurrentUserStreamer,
-        hasStreamDetails: !!streamDetails,
-        hasToken: !!token,
-      });
+  // Fetch LiveKit token
+  useEffect(() => {
+    if (!streamId) {
+      console.log("[LiveStreamPage] Missing streamId:", { streamId });
       return;
     }
 
-    setIsUpdatingStatus(true);
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-    try {
-      console.log(`Attempting to update stream status to ${newStatus}`, {
-        streamId,
-      });
+        const authToken = getToken();
+        console.log("[LiveStreamPage] Token retrieval:", {
+          hasToken: !!authToken,
+          tokenLength: authToken?.length || 0,
+          tokenStart: authToken ? authToken.substring(0, 20) + "..." : "none",
+        });
 
-      // Use local API endpoint
-      const response = await fetch(`/api/live-streams/${streamId}/status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+        console.log("[LiveStreamPage] Fetching LiveKit token...");
 
-      const responseText = await response.text();
-      console.log(`Status update response: ${response.status}`, responseText);
-
-      if (!response.ok) {
-        try {
-          const errorData = JSON.parse(responseText);
-          throw new Error(
-            errorData.message || `Failed to update status: ${response.status}`
-          );
-        } catch (e) {
-          throw new Error(
-            `Failed to update status: ${response.status} ${responseText}`
-          );
+        // Build headers - include auth token if available, but don't require it
+        const headers: Record<string, string> = {};
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
         }
+
+        const resp = await fetch(`/api/live-streams/${streamId}/token`, {
+          headers,
+        });
+
+        console.log("[LiveStreamPage] LiveKit token response:", {
+          ok: resp.ok,
+          status: resp.status,
+          statusText: resp.statusText,
+        });
+
+        if (!resp.ok) {
+          const errorData = await resp.json();
+          console.error("[LiveStreamPage] LiveKit token error:", errorData);
+          throw new Error(errorData.error || "Failed to fetch token");
+        }
+
+        const data = await resp.json();
+        console.log("[LiveStreamPage] LiveKit token received successfully");
+        setToken(data.token);
+      } catch (e: any) {
+        console.error("Error joining stream:", e);
+        setError(e.message);
+        toast.error(`Error joining stream: ${e.message}`);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [streamId]); // Only depend on streamId, not user
+
+  // Determine if current user is the streamer based on stream ownership
+  const isCurrentUserStreamer = Boolean(
+    user && streamDetails && user.id === streamDetails.creatorId
+  );
+
+  // Initialize WebRTC and audio context on component mount
+  useEffect(() => {
+    const initializeWebRTC = async () => {
+      // Check WebRTC support
+      const webrtcSupport = checkWebRTCSupport();
+      const browserInfo = getBrowserInfo();
+
+      console.log("Browser info:", browserInfo);
+      console.log("WebRTC support:", webrtcSupport);
+
+      if (!webrtcSupport.supported) {
+        setError(
+          `WebRTC desteklenmiyor. ${browserInfo.name} tarayıcınızı güncelleyin veya farklı bir tarayıcı deneyin.`
+        );
+        return;
       }
 
-      // Refresh stream details
-      await fetchStreamDetails();
-      toast.success(`Stream status updated to ${newStatus}`);
-
-      // If status becomes ENDED, stop any active product bidding
-      if (newStatus === "ENDED" && activeProductBid) {
-        try {
-          await fetch(
-            `/api/live-streams/${streamId}/bids/${activeProductBid.id}/end`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-          console.log("Active bidding ended");
-          fetchActiveBid();
-        } catch (error) {
-          console.error("Failed to end active bidding", error);
-        }
+      // Initialize audio context to handle autoplay restrictions
+      try {
+        await initializeAudioContext();
+        console.log("AudioContext initialized successfully");
+      } catch (error) {
+        console.warn("AudioContext initialization failed:", error);
       }
-    } catch (error) {
-      console.error("Error updating stream status:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update stream status"
-      );
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
-
-  // Get Jitsi configurations based on stream details and user role
-  const getJitsiConfig = () => {
-    if (!streamDetails || !streamDetails.roomName) {
-      return null;
-    }
-
-    const roomName = streamDetails.roomName;
-
-    // Base configuration for Jitsi
-    const baseConfig = {
-      startWithAudioMuted: !isCurrentUserStreamer,
-      startWithVideoMuted: !isCurrentUserStreamer,
-      disableModeratorIndicator: true,
-      prejoinPageEnabled: false, // Always set to false to skip the prejoin page
-      disableDeepLinking: true,
-      jwt: undefined, // Don't use JWT authentication which triggers login screen
-      requireDisplayName: false, // Don't require display name
-      hiddenDomain: "meet.bidpazar.com", // Hide domain selection screen
-      noSSL: false, // Use secure connection
-      enableWelcomePage: false, // Disable welcome page
-      enableClosePage: false, // Disable close page
     };
 
-    // Viewer-specific configurations - minimal interface
-    const viewerConfig = {
-      ...baseConfig,
-      startWithAudioMuted: true,
-      startWithVideoMuted: true,
-      // Critical: Disable permission prompts for audio/video for viewers
-      disableInitialGUM: true, // Prevent getUserMedia call for viewers
-      // Advanced prejoin configuration to completely disable the prejoin UI
-      prejoinConfig: {
-        enabled: false,
-        hideDisplayName: true,
-        hideExtraJoinButtons: true,
-      },
-      // Don't try to automatically get permissions when joining
-      enableNoisyMicDetection: false,
-      disableAudioLevels: true,
-      // Hide permission dialog for screen sharing
-      desktopSharingChromeDisabled: true,
-      // Disable lobby functionality for viewers
-      enableLobbyChat: false,
-      // Ensure lobby is skipped for viewers
-      lobby: {
-        autoKnock: false,
-        enableChat: false,
-      },
-      // Hide the watermark/logo - these work in configOverwrite
-      disableBrandWatermark: true,
-      watermark: {
-        enabled: false,
-        show: false,
-        showWatermarkForGuests: false,
-      },
-      // Ensure filmstrip and user list are completely hidden
-      filmstrip: {
-        enabled: false,
-        disableResizable: true,
-        disableStageFilmstrip: true,
-        disableSelfView: true,
-        visible: false, // Explicit visible false
-      },
-      hideParticipantsList: true,
-      disableFilmstripAutohiding: true,
-      disableTileView: true,
-      toolbarButtons: [],
-      filmStripOnly: false, // Ensure filmstrip is not the only thing visible
-      hideFilmstrip: true, // Actively hide the filmstrip
-      disableReactions: true,
-      disableChat: true, // We use our own chat
-      hideParticipantsStats: true,
-      hideConferenceSubject: true,
-      hideConferenceTimer: true,
-      // Aggressively hide more UI elements for viewers
-      readOnlyName: true, // Prevent viewers from changing their display name in Jitsi
-      disableRemoteMute: true, // Viewers cannot mute others
-      disableSelfView: true, // Hide self-view if camera accidentally enabled
-      disableSelfViewSettings: true,
-      hideLobbyButton: true, // Hide lobby button if it were to appear
-      disableProfile: true, // Disable profile features
-      remoteVideoMenu: {
-        // Disable context menu on remote participants' videos
-        disabled: true,
-        disableKick: true,
-        disableGrantModerator: true,
-        disablePrivateMessage: true,
-      },
-      participantsPane: {
-        // Ensure participant pane is hidden and non-interactive
-        hideModeratorSettingsTab: true,
-        hideMoreActionsButton: true,
-        hideMuteAllButton: true,
-      },
-      notifications: [], // Disable all Jitsi internal notifications
-      disableScreensharing: true, // Viewers cannot share their screen
-      disableRecordings: true, // Viewers cannot start/stop recordings
-      disableRemoteControl: true, // Viewers cannot request remote control
-      disableVideoQualityLabel: true, // Hide video quality label
-      // Remove all UI-related settings that should be in interfaceConfigOverwrite
-    };
-
-    // Streamer-specific configurations - more controls
-    const streamerConfig = {
-      ...baseConfig,
-      startWithAudioMuted: false,
-      startWithVideoMuted: false,
-      // Core functionality for streamers
-      toolbarButtons: ["microphone", "camera", "desktop", "settings"],
-      // Allow tile view for streamer
-      disableTileView: false,
-      // Allow reactions for streamer
-      disableReactions: false,
-      // Ensure settings are available
-      enableInsecureRoomNameWarning: false,
-    };
-
-    return {
-      roomName,
-      configOverwrite: isCurrentUserStreamer ? streamerConfig : viewerConfig,
-      interfaceConfigOverwrite: {
-        DISABLE_JOIN_LEAVE_NOTIFICATIONS: true,
-        MOBILE_APP_PROMO: false,
-        DEFAULT_REMOTE_DISPLAY_NAME: "İzleyici",
-        DEFAULT_LOCAL_DISPLAY_NAME: isCurrentUserStreamer
-          ? "Yayıncı"
-          : "İzleyici",
-        // Toolbar buttons based on role
-        TOOLBAR_BUTTONS: isCurrentUserStreamer
-          ? ["microphone", "camera", "desktop", "settings"]
-          : [], // Empty for viewers
-        // Additional UI customizations
-        DISABLE_FOCUS_INDICATOR: true,
-        DISABLE_VIDEO_BACKGROUND: true, // Viewers should not see/change video background options
-        VIDEO_QUALITY_LABEL_DISABLED: true, // Reinforce disabling video quality label
-        CONNECTION_INDICATOR_DISABLED: true,
-        DISABLE_DOMINANT_SPEAKER_INDICATOR: true,
-        DISABLE_TRANSCRIPTION_SUBTITLES: true,
-        TOOLBAR_ALWAYS_VISIBLE: isCurrentUserStreamer, // False for viewers, hiding toolbar
-        TOOLBAR_TIMEOUT: isCurrentUserStreamer ? 2000 : 0, // Hide toolbar immediately for viewers if it ever appears
-        DEFAULT_BACKGROUND: "#000000",
-        JITSI_WATERMARK_LINK: "",
-        // Aggressively hide the Jitsi watermark/logo
-        SHOW_JITSI_WATERMARK: false,
-        SHOW_WATERMARK_FOR_GUESTS: false,
-        SHOW_BRAND_WATERMARK: false,
-        SHOW_POWERED_BY: false,
-        HIDE_DEEP_LINKING_LOGO: true,
-        HIDE_LOGO_ON_LOBBY_SCREEN: true,
-        HIDE_LOGO_ON_WELCOME_PAGE: true,
-        HIDE_INVITE_MORE_HEADER: true,
-        // Completely disable filmstrip
-        VERTICAL_FILMSTRIP: false,
-        FILMSTRIP_ENABLED: false,
-        CLOSE_PAGE_GUEST_HINT: false,
-        // Hide settings
-        SETTINGS_SECTIONS: isCurrentUserStreamer
-          ? ["devices", "language", "moderator", "profile", "sounds"]
-          : [], // Empty for viewers
-        // Further UI element hiding for viewers
-        APP_NAME: "BidPazar",
-        NATIVE_APP_NAME: "BidPazar",
-        PROVIDER_NAME: "BidPazar",
-        DISPLAY_WELCOME_PAGE_CONTENT: false,
-        DISPLAY_WELCOME_FOOTER: false,
-        SHOW_CHROME_EXTENSION_BANNER: false,
-        RECENT_LIST_ENABLED: false,
-        ENABLE_FEEDBACK_ANIMATION: false,
-        DISABLE_RINGING: true,
-        DISABLE_PROFILE_SETTINGS: true, // Disables access to profile settings for viewers
-        HIDE_CARDS: true, // Hides info cards like speaker stats
-        HIDE_PARTICIPANTS_BUTTON: true, // Ensure participants button is hidden
-        HIDE_INVITE_FUNCTION: true, // Hide any invitation functionality
-        HIDE_PREJOIN_DISPLAY_NAME: true, // Hide display name input on prejoin if it were enabled
-        HIDE_SUBJECT: true, // Hide conference subject display
-        // Manage filmstrip hiding for viewers
-        HIDE_FILMSTRIP_BUTTON: true,
-        TILE_VIEW_MAX_COLUMNS: 1, // If tile view were somehow activated, limit to 1 column
-        DISABLE_PRESENCE_STATUS: true, // Disable presence status indicators
-        HIDE_PARTICIPANT_NAME: true, // Hide participant names if they were to show
-        HIDE_PARTICIPANT_PROFILE_BUTTON: true, // Hide profile buttons on participants
-        DISABLE_REMOTE_VIDEO_MENU: true, // Reinforce disabling context menus on videos
-        SHOW_PROMOTIONAL_CLOSE_PAGE: false, // No promotional content on close
-        INVITATION_POWERED_BY: false, // No "powered by" in any potential invitation UI
-      },
-      userInfo: {
-        displayName:
-          username || (isCurrentUserStreamer ? "Yayıncı" : "İzleyici"),
-        email: user?.email || "",
-      },
-    };
-  };
+    initializeWebRTC();
+  }, []);
 
   // Render appropriate states
-  if (isStreamDetailsLoading) {
-    return <StreamLoadingState />;
+  if (loading || isStreamDetailsLoading || !token) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin" />
+          <p>Connecting to stream...</p>
+        </div>
+      </div>
+    );
   }
 
-  if (streamDetailsError) {
+  if (error || streamDetailsError) {
     return (
-      <StreamErrorState
-        errorMessage={streamDetailsError}
-        onBackToHome={handleBackToHome}
-      />
+      <div className="flex items-center justify-center min-h-screen bg-black text-white relative">
+        {/* Debug Info for Error State */}
+        <AuthDebugInfo />
+
+        <div className="text-center space-y-4">
+          <p className="text-red-500">Error: {error || streamDetailsError}</p>
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                setError(null);
+                window.location.reload();
+              }}
+              className="px-4 py-2 bg-green-600 rounded hover:bg-green-700 transition-colors mr-2"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => router.push("/live-streams")}
+              className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+            >
+              Back to Streams
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!streamDetails) {
-    return <StreamNotFoundState onBackToHome={handleBackToHome} />;
-  }
-
-  // Get Jitsi configuration
-  const jitsiConfig = getJitsiConfig();
-
-  if (!jitsiConfig) {
     return (
-      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="p-6 max-w-md">
-          <h3 className="text-xl font-semibold mb-2">
-            Yayın Bilgisi Bulunamadı
-          </h3>
-          <p className="text-[var(--foreground)]/70 mb-4">
-            Bu yayın için gerekli oda bilgileri bulunamadı.
-          </p>
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <div className="text-center space-y-4">
+          <p>Stream not found</p>
           <button
-            onClick={handleBackToHome}
-            className="bg-[var(--accent)] text-white px-4 py-2 rounded-md"
+            onClick={() => router.push("/live-streams")}
+            className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
           >
-            Yayın Listesine Dön
+            Back to Streams
           </button>
         </div>
       </div>
     );
   }
 
+  const serverUrl =
+    process.env.NEXT_PUBLIC_LIVEKIT_URL || "ws://localhost:7880";
+
   return (
-    <div
-      className={`vertical-stream-container ${
-        isSidebarExpanded ? "sidebar-expanded" : ""
-      }`}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-        zIndex: 1000
-      }}
-    >
-      <div
-        className={`stream-content-wrapper ${
-          isCurrentUserStreamer ? "streamer-content" : ""
-        }`}
+    <div className="relative w-full h-screen">
+      {/* Debug Info */}
+      {showDebug && <AuthDebugInfo />}
+
+      <LiveKitRoom
+        video={isCurrentUserStreamer} // Only enable video for streamers
+        audio={isCurrentUserStreamer} // Only enable audio for streamers
+        token={token}
+        serverUrl={serverUrl}
+        data-lk-theme="default"
+        style={{ height: "100vh", background: "black" }}
+        // Use our improved WebRTC configuration
+        options={livekitRoomOptions}
+        connectOptions={livekitConnectOptions}
+        onConnected={() => {
+          console.log("Connected to LiveKit room");
+          setShowDebug(false); // Hide debug after successful connection
+          setError(null); // Clear any previous errors
+        }}
+        onDisconnected={(reason) => {
+          console.log("Disconnected from LiveKit room", { reason });
+          // Only redirect on intentional disconnect (user leaving), not on connection errors
+          if (reason && reason.toString() !== "UNKNOWN") {
+            router.push("/live-streams");
+          } else {
+            // Connection error - don't redirect, let user handle it
+            setError("Connection lost. Please try reconnecting.");
+          }
+        }}
+        onError={(error) => {
+          console.error("LiveKit room error:", error);
+          const browserInfo = getBrowserInfo();
+
+          // Handle specific WebRTC connection issues with browser-specific messages
+          if (error.message?.includes("could not establish pc connection")) {
+            if (browserInfo.isFirefox) {
+              setError(
+                "Firefox WebRTC bağlantı hatası: Tarayıcı ayarlarınızı kontrol edin veya Chrome/Edge deneyin."
+              );
+            } else {
+              setError(
+                "WebRTC bağlantısı kurulamadı. İnternet bağlantınızı kontrol edin ve tekrar deneyin."
+              );
+            }
+          } else if (error.message?.includes("AudioContext")) {
+            setError(
+              "Ses hatası: Sayfaya tıklayın ve ses iznini verin, sonra tekrar deneyin."
+            );
+          } else if (error.message?.includes("getUserMedia")) {
+            setError(
+              "Kamera/mikrofon erişim hatası: Tarayıcı izinlerini kontrol edin."
+            );
+          } else {
+            setError(
+              `Bağlantı başarısız (${browserInfo.name}): ${error.message}`
+            );
+          }
+          // Don't redirect on error, let user choose what to do
+        }}
       >
-        {/* Stream header */}
-        <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent">
+        <CustomLiveStreamUI
+          streamDetails={streamDetails}
+          onChatSend={handleChatSend}
+          onLike={handleLike}
+          onShare={handleShare}
+          onBackToHome={handleBackToHome}
+          likeCount={likeCount}
+          isLiked={isLiked}
+          logMessage={logMessage}
+          isCurrentUserStreamer={isCurrentUserStreamer}
+        />
+        <RoomAudioRenderer volume={0.8} muted={false} />
+      </LiveKitRoom>
+    </div>
+  );
+}
+
+interface CustomLiveStreamUIProps {
+  streamDetails: any;
+  onChatSend: (message: string) => void;
+  onLike: () => void;
+  onShare: () => void;
+  onBackToHome: () => void;
+  likeCount: number;
+  isLiked: boolean;
+  logMessage: (msg: string, level?: string, data?: any) => void;
+  isCurrentUserStreamer: boolean;
+}
+
+function CustomLiveStreamUI({
+  streamDetails,
+  onChatSend,
+  onLike,
+  onShare,
+  onBackToHome,
+  likeCount,
+  isLiked,
+  logMessage,
+  isCurrentUserStreamer,
+}: CustomLiveStreamUIProps) {
+  const { user } = useAuth();
+  const { localParticipant } = useLocalParticipant();
+  const room = useRoomContext();
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [socket, setSocket] = useState<any>(null);
+
+  // Determine if current user is the streamer - use the passed prop
+  const isStreamer = isCurrentUserStreamer;
+
+  // Check if user is authenticated (has valid user object)
+  const isAuthenticated = !!user?.id;
+
+  // Get video tracks for display
+  const tracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare], {
+    onlySubscribed: false,
+  });
+
+  // Memoize the auth token to prevent unnecessary re-renders
+  const authToken = useMemo(() => getToken() || undefined, [user]);
+
+  // Initialize socket connection for chat
+  useEffect(() => {
+    if (!socket && user?.id) {
+      const socketUrl = window.location.origin;
+      const newSocket = io(socketUrl, {
+        path: "/socket.io",
+        query: {
+          streamId: streamDetails.id,
+          userId: user.id,
+          username: user.username,
+          token: authToken,
+        },
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionDelay: 1000,
+      });
+
+      newSocket.on("connect", () => {
+        console.log("LiveStream: Socket connected for chat functionality");
+        newSocket.emit("join-stream", streamDetails.id);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    }
+  }, [user?.id, streamDetails.id, authToken]);
+
+  // Initialize active bid hook with stabilized dependencies
+  const {
+    activeProductBid,
+    fetchActiveBid,
+    startCountdown,
+    pauseCountdown,
+    endAuction,
+  } = useActiveBid({
+    streamId: streamDetails.id,
+    token: authToken,
+    isStreamer: isStreamer,
+    logMessage: isStreamer ? logMessage : () => {}, // Only log for streamers
+    socket,
+  });
+
+  // Stream status change handler
+  const handleStatusChange = async (newStatus: string) => {
+    if (!isStreamer || !authToken) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      const response = await fetch(`/api/live-streams/${streamDetails.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        streamDetails.status = newStatus;
+        logMessage(`Stream status updated to: ${newStatus}`);
+      } else {
+        logMessage(
+          `Failed to update stream status: ${response.statusText}`,
+          "error"
+        );
+      }
+    } catch (error) {
+      logMessage(`Error updating stream status: ${error}`, "error");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full relative text-white bg-black">
+      {/* Header - Only show to streamers or as minimal info for viewers */}
+      <div className="absolute top-0 left-0 right-0 p-4 z-10 bg-gradient-to-b from-black/70 to-transparent">
+        {isStreamer ? (
           <StreamHeader
             streamDetails={streamDetails}
-            onBackClick={handleBackToHome}
-            isStreamer={isCurrentUserStreamer}
-            onStatusChange={updateStreamStatus}
+            isStreamer={isStreamer}
+            onBackClick={onBackToHome}
+            onStatusChange={handleStatusChange}
             isUpdatingStatus={isUpdatingStatus}
           />
-        </div>
-
-        {/* Jitsi Meeting Component */}
-        <div
-          className={`h-full w-full relative ${
-            isCurrentUserStreamer ? "streamer-mode" : "viewer-mode"
-          }`}
-        >
-          <JitsiMeeting
-            domain="meet.bidpazar.com"
-            roomName={jitsiConfig.roomName}
-            configOverwrite={jitsiConfig.configOverwrite}
-            interfaceConfigOverwrite={jitsiConfig.interfaceConfigOverwrite}
-            userInfo={jitsiConfig.userInfo}
-            onApiReady={handleApiReady}
-            getIFrameRef={(parentNode: HTMLDivElement) => {
-              if (parentNode) {
-                // Style the parent node that will contain the iframe
-                parentNode.style.height = "100%";
-                parentNode.style.width = "100%";
-                // Find the iframe within the parent and style it if needed
-                const iframe = parentNode.querySelector("iframe");
-                if (iframe) {
-                  iframe.style.border = "none";
-                  iframe.style.borderRadius = "8px";
-
-                  if (!isCurrentUserStreamer) {
-                    // For viewers, inject CSS to forcibly hide logos and participant lists
-                    setTimeout(() => {
-                      try {
-                        const iframeDocument =
-                          iframe.contentDocument ||
-                          iframe.contentWindow?.document;
-                        if (iframeDocument) {
-                          // Create a style element
-                          const style = iframeDocument.createElement("style");
-                          style.textContent = `
-                            /* Hide Jitsi watermark and logo */
-                            .watermark,
-                            #largeVideoBackgroundContainer .watermark,
-                            .jr-watermark,
-                            .deep-linking-mobile-logo,
-                            .welcome-logo,
-                            .welcome-watermark,
-                            .jitsi-logo {
-                              display: none !important;
-                              opacity: 0 !important;
-                              visibility: hidden !important;
-                            }
-                            
-                            /* Hide filmstrip and participant list */
-                            #filmstripContainer,
-                            .filmstrip,
-                            .vertical-filmstrip,
-                            #remoteVideos,
-                            #filmstripRemoteVideos,
-                            .filmstrip__videos,
-                            #participantsPane,
-                            .participants-pane {
-                              display: none !important;
-                              opacity: 0 !important;
-                              visibility: hidden !important;
-                              width: 0 !important;
-                              height: 0 !important;
-                            }
-                            
-                            /* Ensure the main video takes up the full space */
-                            #videospace {
-                              width: 100% !important;
-                              height: 100% !important;
-                            }
-                          `;
-
-                          // Append the style to the iframe document head
-                          iframeDocument.head.appendChild(style);
-                          console.log(
-                            "Injected custom CSS to hide Jitsi UI elements"
-                          );
-                        }
-                      } catch (error) {
-                        console.error(
-                          "Failed to inject CSS into Jitsi iframe:",
-                          error
-                        );
-                      }
-                    }, 2000); // Give the iframe content time to load
-                  }
-                }
-              }
-            }}
-          />
-
-          {/* Joining overlay */}
-          {isJoining && (
-            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-10">
-              <Loader2 className="h-12 w-12 animate-spin text-white" />
-              <p className="text-white mt-4">Yayına bağlanılıyor...</p>
-            </div>
-          )}
-        </div>
-
-        {/* Product section - Repositioned to center-left */}
-        <div className="product-section">
-          <ProductSection
-            streamId={streamId}
-            isStreamer={isCurrentUserStreamer}
-            activeProductBid={activeProductBid}
-            fetchActiveBid={fetchActiveBid}
-            user={user}
-            socket={apiObj}
-          />
-        </div>
-
-        {/* Action buttons on the right */}
-        <div className="stream-actions">
-          {/* Like and share buttons */}
-          <StreamActions
-            isLiked={isLiked}
-            onLike={handleLike}
-            onShare={handleShare}
-            likeCount={likeCount}
-          />
-
-
-        </div>
-
-                {/* TikTok/Instagram style transparent chat overlay */}
-        <div className="tiktok-chat-overlay">
-          {/* Messages area - shows last 3 messages */}
-          <div className="chat-messages-overlay">
-            <StreamChat
-              streamId={streamId}
-              currentUserId={userId || "anonymous"}
-              currentUsername={username || "Anonymous Viewer"}
-              className="transparent-chat"
-              showInput={false}
-              isCompact={true}
-              maxVisibleMessages={3}
-              onSendMessage={handleChatSend}
-            />
-          </div>
-
-          {/* Input area at bottom */}
-          {user && (
-            <div className="fixed-chat-input">
-              <div className="chat-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="Mesajınızı yazın..."
-                  className="chat-input-minimal"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && chatInput.trim()) {
-                      handleChatSend(chatInput);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  className="chat-send-minimal"
-                  onClick={() => {
-                    if (chatInput.trim()) {
-                      handleChatSend(chatInput);
-                    }
-                  }}
-                  disabled={!chatInput.trim()}
-                >
-                  <MessageCircle className="w-5 h-5" />
-                </button>
+        ) : (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={onBackToHome}
+                className="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center hover:bg-black/70 transition-colors"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+              <div>
+                <h1 className="text-white font-semibold text-sm">
+                  {streamDetails.title}
+                </h1>
+                <p className="text-white/70 text-xs">
+                  @{streamDetails.user?.username || "Kullanıcı"}
+                </p>
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Show login prompt for anonymous users */}
-        {!user && (
-          <div className="absolute bottom-24 left-4 right-4 text-center z-40">
-            <div className="bg-black/80 mx-auto max-w-md px-4 py-3 rounded-xl text-white backdrop-blur-lg border border-white/20 shadow-lg">
-              <p className="text-sm mb-3">
-                Açık arttırmalara katılmak ve sohbet etmek için giriş
-                yapmalısınız
-              </p>
-              <button
-                onClick={() => router.push("/login")}
-                className="px-6 py-2 bg-[var(--accent)] text-white rounded-full text-sm font-medium hover:bg-[var(--accent)]/90 transition-colors"
-              >
-                Giriş Yap
-              </button>
+            <div className="flex items-center space-x-2">
+              <div className="bg-red-500 px-2 py-1 rounded-full text-xs font-medium">
+                🔴 CANLI
+              </div>
             </div>
           </div>
         )}
+      </div>
+
+      {/* Main Video Area - Full screen for viewers */}
+      <div className="flex-1 flex items-center justify-center">
+        {tracks.length > 0 ? (
+          <GridLayout tracks={tracks}>
+            <ParticipantTile />
+          </GridLayout>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-2">
+              <div className="animate-pulse">
+                <div className="w-12 h-12 bg-white/20 rounded-full mx-auto mb-3"></div>
+              </div>
+              <p className="text-lg opacity-70">Yayın başlatılıyor...</p>
+              <p className="text-sm opacity-50">Lütfen bekleyin</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right Side Actions - TikTok/Instagram style */}
+      <div className="absolute right-4 bottom-32 z-10 flex flex-col space-y-4">
+        <StreamActions
+          onLike={onLike}
+          onShare={onShare}
+          likeCount={likeCount}
+          isLiked={isLiked}
+        />
+      </div>
+
+      {/* Bottom Content Area - Product and Chat */}
+      <div className="absolute bottom-20 left-4 right-16 z-10 space-y-3">
+        {/* Product Section */}
+        <ProductSection
+          streamId={streamDetails.id}
+          isStreamer={isStreamer}
+          activeProductBid={activeProductBid}
+          fetchActiveBid={fetchActiveBid}
+          user={user}
+          socket={socket}
+          startCountdown={startCountdown}
+          pauseCountdown={pauseCountdown}
+          endAuction={endAuction}
+        />
+
+        {/* Chat - Show for all users */}
+        <div className="max-w-lg w-full">
+          <StreamChat
+            streamId={streamDetails.id}
+            currentUserId={user?.id || "anonymous"}
+            currentUsername={user?.username || "Anonymous"}
+            onSendMessage={onChatSend}
+            isMinimal={!isStreamer}
+            className="min-h-[60px] w-full"
+          />
+        </div>
+      </div>
+
+      {/* Bottom Control Bar - Show appropriate controls based on user type */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 z-10 flex justify-center bg-gradient-to-t from-black/70 to-transparent">
+        <div className="flex items-center space-x-4">
+          {isStreamer ? (
+            // Full controls for streamers
+            <>
+              <ControlBar
+                controls={{
+                  microphone: true,
+                  camera: true,
+                  screenShare: true,
+                  chat: false,
+                  leave: true,
+                }}
+              />
+              <div className="flex items-center space-x-2">
+                <MediaDeviceMenu kind="videoinput" />
+                <MediaDeviceMenu kind="audioinput" />
+              </div>
+            </>
+          ) : isAuthenticated ? (
+            // Authenticated users - no leave button, can interact
+            <div className="flex items-center space-x-4 text-white/70 text-sm">
+              <span>👁️ Canlı izliyorsunuz</span>
+            </div>
+          ) : (
+            // Anonymous users - minimal interface
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={onBackToHome}
+                className="px-4 py-2 bg-black/50 text-white rounded-lg hover:bg-black/70 transition-colors"
+              >
+                Çıkış
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

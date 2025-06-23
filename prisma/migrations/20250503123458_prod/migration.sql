@@ -56,6 +56,7 @@ CREATE TABLE "Product" (
     "categoryId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "buyNowPrice" DOUBLE PRECISION,
 
     CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
 );

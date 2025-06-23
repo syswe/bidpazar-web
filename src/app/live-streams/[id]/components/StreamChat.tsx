@@ -26,7 +26,81 @@ interface StreamChatProps {
   showInput?: boolean;
   maxVisibleMessages?: number;
   isCompact?: boolean;
+  isMinimal?: boolean;
 }
+
+// Generate consistent colors for usernames
+const getUsernameColor = (username: string): string => {
+  const colors = [
+    "#FF6B6B",
+    "#4ECDC4",
+    "#45B7D1",
+    "#96CEB4",
+    "#FECA57",
+    "#FF9FF3",
+    "#54A0FF",
+    "#5F27CD",
+    "#00D2D3",
+    "#FF9F43",
+    "#10AC84",
+    "#EE5A24",
+    "#0984E3",
+    "#6C5CE7",
+    "#00B894",
+    "#F39C12",
+    "#E74C3C",
+    "#9B59B6",
+    "#3498DB",
+    "#1ABC9C",
+    "#2ECC71",
+    "#F1C40F",
+    "#E67E22",
+    "#E91E63",
+    "#9C27B0",
+    "#673AB7",
+    "#3F51B5",
+    "#2196F3",
+    "#03A9F4",
+    "#00BCD4",
+    "#009688",
+    "#4CAF50",
+    "#8BC34A",
+    "#CDDC39",
+    "#FFEB3B",
+    "#FFC107",
+    "#FF9800",
+    "#FF5722",
+    "#795548",
+    "#607D8B",
+    "#FF1744",
+    "#F50057",
+    "#E91E63",
+    "#AA00FF",
+    "#6200EA",
+    "#651FFF",
+    "#3D5AFE",
+    "#2979FF",
+    "#00B0FF",
+    "#00E5FF",
+    "#1DE9B6",
+    "#00C853",
+    "#64DD17",
+    "#AEEA00",
+    "#FFD600",
+    "#FFAB00",
+    "#FF6D00",
+    "#DD2C00",
+    "#D50000",
+    "#C51162",
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  return colors[Math.abs(hash) % colors.length];
+};
 
 export default function StreamChat({
   streamId,
@@ -35,8 +109,9 @@ export default function StreamChat({
   className = "",
   onSendMessage,
   showInput = true,
-  maxVisibleMessages = 50,
+  maxVisibleMessages = 3, // Default to 3 for minimal UI
   isCompact = false,
+  isMinimal = false,
 }: StreamChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -45,13 +120,12 @@ export default function StreamChat({
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [fadingMessages, setFadingMessages] = useState<Set<string>>(new Set());
-  const [hiddenMessages, setHiddenMessages] = useState<Set<string>>(new Set());
-  const [showAllMessages, setShowAllMessages] = useState(false);
+  const [visibleMessages, setVisibleMessages] = useState<ChatMessage[]>([]);
+  const [isHovered, setIsHovered] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageTimeouts = useRef<Map<string, number>>(new Map());
-  const expandTimeoutRef = useRef<number | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const { user, isLoading: isAuthLoading } = useAuth();
   const socketRef = useRef<Socket | null>(null);
@@ -61,107 +135,96 @@ export default function StreamChat({
   // Detect mobile device
   useEffect(() => {
     const checkIsMobile = () => {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-                            window.innerWidth <= 768 ||
-                            'ontouchstart' in window;
+      const isMobileDevice =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        ) ||
+        window.innerWidth <= 768 ||
+        "ontouchstart" in window;
       setIsMobile(isMobileDevice);
-      console.log('Mobile detection:', { 
-        isMobileDevice, 
-        userAgent: navigator.userAgent, 
-        width: window.innerWidth, 
-        hasTouch: 'ontouchstart' in window 
-      });
     };
 
     checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
-    return () => window.removeEventListener('resize', checkIsMobile);
+    window.addEventListener("resize", checkIsMobile);
+    return () => window.removeEventListener("resize", checkIsMobile);
   }, []);
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messagesEndRef.current && (!isCompact || showAllMessages || isExpanded)) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      // Always scroll to bottom for new messages, but smooth only when hovered
+      messagesEndRef.current.scrollIntoView({
+        behavior: isHovered ? "smooth" : "auto",
+        block: "end",
+      });
     }
-  }, [messages, isCompact, showAllMessages, isExpanded]);
+  }, [visibleMessages]);
 
-  // Handle mobile tap to expand
-  const handleTouchInteraction = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!isMobile) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const newExpanded = !isExpanded;
-    setIsExpanded(newExpanded);
-    setShowAllMessages(newExpanded);
-    
-    console.log('Mobile chat interaction:', { newExpanded, hiddenCount: hiddenMessages.size });
-    
-    // Clear any existing timeout
-    if (expandTimeoutRef.current) {
-      clearTimeout(expandTimeoutRef.current);
-      expandTimeoutRef.current = null;
-    }
-    
-    // Auto-collapse after 8 seconds on mobile (longer time)
-    if (newExpanded) {
-      expandTimeoutRef.current = window.setTimeout(() => {
-        setIsExpanded(false);
-        setShowAllMessages(false);
-        console.log('Auto-collapsing mobile chat');
-      }, 8000);
-    }
-  };
-
-  // Handle desktop hover
-  const handleMouseEnter = () => {
-    if (isMobile) return;
-    setShowAllMessages(true);
-  };
-
-  const handleMouseLeave = () => {
-    if (isMobile) return;
-    setShowAllMessages(false);
-  };
-
-  // Auto-fade messages after 3 seconds (only in compact mode)
+  // Scroll to bottom when chat is expanded
   useEffect(() => {
-    if (!isCompact) return;
+    if (isHovered && messagesEndRef.current) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+      }, 100); // Small delay to ensure DOM is updated
+    }
+  }, [isHovered]);
 
-    // Set up fade timers for new messages
-    messages.forEach((message) => {
+  // Manage visible messages with auto-fade (3 seconds display time)
+  useEffect(() => {
+    // Clear previous timeouts
+    messageTimeouts.current.forEach((timer) => clearTimeout(timer));
+    messageTimeouts.current.clear();
+
+    if (isHovered) {
+      // When hovering, show all messages (scrollable)
+      setVisibleMessages(messages); // Show ALL messages when expanded
+      return;
+    }
+
+    // Show only the most recent messages with auto-fade
+    const recentMessages = messages.slice(-maxVisibleMessages);
+    setVisibleMessages(recentMessages);
+
+    // Set up fade timers for each message (only when not hovering)
+    recentMessages.forEach((message, index) => {
       const messageId = message.id || `${message.timestamp}-${message.userId}`;
-      
-      // Skip if already has a timer
-      if (messageTimeouts.current.has(messageId)) return;
 
       const timer = setTimeout(() => {
-        setFadingMessages(prev => new Set([...prev, messageId]));
-        
-        // Hide message after fade animation (don't remove from messages array)
-        setTimeout(() => {
-          setHiddenMessages(prev => new Set([...prev, messageId]));
-          setFadingMessages(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(messageId);
-            return newSet;
-          });
-          messageTimeouts.current.delete(messageId);
-        }, 300); // Wait for fade animation to complete
-      }, 3000); // 3 seconds before fade
+        if (!isHovered) {
+          // Only fade if not hovering
+          setFadingMessages((prev) => new Set([...prev, messageId]));
 
-      messageTimeouts.current.set(messageId, timer);
+          // Remove from visible after fade animation
+          setTimeout(() => {
+            if (!isHovered) {
+              // Double check
+              setVisibleMessages((prev) =>
+                prev.filter((msg) => {
+                  const msgId = msg.id || `${msg.timestamp}-${msg.userId}`;
+                  return msgId !== messageId;
+                })
+              );
+              setFadingMessages((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(messageId);
+                return newSet;
+              });
+            }
+          }, 500); // Fade animation duration
+        }
+      }, 3000 + index * 200); // Stagger the fade timing
+
+      messageTimeouts.current.set(messageId, timer as any);
     });
 
-    // Cleanup function
     return () => {
-      messageTimeouts.current.forEach(timer => clearTimeout(timer));
+      messageTimeouts.current.forEach((timer) => clearTimeout(timer));
       messageTimeouts.current.clear();
-      if (expandTimeoutRef.current) {
-        clearTimeout(expandTimeoutRef.current);
-      }
     };
-  }, [messages, isCompact]);
+  }, [messages, maxVisibleMessages, isHovered]);
 
   // Fetch initial messages via REST API
   useEffect(() => {
@@ -170,29 +233,12 @@ export default function StreamChat({
     const fetchMessages = async () => {
       try {
         setIsLoading(true);
-        console.log(
-          "StreamChat: Fetching initial messages from",
-          `/api/live-streams/${streamId}/chat`
-        );
-
         const response = await fetch(`/api/live-streams/${streamId}/chat`);
         if (response.ok) {
           const data = await response.json();
           if (data.success && Array.isArray(data.messages)) {
-            console.log(
-              "StreamChat: Successfully loaded",
-              data.messages.length,
-              "messages"
-            );
             setMessages(data.messages);
-          } else {
-            console.warn("StreamChat: Invalid response format", data);
           }
-        } else {
-          console.error(
-            "StreamChat: Error fetching chat messages:",
-            response.status
-          );
         }
       } catch (error) {
         console.error("StreamChat: Error fetching chat messages:", error);
@@ -206,31 +252,19 @@ export default function StreamChat({
 
   // Set up Socket.IO for real-time chat
   useEffect(() => {
-    if (!streamId) {
-      return;
-    }
+    if (!streamId) return;
 
     // Clean up previous socket if it exists
     if (socketRef.current) {
-      console.log("StreamChat: Disconnecting previous socket");
       socketRef.current.disconnect();
       socketRef.current = null;
     }
 
-    // Connect to Socket.IO server
     const connectSocket = () => {
       try {
-        if (socketRef.current?.connected) {
-          console.log("StreamChat: Socket already connected");
-          return;
-        }
+        if (socketRef.current?.connected) return;
 
-        // Get socket URL from environment variables directly
-        // Using the window object to access NEXT_PUBLIC env variables
         const socketUrl = window.location.origin;
-        console.log(`StreamChat: Connecting to Socket.IO at ${socketUrl}`);
-
-        // Create socket with more resilient options
         const newSocket = io(socketUrl, {
           path: "/socket.io",
           query: {
@@ -248,52 +282,49 @@ export default function StreamChat({
         socketRef.current = newSocket;
 
         newSocket.on("connect", () => {
-          console.log(
-            "StreamChat: Socket.IO connected successfully",
-            newSocket.id
-          );
+          if (isAuthenticated) {
+            console.log(
+              "StreamChat: Socket.IO connected successfully",
+              newSocket.id
+            );
+          }
           setIsConnected(true);
           setReconnectAttempts(0);
-
-          // Join the stream room
           newSocket.emit("join-stream", streamId);
-          console.log(`StreamChat: Joined stream: ${streamId}`);
         });
 
         // Listen for stream-message events
         newSocket.on("stream-message", (message: any) => {
-          console.log("StreamChat: Received new message", message);
-
-          // Normalize message format
           const normalizedMessage = {
             id: message.id || `temp-${Date.now()}`,
             streamId: message.streamId,
             userId: message.userId,
             username: message.username,
-            content: message.message || message.content, // Handle both formats
+            content: message.message || message.content,
             timestamp: message.timestamp,
           };
 
           setMessages((prev) => {
             const newMessages = [...prev, normalizedMessage];
-            // Keep only recent messages to prevent memory issues
-            return newMessages.slice(-maxVisibleMessages);
+            return newMessages.slice(-50); // Keep last 50 messages in memory
           });
         });
 
         newSocket.on("disconnect", (reason) => {
-          console.warn("StreamChat: Socket.IO disconnected, reason:", reason);
+          if (isAuthenticated) {
+            console.warn("StreamChat: Socket.IO disconnected, reason:", reason);
+          }
           setIsConnected(false);
         });
 
         newSocket.on("connect_error", (error) => {
-          console.error(
-            "StreamChat: Socket.IO connection error:",
-            error.message
-          );
+          if (isAuthenticated) {
+            console.error(
+              "StreamChat: Socket.IO connection error:",
+              error.message
+            );
+          }
           setIsConnected(false);
-
-          // Try to reconnect
           if (reconnectAttempts < 3) {
             setReconnectAttempts((prev) => prev + 1);
           }
@@ -301,21 +332,23 @@ export default function StreamChat({
 
         return newSocket;
       } catch (error) {
-        console.error("StreamChat: Error creating socket connection:", error);
+        if (isAuthenticated) {
+          console.error("StreamChat: Error creating socket connection:", error);
+        }
         return null;
       }
     };
 
-    // Connect after a short delay
     const timer = setTimeout(() => {
       connectSocket();
     }, 500);
 
-    // Cleanup function
     return () => {
       clearTimeout(timer);
       if (socketRef.current) {
-        console.log("StreamChat: Cleaning up socket connection");
+        if (isAuthenticated) {
+          console.log("StreamChat: Cleaning up socket connection");
+        }
         socketRef.current.emit("leave-stream", streamId);
         socketRef.current.disconnect();
       }
@@ -326,13 +359,12 @@ export default function StreamChat({
     currentUserId,
     currentUsername,
     reconnectAttempts,
-    maxVisibleMessages,
+    isAuthenticated,
   ]);
 
   // Expose socket and functions to parent for external message sending
   useEffect(() => {
     if (onSendMessage && socketRef.current) {
-      // Expose socket and auth status to parent
       (window as any).streamChatSocket = socketRef.current;
       (window as any).streamChatConnected = isConnected;
       (window as any).streamChatAuthenticated = isAuthenticated;
@@ -341,142 +373,153 @@ export default function StreamChat({
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    // This component no longer handles sending messages directly
-    // Message sending is handled by parent component
-    console.log("StreamChat: handleSendMessage called but not implemented");
+
+    if (!newMessage.trim()) return;
+
+    // If parent provided onSendMessage handler, use it
+    if (onSendMessage) {
+      onSendMessage(newMessage.trim());
+      setNewMessage("");
+      return;
+    }
+
+    // Otherwise, send via socket directly
+    if (!socketRef.current || !isConnected) {
+      toast.error("Chat not connected. Please wait...");
+      return;
+    }
+
+    if (!isAuthenticated) {
+      toast.error("You must be logged in to send messages");
+      return;
+    }
+
+    try {
+      setIsSending(true);
+
+      socketRef.current.emit("stream-message", {
+        streamId,
+        userId: currentUserId,
+        username: currentUsername,
+        message: newMessage.trim(),
+      });
+
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+      toast.error("Failed to send message");
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  // Get visible messages (compact mode shows fewer)
-  const visibleMessages = isCompact 
-    ? (showAllMessages || isExpanded)
-      ? messages // Show all messages when hovering/expanded
-      : messages.filter(msg => {
-          const msgId = msg.id || `${msg.timestamp}-${msg.userId}`;
-          return !hiddenMessages.has(msgId);
-        }).slice(-3) // Show only last 3 visible messages in compact mode
-    : messages;
+  // Handle hover/touch interactions
+  const handleMouseEnter = () => {
+    if (!isMobile) {
+      setIsHovered(true);
+    }
+  };
 
-  // Render a more user-friendly loading state
+  const handleMouseLeave = () => {
+    if (!isMobile) {
+      setIsHovered(false);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isMobile) {
+      e.preventDefault();
+      setIsHovered(!isHovered);
+    }
+  };
+
+  const handleClick = () => {
+    if (isMobile) {
+      setIsHovered(!isHovered);
+    }
+  };
+
   if (isAuthLoading) {
-    return (
-      <div
-        className={`flex flex-col h-full items-center justify-center ${className}`}
-      >
-        <Loader2 className="h-6 w-6 animate-spin text-white/50" />
-        <p className="text-white/50 mt-2 text-xs">Loading chat...</p>
-      </div>
-    );
+    return null; // Don't show loading for chat
   }
 
-  if (isCompact) {
-    // Compact mode for TikTok/Instagram style overlay
-    return (
-      <div className={`flex flex-col h-full ${className}`}>
-        <div 
-          className={`flex-1 flex flex-col justify-end space-y-2 p-2 ${(showAllMessages || isExpanded) ? 'chat-expanded' : ''} ${isMobile ? 'mobile-chat' : ''}`}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          onTouchStart={isMobile ? handleTouchInteraction : undefined}
-          style={isMobile && isExpanded ? {
-            touchAction: 'pan-y',
-            overflowY: 'auto',
-            maxHeight: '60vh',
-            minHeight: '300px'
-          } : undefined}
-        >
-          {/* Mobile expand indicator */}
-          {isMobile && !isExpanded && hiddenMessages.size > 0 && (
-            <div 
-              className="text-center text-white/80 py-2 text-sm mobile-expand-hint"
-              onTouchStart={handleTouchInteraction}
-            >
-              👆 Tap to see all messages ({hiddenMessages.size} hidden)
-            </div>
-          )}
-          
-          {visibleMessages.length === 0 ? (
-            <div className="text-center text-white/50 py-2 text-xs">
-              No messages yet
-            </div>
-          ) : (
-            visibleMessages.map((message, index) => {
-              const messageId = message.id || `${message.timestamp}-${message.userId}`;
-              const isFading = fadingMessages.has(messageId);
-              const isHidden = hiddenMessages.has(messageId);
-              
-              // Don't show hidden messages unless hovering/expanded
-              if (isHidden && !showAllMessages && !isExpanded) {
-                return null;
-              }
-              
-              return (
-                <div
-                  key={message.id || index}
-                  className={`chat-message animate-in fade-in duration-300 ${isFading ? 'fading' : ''} ${isHidden ? 'was-hidden' : ''}`}
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <div className="username">{message.username}</div>
-                  <div className="message-text">{message.content}</div>
-                </div>
-              );
-            })
-          )}
-          {(showAllMessages || isExpanded) && <div ref={messagesEndRef} />}
-        </div>
-      </div>
-    );
-  }
-
+  // Minimal live-style chat (like TikTok/YouTube Live)
   return (
-    <div
-      className={`flex flex-col h-full bg-opacity-70 bg-black rounded-lg overflow-hidden ${className}`}
-    >
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {isLoading && messages.length === 0 ? (
-          <div className="flex justify-center items-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-white/70 py-4 text-sm">
-            No messages yet. Be the first to chat!
-          </div>
-        ) : (
-          visibleMessages.map((message, index) => (
-            <div
-              key={message.id || index}
-              className={`flex items-start space-x-2 ${
-                message.userId === currentUserId ? "justify-end" : ""
-              }`}
-            >
-              <div
-                className={`px-3 py-2 rounded-lg max-w-[80%] break-words ${
-                  message.userId === currentUserId
-                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                    : "bg-[var(--secondary)] text-[var(--secondary-foreground)]"
-                }`}
-              >
-                <div className="text-xs font-medium opacity-80 mb-1">
-                  {message.username || "Anonymous"}
-                </div>
-                <p className="text-sm">{message.content}</p>
-              </div>
+    <div className={`flex flex-col ${className}`}>
+      {/* Messages Area - Transparent background */}
+      <div
+        ref={chatContainerRef}
+        className={`flex flex-col justify-end space-y-1 transition-all duration-300 ${
+          isMobile ? "cursor-pointer" : "cursor-default"
+        } ${
+          isHovered
+            ? "max-h-96 overflow-y-scroll scrollbar-thin scrollbar-thumb-white/30 scrollbar-track-transparent"
+            : "max-h-20 overflow-hidden"
+        }`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onClick={handleClick}
+        style={{
+          // Subtle background for better visibility
+          background: isAuthenticated ? "rgba(0,0,0,0.4)" : "transparent",
+          borderRadius: "8px",
+          padding: isAuthenticated ? "8px" : "0",
+          minHeight: isAuthenticated ? "40px" : "auto",
+          border: isAuthenticated ? "1px solid rgba(255,255,255,0.1)" : "none",
+          // Add subtle text shadow for readability
+          textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
+          // Force scrolling to work
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {/* Chat hint for authenticated users - only when no messages AND not expanded */}
+        {isAuthenticated &&
+          visibleMessages.length === 0 &&
+          messages.length === 0 &&
+          !isHovered && (
+            <div className="text-white/30 text-xs text-center py-1">
+              💬 Sohbet
             </div>
-          ))
-        )}
+          )}
+        {visibleMessages.map((message, index) => {
+          const messageId =
+            message.id || `${message.timestamp}-${message.userId}`;
+          const isFading = fadingMessages.has(messageId);
+          const usernameColor = getUsernameColor(message.username);
+
+          return (
+            <div
+              key={messageId}
+              className={`text-sm transition-opacity duration-500 ${
+                isFading ? "opacity-0" : "opacity-100"
+              }`}
+              style={{
+                textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
+              }}
+            >
+              <span style={{ color: usernameColor }} className="font-semibold">
+                {message.username}
+              </span>
+              <span className="text-white">: {message.content}</span>
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
-      {showInput && (
-        <form onSubmit={handleSendMessage} className="p-2 bg-black/30">
+      {/* Input Area - Show for authenticated users or when hovered */}
+      {showInput && (isAuthenticated || isHovered) && (
+        <form onSubmit={handleSendMessage} className="mt-3">
           <div className="relative flex items-center">
             <input
               type="text"
               placeholder={
                 isAuthenticated
                   ? isConnected
-                    ? "Send a message..."
-                    : "Connecting chat..."
-                  : "Login to chat..."
+                    ? "Mesaj gönderin..."
+                    : "Chat bağlanıyor..."
+                  : "Giriş yapın..."
               }
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
@@ -486,7 +529,7 @@ export default function StreamChat({
                 !isConnected ||
                 reconnectAttempts >= 2
               }
-              className="w-full bg-black/50 text-white placeholder-white/50 px-4 py-2 pr-10 rounded-full focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              className="w-full bg-black/60 text-white placeholder-white/60 px-4 py-3 pr-12 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-white/40 backdrop-blur-sm border border-white/30 transition-all hover:bg-black/70 focus:bg-black/70"
             />
             {isAuthenticated ? (
               <button
@@ -497,7 +540,7 @@ export default function StreamChat({
                   !isConnected ||
                   reconnectAttempts >= 2
                 }
-                className="absolute right-2 text-white/80 hover:text-white disabled:text-white/40"
+                className="absolute right-3 p-1.5 text-white/80 hover:text-white disabled:text-white/40 hover:bg-white/10 rounded-full transition-all"
               >
                 {isSending ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -506,7 +549,7 @@ export default function StreamChat({
                 )}
               </button>
             ) : (
-              <div className="absolute right-2 text-white/50">
+              <div className="absolute right-3 p-1.5 text-white/50">
                 <LogIn className="h-5 w-5" />
               </div>
             )}

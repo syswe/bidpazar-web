@@ -1,3 +1,4 @@
+// server.js
 const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
@@ -15,7 +16,7 @@ const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT, 10) || 3000;
 
 // Enable debug logs
-const DEBUG_SERVER = process.env.DEBUG_CHAT === 'true' || dev;
+const DEBUG_SERVER = process.env.DEBUG_CHAT === "true" || dev;
 
 // Initialize Next.js
 const app = next({ dev, hostname, port });
@@ -38,12 +39,13 @@ app.prepare().then(() => {
   const io = socketio(server, {
     cors: {
       origin: dev
-        ? `http://${hostname}:${port}`
+        ? [`http://${hostname}:${port}`, `http://localhost:${port}`]
         : process.env.NEXT_PUBLIC_APP_URL || "https://bidpazar.com",
       methods: ["GET", "POST"],
       credentials: true,
     },
-    path: process.env.WS_URL || "/socket.io",
+    path: "/socket.io",
+    transports: ["websocket", "polling"],
   });
 
   // Make Socket.IO instance available globally for API routes to use
@@ -96,7 +98,7 @@ app.prepare().then(() => {
   };
 
   // Enable debug logs with DEBUG_CHAT=true
-  const DEBUG_CHAT = process.env.DEBUG_CHAT === 'true';
+  const DEBUG_CHAT = process.env.DEBUG_CHAT === "true";
 
   // Socket.IO event handling for chat and bidding
   io.on("connection", (socket) => {
@@ -129,7 +131,9 @@ app.prepare().then(() => {
         );
         if (socketRooms.length > 0) {
           console.log(
-            `User ${username} (${userId}) joined rooms: ${socketRooms.join(", ")}`
+            `User ${username} (${userId}) joined rooms: ${socketRooms.join(
+              ", "
+            )}`
           );
         }
       }
@@ -152,12 +156,14 @@ app.prepare().then(() => {
       const streamUsers = activeStreams.get(streamId);
       streamUsers.set(socket.id, user);
 
-      // Notify everyone about the new viewer
-      io.to(`stream:${streamId}`).emit("viewer-joined", {
-        userId: user.id,
-        username: user.username,
-        viewerCount: streamUsers.size,
-      });
+      // Notify everyone about the new viewer (only in debug mode)
+      if (DEBUG_CHAT) {
+        io.to(`stream:${streamId}`).emit("viewer-joined", {
+          userId: user.id,
+          username: user.username,
+          viewerCount: streamUsers.size,
+        });
+      }
     });
 
     // Leave a stream room
@@ -174,9 +180,11 @@ app.prepare().then(() => {
     socket.on("stream-message", (data) => {
       if (!data.streamId) return;
 
-      console.log(
-        `Message in stream ${data.streamId} from ${user.username}: ${data.message}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `Message in stream ${data.streamId} from ${user.username}: ${data.message}`
+        );
+      }
       // Broadcast message to everyone in the stream room
       io.to(`stream:${data.streamId}`).emit("stream-message", {
         userId: user.id,
@@ -189,9 +197,11 @@ app.prepare().then(() => {
 
     // Join a conversation room
     socket.on("join-conversation", async (conversationId, callback) => {
-      console.log(
-        `User ${user.username} (${user.id}) joining conversation: ${conversationId}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `User ${user.username} (${user.id}) joining conversation: ${conversationId}`
+        );
+      }
 
       // Check if user has access to this conversation
       const { hasAccess, reason } = await checkConversationAccess(
@@ -222,12 +232,14 @@ app.prepare().then(() => {
       socket.join(`conversation:${conversationId}`);
 
       // Log room membership for debugging
-      const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
-      console.log(
-        `User ${user.username} (${user.id}) is now in rooms: ${rooms.join(
-          ", "
-        )}`
-      );
+      if (DEBUG_CHAT) {
+        const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
+        console.log(
+          `User ${user.username} (${user.id}) is now in rooms: ${rooms.join(
+            ", "
+          )}`
+        );
+      }
 
       // Track active conversation participants
       if (!activeConversations.has(conversationId)) {
@@ -238,9 +250,11 @@ app.prepare().then(() => {
       participants.add(user.id);
 
       // Log success
-      console.log(
-        `User ${user.username} (${user.id}) joined conversation: ${conversationId} (${participants.size} active participants)`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `User ${user.username} (${user.id}) joined conversation: ${conversationId} (${participants.size} active participants)`
+        );
+      }
 
       // Send success in callback if provided
       if (typeof callback === "function") {
@@ -250,9 +264,11 @@ app.prepare().then(() => {
 
     // Leave a conversation room
     socket.on("leave-conversation", (conversationId) => {
-      console.log(
-        `User ${user.username} (${user.id}) left conversation: ${conversationId}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `User ${user.username} (${user.id}) left conversation: ${conversationId}`
+        );
+      }
       socket.leave(`conversation:${conversationId}`);
 
       // Remove from active conversation participants
@@ -356,9 +372,11 @@ app.prepare().then(() => {
     socket.on("place-bid", (data) => {
       if (!data.streamId || !data.listingId || !data.amount) return;
 
-      console.log(
-        `Bid in stream ${data.streamId} for listing ${data.listingId}: ${data.amount} from ${user.username}`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `Bid in stream ${data.streamId} for listing ${data.listingId}: ${data.amount} from ${user.username}`
+        );
+      }
 
       // Broadcast the bid to everyone in the stream
       io.to(`stream:${data.streamId}`).emit("new-bid", {
@@ -371,32 +389,119 @@ app.prepare().then(() => {
       });
     });
 
-    // Countdown timer events
+    // Auction ended functionality - Enhanced
+    socket.on("auction-ended", (data) => {
+      if (!data.streamId || !data.productId) return;
+
+      if (DEBUG_CHAT) {
+        console.log(
+          `Auction ended in stream ${data.streamId} for product ${data.productId}`
+        );
+      }
+
+      // Broadcast auction end to everyone in the stream
+      io.to(`stream:${data.streamId}`).emit("auction-ended", {
+        productId: data.productId,
+        productName: data.productName,
+        streamId: data.streamId,
+        sellerId: data.sellerId,
+        winnerId: data.winnerId,
+        winnerUsername: data.winnerUsername,
+        winningAmount: data.winningAmount,
+        timestamp: data.timestamp || new Date().toISOString(),
+        serverTime: new Date().toISOString(), // For synchronization
+      });
+    });
+
+    // New product added to stream
+    socket.on("product-added", (data) => {
+      if (!data.streamId || !data.productId) return;
+
+      if (DEBUG_CHAT) {
+        console.log(
+          `New product added to stream ${data.streamId}: ${data.productId}`
+        );
+      }
+
+      // Broadcast new product to everyone in the stream
+      io.to(`stream:${data.streamId}`).emit("product-added", {
+        productId: data.productId,
+        streamId: data.streamId,
+        productType: data.productType,
+        productName: data.productName,
+        basePrice: data.basePrice,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Product status changed (PENDING -> ACTIVE -> PAUSED -> ENDED)
+    socket.on("product-status-changed", (data) => {
+      if (!data.streamId || !data.productId || !data.status) return;
+
+      if (DEBUG_CHAT) {
+        console.log(
+          `Product status changed in stream ${data.streamId}: ${data.productId} -> ${data.status}`
+        );
+      }
+
+      // Broadcast status change to everyone in the stream
+      io.to(`stream:${data.streamId}`).emit("product-status-changed", {
+        productId: data.productId,
+        streamId: data.streamId,
+        status: data.status,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Enhanced countdown timer events with real-time synchronization
     socket.on("start-countdown", (data) => {
-      if (!data.streamId || !data.listingId || !data.duration) return;
+      if (!data.streamId || !data.productId || !data.duration) return;
 
-      console.log(
-        `Starting countdown in stream ${data.streamId} for listing ${data.listingId}: ${data.duration}s`
-      );
+      if (DEBUG_CHAT) {
+        console.log(
+          `Starting countdown in stream ${data.streamId} for product ${data.productId}: ${data.duration}s`
+        );
+      }
 
-      const startTime = new Date();
+      const startTime = new Date(data.startTime || Date.now());
       const endTime = new Date(startTime.getTime() + data.duration * 1000);
 
-      // Notify everyone about countdown start
+      // Notify everyone about countdown start with precise timing
       io.to(`stream:${data.streamId}`).emit("countdown-started", {
-        listingId: data.listingId,
+        productId: data.productId,
+        streamId: data.streamId,
         duration: data.duration,
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
+        serverTime: new Date().toISOString(), // For client-server time sync
       });
 
       // Schedule a message for when countdown ends
       setTimeout(() => {
         io.to(`stream:${data.streamId}`).emit("countdown-ended", {
-          listingId: data.listingId,
+          productId: data.productId,
+          streamId: data.streamId,
           endTime: new Date().toISOString(),
         });
       }, data.duration * 1000);
+    });
+
+    // Pause countdown event
+    socket.on("pause-countdown", (data) => {
+      if (!data.streamId || !data.productId) return;
+
+      if (DEBUG_CHAT) {
+        console.log(
+          `Pausing countdown in stream ${data.streamId} for product ${data.productId}`
+        );
+      }
+
+      // Notify everyone about countdown pause
+      io.to(`stream:${data.streamId}`).emit("countdown-paused", {
+        productId: data.productId,
+        streamId: data.streamId,
+        pausedAt: new Date().toISOString(),
+      });
     });
 
     // Stream state updates
