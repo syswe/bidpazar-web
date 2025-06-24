@@ -65,6 +65,7 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Copy Prisma schema files for database operations
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json ./
 
 # Make sure server.js is in the image
 COPY --from=builder /app/server.js ./
