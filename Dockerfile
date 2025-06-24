@@ -50,7 +50,7 @@ RUN npm install --no-save esbuild && \
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 # Make sure the server binds to all interfaces, not just localhost
 ENV HOST=0.0.0.0
@@ -73,11 +73,22 @@ COPY --from=builder /app/server.js ./
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/dist ./dist
 
-# Copy module-alias package which is required by server.js
+# Copy essential node_modules for runtime dependencies
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/module-alias ./node_modules/module-alias
+COPY --from=builder /app/node_modules/react ./node_modules/react
+COPY --from=builder /app/node_modules/react-dom ./node_modules/react-dom
+COPY --from=builder /app/node_modules/next ./node_modules/next
 
-# Install required dependencies for socket.io
+# Install production dependencies
+RUN npm ci --only=production --ignore-scripts
+
+# Install additional runtime dependencies for socket.io
 RUN npm install --no-save socket.io socket.io-client ws cors
+
+# Regenerate Prisma client in production environment
+RUN npx prisma generate
 
 # Make public directory and files writable (adjust if needed, e.g., for uploads)
 RUN chmod -R 755 /app/public

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, ShoppingBag, Tv, User } from "lucide-react";
 import LoadingSpinner from "./LoadingSpinner";
-import useSwipeGesture from "./useSwipeGesture";
+import useSwipeGesture from "@/hooks/useSwipeGesture";
 
 const BottomNavigation = () => {
   const pathname = usePathname();
