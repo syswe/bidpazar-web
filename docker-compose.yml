@@ -1,46 +1,179 @@
 version: '3'
 services:
-  web:
-    image: bidpazar:latest
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: bidpazar-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass "redis_password"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bidpazar-network
+
+  # Coturn TURN Server for WebRTC NAT traversal
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    container_name: bidpazar-coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "5349:5349/udp"
+      - "5349:5349/tcp"
+      - "49152-65535:49152-65535/udp"
+    environment:
+      # Coturn Configuration
+      TURN_USERNAME: "bidpazar"
+      TURN_PASSWORD: "coturn_secret_password"
+      REALM: "localhost"
+      MIN_PORT: 49152
+      MAX_PORT: 65535
+      EXTERNAL_IP: "localhost"
+    command: >
+      -n
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-multicast-peers
+      --no-cli
+      --no-tlsv1
+      --no-tlsv1_1
+      --realm=localhost
+      --static-auth-secret=coturn_secret_password
+      --user=bidpazar:coturn_secret_password
+      --min-port=49152
+      --max-port=65535
+      --allowed-peer-ip=10.0.0.0-10.255.255.255
+      --allowed-peer-ip=192.168.0.0-192.168.255.255
+      --allowed-peer-ip=172.16.0.0-172.31.255.255
+    networks:
+      - bidpazar-network
+
+  # LiveKit Server for real-time video/audio streaming
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: bidpazar-livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"     # Signal/HTTP
+      - "7881:7881/tcp" # RTC TCP
+      - "50000-60000:50000-60000/udp" # WebRTC UDP range (per LiveKit docs)
+    environment:
+      # Basic settings
+      LOG_LEVEL: "debug"
+      DEVELOPMENT: "true"
+    volumes:
+      # Use livekit.yaml for main setup
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      coturn:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - bidpazar-network
+
+  # Next.js Application
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
+      target: runner
+    container_name: bidpazar-app
+    restart: unless-stopped
     ports:
       - "3000:3000"
-      # Range of ports for MediaSoup WebRTC
-      - "40000-40100:40000-40100/udp"
-    cap_add:
-      - SYS_NICE  # Allows the container to set process priorities
-    env_file:
-      - .env
     environment:
-      # Environment variables for MediaSoup
-      - NODE_ENV=production
-      - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
-      - MEDIASOUP_LISTEN_IP=0.0.0.0
-      - MEDIASOUP_MIN_PORT=40000
-      - MEDIASOUP_MAX_PORT=40100
-      # Required environment variables for the app
-      - DATABASE_URL=${DATABASE_URL}
-      - SOCKET_URL=${SOCKET_URL}
-      - APP_URL=${APP_URL}
-      - API_URL=${API_URL}
-      - BACKEND_API_URL=${BACKEND_API_URL}
-      - WEBRTC_SERVER=${WEBRTC_SERVER}
-      - TURN_SERVER_URL=${TURN_SERVER_URL}
-      - TURN_USERNAME=${TURN_USERNAME}
-      - TURN_PASSWORD=${TURN_PASSWORD}
-      - STUN_SERVER_URL=${STUN_SERVER_URL}
-      - REDIS_URL=${REDIS_URL}
-      - WS_URL=${WS_URL:-/socket.io}
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # Database - External PostgreSQL (configure in .env)
+      # DATABASE_URL: "postgresql://user:password@external-postgres:5432/bidpazar?schema=public"
+      
+      # Application URLs
+      APP_URL: "http://localhost:3000"
+      API_URL: "http://localhost:3000/api"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      NEXT_PUBLIC_API_URL: "http://localhost:3000/api"
+      
+      # Socket.IO
+      NEXT_PUBLIC_SOCKET_URL: "http://localhost:3000"
+      NEXT_PUBLIC_WS_URL: "/socket.io"
+      SOCKET_URL: "http://localhost:3000"
+      WS_URL: "/socket.io"
+      SOCKET_LOG_LEVEL: "debug"
+      
+      # Server Configuration
+      PORT: 3000
+      NODE_ENV: "production"
+      
+      # Authentication
+      JWT_SECRET: "your-secret-key"
+      NEXTAUTH_SECRET: "your-nextauth-secret"
+      NEXTAUTH_URL: "http://localhost:3000"
+      
+      # SMS Configuration
+      SMS_USERNAME: "bidpazar"
+      SMS_PASSWORD: "lAJ5HgcV23HgeSYg"
+      SMS_ORIGIN: "908505518624"
+      SMS_API_URL: "https://smsgw.mutlucell.com/smsgw-ws/sndblkex"
+      SEND_MESSAGE: "real"
+      
+      # Debug Configuration
+      DEBUG_AUTH: "false"
+      DEBUG_NOTIFICATIONS: "false"
+      DEBUG_MESSAGES: "false"
+      DEBUG_CHAT: "false"
+      DEBUG_ACTIVE_BID: "false"
+      
+      # App Version
+      APP_VERSION: "1.0.0"
+      
+      # LiveKit
+      LIVEKIT_API_KEY: "devkey"
+      LIVEKIT_API_SECRET: "dev-secret-key-at-least-32-characters-long-for-security"
+      LIVEKIT_URL: "http://livekit:7880"
+      NEXT_PUBLIC_LIVEKIT_URL: "ws://localhost:7880"
+      NEXT_PUBLIC_DEBUG_ACTIVE_BID: "false"
+      
+      # Redis
+      REDIS_URL: "redis://:redis_password@redis:6379"
+      
     volumes:
       - ./public/uploads:/app/public/uploads
-      - ./public/profile:/app/public/profile
-      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
-      - app-network
+      - bidpazar-network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  bidpazar-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

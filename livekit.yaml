@@ -1,0 +1,78 @@
+# Default LiveKit configuration (fallback)
+# Use livekit.local.yaml for development or livekit.prod.yaml for production
+
+port: 7880
+bind_addresses:
+  - ""
+
+# API key and secret
+keys:
+  devkey: dev-secret-key-at-least-32-characters-long-for-security
+
+# Redis for scaling
+redis:
+  address: redis:6379
+  password: redis_password
+  db: 0
+
+# TURN servers for NAT traversal
+turn:
+  enabled: true
+  domain: localhost
+  udp_port: 3478
+  external_tls: false
+  
+# WebRTC configuration
+rtc:
+  # TURN servers
+  turn_servers:
+    - host: localhost
+      port: 3478
+      protocol: udp
+      username: bidpazar
+      credential: coturn_secret_password
+    - host: coturn
+      port: 3478
+      protocol: udp
+      username: bidpazar
+      credential: coturn_secret_password
+  
+  # Use external IP configuration
+  use_external_ip: false
+  
+  # UDP port range for media
+  port_range_start: 50000
+  port_range_end: 60000
+  
+  # TCP fallback
+  tcp_port: 7881
+
+# Room settings
+room:
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/h264
+    - mime: video/vp8
+    - mime: video/vp9
+  
+  # Auto create rooms
+  auto_create: true
+  
+  # Room timeouts
+  empty_timeout: 300
+  departure_timeout: 20
+
+# Logging for development
+log_level: debug
+
+# Development settings
+development: true
+
+# Audio settings
+audio:
+  # Audio level threshold (0-255, 206 corresponds to -50dB)
+  active_level: 206
+  # Minimum percentile for audio level detection
+  min_percentile: 40
+  # Update interval for audio levels (milliseconds)
+  update_interval: 100 

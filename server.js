@@ -4,12 +4,8 @@ const { parse } = require("url");
 const next = require("next");
 const socketio = require("socket.io");
 
-// Dynamic import for node-fetch (ESM module)
-let fetch;
-(async () => {
-  const { default: nodeFetch } = await import("node-fetch");
-  fetch = nodeFetch;
-})();
+// Node.js 22 has built-in fetch support
+// No need for node-fetch import
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";

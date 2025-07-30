@@ -1,0 +1,75 @@
+services:
+  # Coturn TURN Server for WebRTC NAT traversal (Production)
+  coturn:
+    environment:
+      TURN_USERNAME: "bidpazar_prod"
+      TURN_PASSWORD: "change_this_coturn_password_in_production"
+      REALM: "207.180.247.20"
+      MIN_PORT: 49152
+      MAX_PORT: 65535
+    command: >
+      -n
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-multicast-peers
+      --no-cli
+      --no-tlsv1
+      --no-tlsv1_1
+      --realm=207.180.247.20
+      --static-auth-secret=change_this_coturn_password_in_production
+      --user=bidpazar_prod:change_this_coturn_password_in_production
+      --min-port=49152
+      --max-port=65535
+      --allowed-peer-ip=10.0.0.0-10.255.255.255
+      --allowed-peer-ip=192.168.0.0-192.168.255.255
+      --allowed-peer-ip=172.16.0.0-172.31.255.255
+      --external-ip=207.180.247.20
+
+  # LiveKit Server for production
+  livekit:
+    ports:
+      - "7880:7880"     # Signal/HTTP
+      - "7881:7881/tcp" # RTC TCP
+      - "50000-60000:50000-60000/udp" # WebRTC UDP range (per LiveKit docs)
+    environment:
+      # Basic production settings
+      LOG_LEVEL: "info"
+      DEVELOPMENT: "false"
+    volumes:
+      # Use production config
+      - ./livekit.prod.yaml:/etc/livekit.yaml:ro
+
+  # Redis for production (with stronger password)
+  redis:
+    command: redis-server --appendonly yes --requirepass "change_this_redis_password_in_production"
+
+  # Next.js Application for production
+  app:
+    environment:
+      # LiveKit Production Settings
+      LIVEKIT_API_KEY: "prodkey"
+      LIVEKIT_API_SECRET: "change-this-livekit-secret-key-in-production-at-least-32-chars"
+      LIVEKIT_URL: "http://livekit:7880"
+      NEXT_PUBLIC_LIVEKIT_URL: "ws://207.180.247.20:7880"
+      
+      # Redis Production Settings
+      REDIS_URL: "redis://:change_this_redis_password_in_production@redis:6379"
+      
+      # Security Settings for Production
+      JWT_SECRET: "change_this_jwt_secret_for_production_at_least_32_chars"
+      NEXTAUTH_SECRET: "change_this_nextauth_secret_for_production"
+      
+      # App URLs for Production
+      APP_URL: "http://207.180.247.20:3000"
+      API_URL: "http://207.180.247.20:3000/api"
+      NEXT_PUBLIC_APP_URL: "http://207.180.247.20:3000"
+      NEXT_PUBLIC_API_URL: "http://207.180.247.20:3000/api"
+      
+      # Debug - disabled for production
+      DEBUG_AUTH: "false"
+      DEBUG_NOTIFICATIONS: "false"
+      DEBUG_MESSAGES: "false"
+      DEBUG_CHAT: "false"
+      DEBUG_ACTIVE_BID: "false"
+      NEXT_PUBLIC_DEBUG_ACTIVE_BID: "false" 

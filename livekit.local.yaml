@@ -1,0 +1,94 @@
+port: 7880
+bind_addresses:
+  - ""
+
+# API key and secret for development
+keys:
+  devkey: dev-secret-key-at-least-32-characters-long-for-security
+
+# Redis for scaling - using proper format
+redis:
+  address: redis:6379
+  password: redis_dev_password
+  db: 0
+
+# Disable TURN servers - use public STUN only for development
+turn:
+  enabled: true
+  domain: "localhost"
+  udp_port: 3478
+  external_tls: false
+  
+# WebRTC configuration with public STUN servers
+rtc:
+  # Use Google's public STUN servers for NAT traversal
+  stun_servers:
+    - "stun.l.google.com:19302"
+    - "stun1.l.google.com:19302"
+    - "stun2.l.google.com:19302"
+    - "stun3.l.google.com:19302"
+    - "stun4.l.google.com:19302"
+    - "stun.cloudflare.com:3478"
+    - "stun.services.mozilla.com:3478"
+  
+  # UDP port range for media - matches docker-compose port mapping
+  port_range_start: 60500
+  port_range_end: 60999
+  
+  # TCP fallback - enabled for better connectivity
+  tcp_port: 7881
+  
+  # External IP settings
+  use_external_ip: true
+  turn_servers:
+    - host: "localhost"
+      port: 3478
+      protocol: udp
+      username: bidpazar_dev
+      credential: coturn_dev_secret
+    - host: "coturn"
+      port: 3478
+      protocol: udp
+      username: bidpazar_dev
+      credential: coturn_dev_secret
+    # Add TCP fallback for restrictive networks
+    - host: "localhost"
+      port: 3478
+      protocol: tcp
+      username: bidpazar_dev
+      credential: coturn_dev_secret
+    - host: "coturn"
+      port: 3478
+      protocol: tcp
+      username: bidpazar_dev
+      credential: coturn_dev_secret
+
+# Room settings
+room:
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/h264
+    - mime: video/vp8
+    - mime: video/vp9
+  
+  # Auto create rooms
+  auto_create: true
+  
+  # Room timeouts (in seconds)
+  empty_timeout: 600
+  departure_timeout: 30
+
+# Logging for development - detailed debugging
+log_level: debug
+
+# Development settings
+development: true
+
+# Audio settings
+audio:
+  # Audio level threshold (0-255, 206 corresponds to -50dB)
+  active_level: 206
+  # Minimum percentile for audio level detection
+  min_percentile: 40
+  # Update interval for audio levels (milliseconds)
+  update_interval: 100 

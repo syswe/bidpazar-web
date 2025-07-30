@@ -1,0 +1,102 @@
+services:
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: bidpazar-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    command: redis-server --appendonly yes --requirepass "redis_dev_password"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bidpazar-dev-network
+
+  # Coturn TURN Server for WebRTC NAT traversal
+  coturn:
+    image: coturn/coturn:4.6.2-alpine
+    container_name: bidpazar-coturn-dev
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "5349:5349/udp"
+      - "5349:5349/tcp"
+      # Daraltılmış UDP port aralığı - sistem portlarıyla çakışmayı önler
+      - "60000-60499:60000-60499/udp"
+    environment:
+      # Coturn Configuration for Development
+      TURN_USERNAME: "bidpazar_dev"
+      TURN_PASSWORD: "coturn_dev_secret"
+      REALM: "localhost"
+      MIN_PORT: 60000
+      MAX_PORT: 60499
+      EXTERNAL_IP: "localhost"
+    command: >
+      -n
+      --log-file=stdout
+      --lt-cred-mech
+      --fingerprint
+      --no-multicast-peers
+      --no-cli
+      --no-tlsv1
+      --no-tlsv1_1
+      --realm=localhost
+      --user=bidpazar_dev:coturn_dev_secret
+      --min-port=60000
+      --max-port=60499
+      --allowed-peer-ip=10.0.0.0-10.255.255.255
+      --allowed-peer-ip=192.168.0.0-192.168.255.255
+      --allowed-peer-ip=172.16.0.0-172.31.255.255
+      --allowed-peer-ip=127.0.0.1
+    networks:
+      - bidpazar-dev-network
+
+  # LiveKit Server for real-time video/audio streaming
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: bidpazar-livekit-dev
+    restart: unless-stopped
+    ports:
+      - "7880:7880"     # Signal/HTTP - localhost:7880'den erişilebilir  
+      - "7881:7881"     # RTC TCP
+      # LiveKit için ayrı UDP port aralığı
+      - "60500-60999:60500-60999/udp" # WebRTC UDP range
+    environment:
+      # Basic development settings
+      LOG_LEVEL: "debug"
+      DEVELOPMENT: "true"
+    volumes:
+      # Development configuration
+      - ./livekit.local.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml", "--dev"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      coturn:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - bidpazar-dev-network
+
+volumes:
+  redis_data_dev:
+    driver: local
+
+networks:
+  bidpazar-dev-network:
+    driver: bridge
+    name: bidpazar-dev-network
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16

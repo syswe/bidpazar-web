@@ -106,7 +106,7 @@ const AddProductAuction: React.FC<AddProductAuctionProps> = ({
         className={`flex items-center gap-2 px-3 py-2 bg-black/50 backdrop-blur-sm border border-white/10 text-white rounded-lg hover:bg-black/70 transition-colors ${className}`}
       >
         <PlusCircle className="w-4 h-4" />
-        <span className="text-sm">60 Saniyelik Açık Arttırma Ekle</span>
+        <span className="text-sm">Ürün Ekle</span>
       </button>
     );
   }

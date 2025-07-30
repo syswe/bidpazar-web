@@ -1,0 +1,75 @@
+port: 7880
+bind_addresses:
+  - ""
+
+# API key and secret for production
+keys:
+  prodkey: change-this-livekit-secret-key-in-production-at-least-32-chars
+
+# Redis for scaling - production format
+redis:
+  address: redis:6379
+  password: change_this_redis_password_in_production
+  db: 0
+
+# TURN servers for NAT traversal
+turn:
+  enabled: true
+  domain: "207.180.247.20"
+  udp_port: 3478
+  external_tls: false
+  
+# WebRTC configuration for production
+rtc:
+  # TURN servers for production
+  turn_servers:
+    - host: "207.180.247.20"
+      port: 3478
+      protocol: udp
+      username: bidpazar_prod
+      credential: change_this_coturn_password_in_production
+    - host: coturn
+      port: 3478
+      protocol: udp
+      username: bidpazar_prod
+      credential: change_this_coturn_password_in_production
+  
+  # Use external IP for production
+  use_external_ip: true
+  
+  # UDP port range for media
+  port_range_start: 50000
+  port_range_end: 60000
+  
+  # TCP fallback
+  tcp_port: 7881
+
+# Room settings for production
+room:
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/h264
+    - mime: video/vp8
+    - mime: video/vp9
+  
+  # Auto create rooms
+  auto_create: true
+  
+  # Room timeouts (longer for production)
+  empty_timeout: 600
+  departure_timeout: 30
+
+# Logging for production
+log_level: info
+
+# Production settings
+development: false
+
+# Audio settings
+audio:
+  # Audio level threshold (0-255, 206 corresponds to -50dB)
+  active_level: 206
+  # Minimum percentile for audio level detection
+  min_percentile: 40
+  # Update interval for audio levels (milliseconds)
+  update_interval: 200 
