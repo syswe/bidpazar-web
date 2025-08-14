@@ -290,20 +290,21 @@ model StreamAnalytics {
 }
 
 model ProductAuction {
-  id           String    @id @default(cuid())
-  productId    String
-  startPrice   Float
-  currentPrice Float     @default(0)
-  duration     Int
-  status       String    @default("PENDING")
-  startTime    DateTime?
-  endTime      DateTime?
-  winningBidId String?   @unique
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  bids         Bid[]
-  product      Product   @relation(fields: [productId], references: [id])
-  winningBid   Bid?      @relation("WinningProductBid", fields: [winningBidId], references: [id])
+  id                   String    @id @default(cuid())
+  productId            String
+  startPrice           Float
+  currentPrice         Float     @default(0)
+  minimumBidIncrement  Float     @default(100) // Minimum bid increment based on current price
+  duration             Int
+  status               String    @default("PENDING")
+  startTime            DateTime?
+  endTime              DateTime?
+  winningBidId         String?   @unique
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  bids                 Bid[]
+  product              Product   @relation(fields: [productId], references: [id])
+  winningBid           Bid?      @relation("WinningProductBid", fields: [winningBidId], references: [id])
 }
 
 model SellerRequest {

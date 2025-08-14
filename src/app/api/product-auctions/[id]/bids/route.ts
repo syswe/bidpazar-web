@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getUserFromToken } from '@/lib/auth';
 import { logger } from '@/lib/logger';
+import { validateBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
 
 // Validation schema
 const bidSchema = z.object({
@@ -152,24 +153,28 @@ export async function POST(
       );
     }
 
-    // Check if the bid amount is higher than current price
-    logger.debug('Validating bid amount', { 
+    // Validate bid amount against minimum increment rules
+    logger.debug('Validating bid amount against increment rules', { 
       auctionId: id, 
       userId: user.id, 
       bidAmount: validatedData.amount,
       currentPrice: auction.currentPrice
     });
     
-    if (validatedData.amount <= auction.currentPrice) {
-      logger.warn('Bid amount too low', { 
+    const validation = validateBidAmount(auction.currentPrice, validatedData.amount);
+    
+    if (!validation.isValid) {
+      logger.warn('Bid amount does not meet minimum increment requirements', { 
         auctionId: id, 
         userId: user.id, 
         bidAmount: validatedData.amount,
-        currentPrice: auction.currentPrice
+        currentPrice: auction.currentPrice,
+        minimumAmount: validation.minimumAmount,
+        requiredIncrement: validation.increment
       });
       
       return NextResponse.json(
-        { error: `Teklif en az ${auction.currentPrice + 1} TL olmalıdır` },
+        { error: validation.error },
         { status: 400 }
       );
     }
@@ -236,11 +241,15 @@ export async function POST(
       });
     }
 
-    // Update the auction with the new current price and winning bid
-    logger.debug('Updating auction with new winning bid', {
+    // Calculate new minimum bid increment based on updated current price
+    const newMinimumBidIncrement = calculateMinimumBidIncrement(validatedData.amount);
+    
+    // Update the auction with the new current price, winning bid, and minimum increment
+    logger.debug('Updating auction with new winning bid and minimum increment', {
       auctionId: id,
       bidId: bid.id,
-      newPrice: validatedData.amount
+      newPrice: validatedData.amount,
+      newMinimumIncrement: newMinimumBidIncrement
     });
     
     // Use transaction to ensure data consistency
@@ -248,6 +257,7 @@ export async function POST(
       where: { id },
       data: {
         currentPrice: validatedData.amount,
+        minimumBidIncrement: newMinimumBidIncrement,
         winningBidId: bid.id,
       },
     });

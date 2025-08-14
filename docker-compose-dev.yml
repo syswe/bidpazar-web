@@ -66,7 +66,7 @@ services:
       - "7880:7880"     # Signal/HTTP - localhost:7880'den erişilebilir  
       - "7881:7881"     # RTC TCP
       # LiveKit için ayrı UDP port aralığı
-      - "60500-60999:60500-60999/udp" # WebRTC UDP range
+      - "60500-60600:60500-60600/udp" # WebRTC UDP range
     environment:
       # Basic development settings
       LOG_LEVEL: "debug"

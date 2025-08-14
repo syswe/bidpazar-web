@@ -141,7 +141,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "There is already an active product in this stream. Please end the current auction first.",
+            "There is already an active product in this stream. Please end the current product first.",
         },
         { status: 409 }
       );
@@ -161,17 +161,15 @@ export async function POST(
         isActive: true,
         isAuctionMode: Boolean(isAuctionMode),
         auctionDuration: isAuctionMode ? parseInt(auctionDuration) || 60 : null,
-        startTime: new Date(),
-        endTime: isAuctionMode
-          ? new Date(Date.now() + (parseInt(auctionDuration) || 60) * 1000)
-          : null,
+        startTime: isAuctionMode ? null : new Date(), // Auction products start without timer initially
+        endTime: null, // No end time until countdown starts
       },
     });
 
-    // If it's auction mode, set up countdown end time for the frontend
-    if (isAuctionMode && product.endTime) {
-      // Emit socket event if global.socketIO is available
-      if ((global as any).socketIO) {
+    // Emit socket event for new product
+    if ((global as any).socketIO) {
+      if (isAuctionMode) {
+        // Auction mode - product is created but countdown hasn't started yet
         (global as any).socketIO
           .to(`stream:${streamId}`)
           .emit("new-live-product", {
@@ -179,8 +177,20 @@ export async function POST(
             productId: product.id,
             productName: name,
             startPrice: price,
-            endTime: product.endTime.toISOString(),
-            duration: auctionDuration,
+            productType: "AUCTION",
+            status: "PENDING", // Product is waiting for countdown to start
+          });
+      } else {
+        // Stock sale mode
+        (global as any).socketIO
+          .to(`stream:${streamId}`)
+          .emit("new-stock-sale", {
+            streamId,
+            productId: product.id,
+            productName: name,
+            price: price,
+            stock: parseInt(stock) || 1,
+            productType: "FIXED_PRICE",
           });
       }
     }
@@ -327,6 +337,106 @@ export async function PUT(
                     amount: highestBid.amount,
                   }
                 : null,
+            });
+        }
+
+        break;
+
+      case "remove_stock_sale":
+        updatedProduct = await prisma.liveStreamProduct.update({
+          where: { id: productId },
+          data: {
+            isActive: false,
+            endTime: new Date(),
+          },
+        });
+
+        // Emit socket event
+        if ((global as any).socketIO) {
+          (global as any).socketIO
+            .to(`stream:${streamId}`)
+            .emit("stock-sale-removed", {
+              streamId,
+              productId,
+              timestamp: new Date().toISOString(),
+            });
+        }
+
+        break;
+
+      case "start_countdown":
+        // Only allow countdown actions for auction products
+        if (!product.isAuctionMode) {
+          return NextResponse.json(
+            { error: "Countdown actions are only available for auction products" },
+            { status: 400 }
+          );
+        }
+
+        const { duration = 60 } = body;
+        const endTime = new Date(Date.now() + duration * 1000);
+
+        // Get the highest bid so far to start the auction from that price
+        const highestBidSoFar = await prisma.liveStreamBid.findFirst({
+          where: { liveStreamProductId: productId },
+          orderBy: { amount: "desc" },
+          include: { user: true },
+        });
+
+        // Calculate starting price: use highest bid if exists, otherwise use base price
+        const startingPrice = highestBidSoFar ? highestBidSoFar.amount : product.basePrice;
+
+        updatedProduct = await prisma.liveStreamProduct.update({
+          where: { id: productId },
+          data: {
+            isActive: true,
+            endTime: endTime,
+            auctionDuration: duration,
+            startTime: new Date(),
+            currentPrice: startingPrice, // Start from the highest bid received so far
+          },
+        });
+
+        // Emit socket event
+        if ((global as any).socketIO) {
+          (global as any).socketIO
+            .to(`stream:${streamId}`)
+            .emit("countdown-started", {
+              streamId,
+              productId,
+              duration: duration,
+              endTime: endTime.toISOString(),
+              startingPrice: startingPrice,
+              highestBidder: highestBidSoFar ? highestBidSoFar.user?.username : null,
+            });
+        }
+
+        break;
+
+      case "pause_countdown":
+        // Only allow countdown actions for auction products
+        if (!product.isAuctionMode) {
+          return NextResponse.json(
+            { error: "Countdown actions are only available for auction products" },
+            { status: 400 }
+          );
+        }
+
+        updatedProduct = await prisma.liveStreamProduct.update({
+          where: { id: productId },
+          data: {
+            isActive: false,
+          },
+        });
+
+        // Emit socket event
+        if ((global as any).socketIO) {
+          (global as any).socketIO
+            .to(`stream:${streamId}`)
+            .emit("countdown-paused", {
+              streamId,
+              productId,
+              timestamp: new Date().toISOString(),
             });
         }
 

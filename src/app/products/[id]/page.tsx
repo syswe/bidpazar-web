@@ -9,6 +9,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { logger } from '@/lib/logger';
 import VerifiedSellerBadge from '@/components/VerifiedSellerBadge';
 import BidConfirmationModal from '@/components/BidConfirmationModal';
+import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -201,8 +202,10 @@ export default function ProductDetailPage() {
       return;
     }
     
-    if (amount <= auction.currentPrice) {
-      setAuctionError(`Teklif en az ${auction.currentPrice + 1} TL olmalıdır`);
+    const minimumBidAmount = calculateMinimumBidAmount(auction.currentPrice);
+    if (amount < minimumBidAmount) {
+      const increment = calculateMinimumBidIncrement(auction.currentPrice);
+      setAuctionError(`Teklif en az ${minimumBidAmount} TL olmalıdır (${increment} TL artış)`);
       return;
     }
     
@@ -588,9 +591,9 @@ export default function ProductDetailPage() {
                               type="number"
                               value={bidAmount}
                               onChange={(e) => setBidAmount(e.target.value)}
-                              placeholder={`${auction.currentPrice + 1}+ TL`}
+                              placeholder={`${calculateMinimumBidAmount(auction.currentPrice)}+ TL`}
                               className="premium-input text-sm sm:text-base"
-                              min={auction.currentPrice + 1}
+                              min={calculateMinimumBidAmount(auction.currentPrice)}
                               step="1"
                             />
                           </div>
@@ -604,12 +607,20 @@ export default function ProductDetailPage() {
                         </div>
                       </form>
                       
-                      <p className="text-xs text-[var(--muted-foreground)]">
-                        Minimum teklif: {new Intl.NumberFormat('tr-TR', {
-                          style: 'currency',
-                          currency: 'TRY'
-                        }).format(auction.currentPrice + 1)}
-                      </p>
+                      <div className="text-xs text-[var(--muted-foreground)] space-y-1">
+                        <p>
+                          Minimum teklif: {new Intl.NumberFormat('tr-TR', {
+                            style: 'currency',
+                            currency: 'TRY'
+                          }).format(calculateMinimumBidAmount(auction.currentPrice))}
+                        </p>
+                        <p>
+                          Minimum artış: {new Intl.NumberFormat('tr-TR', {
+                            style: 'currency',
+                            currency: 'TRY'
+                          }).format(calculateMinimumBidIncrement(auction.currentPrice))}
+                        </p>
+                      </div>
                     </>
                   )}
                   

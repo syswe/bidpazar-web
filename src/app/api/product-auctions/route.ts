@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { getUserFromToken } from '@/lib/auth';
 import { logger } from '@/lib/logger';
+import { calculateMinimumBidIncrement } from '@/lib/utils';
 
 // Schema for product auction creation
 const createProductAuctionSchema = z.object({
@@ -219,12 +220,21 @@ export async function POST(request: Request) {
       endTime: endTime.toISOString()
     });
     
+    // Calculate minimum bid increment based on start price
+    const minimumBidIncrement = calculateMinimumBidIncrement(validatedData.startPrice);
+    
+    logger.debug('Calculated minimum bid increment', { 
+      startPrice: validatedData.startPrice,
+      minimumBidIncrement
+    });
+    
     // Execute create
     const auction = await prisma.productAuction.create({
       data: {
         productId: validatedData.productId,
         startPrice: validatedData.startPrice,
         currentPrice: validatedData.startPrice,
+        minimumBidIncrement,
         duration: validatedData.duration,
         status: 'ACTIVE',
         startTime,

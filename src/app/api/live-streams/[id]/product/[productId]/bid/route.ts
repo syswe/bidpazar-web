@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getUserFromTokenInNode } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { validateBidAmount } from "@/lib/utils";
 
 /**
  * POST - Place a bid on a live stream product
@@ -95,13 +96,14 @@ export async function POST(
       );
     }
 
-    // Check if bid amount is higher than current highest bid
+    // Check if bid amount meets minimum increment requirements
     const currentHighestBid = product.bids[0]?.amount || product.currentPrice;
+    const validation = validateBidAmount(currentHighestBid, bidAmount);
 
-    if (bidAmount <= currentHighestBid) {
+    if (!validation.isValid) {
       return NextResponse.json(
         {
-          error: `Bid must be higher than current highest bid (${currentHighestBid} ₺)`,
+          error: validation.error,
         },
         { status: 400 }
       );

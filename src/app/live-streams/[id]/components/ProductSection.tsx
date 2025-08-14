@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Timer, CircleDollarSign, X, Loader2, Clock } from "lucide-react";
+import { Timer, CircleDollarSign, X, Loader2, Clock, Package, ShoppingCart } from "lucide-react";
 import { ProductBid } from "../hooks/useActiveBid";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getAuth, getToken } from "@/lib/frontend-auth";
-import AddProductAuction from "./AddProductAuction";
+import AddProductSelector from "./AddProductSelector";
 import BiddingInterface from "./BiddingInterface";
+import StockSaleInterface from "./StockSaleInterface";
 
 interface ProductSectionProps {
   streamId: string;
@@ -33,6 +34,7 @@ const ProductSection: React.FC<ProductSectionProps> = ({
   const router = useRouter();
   const { token } = getAuth();
   const [showBidInterface, setShowBidInterface] = useState(false);
+  const [showStockSaleInterface, setShowStockSaleInterface] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isEndingAuction, setIsEndingAuction] = useState(false);
   const [isStartingCountdown, setIsStartingCountdown] = useState(false);
@@ -272,11 +274,11 @@ const ProductSection: React.FC<ProductSectionProps> = ({
 
   // RENDERING LOGIC
 
-  // If streamer with no active product auction, show the add auction button/form
+  // If streamer with no active product, show the add product selector
   if (isStreamer && !activeProductBid) {
     return (
       <div className="streamer-product-controls">
-        <AddProductAuction
+        <AddProductSelector
           streamId={streamId}
           onSuccess={fetchActiveBid}
           socket={socket}
@@ -306,25 +308,37 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                 ? "Sabit Fiyat"
                 : "Açık Arttırma"}
             </span>
-            <span
-              className={`text-xs px-2 py-1 rounded-full ${
-                activeProductBid.auctionStatus === "ACTIVE"
-                  ? "bg-red-500/20 text-red-300"
+            {activeProductBid.productType === "AUCTION" ? (
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  activeProductBid.auctionStatus === "ACTIVE"
+                    ? "bg-red-500/20 text-red-300"
+                    : activeProductBid.auctionStatus === "PENDING"
+                    ? "bg-yellow-500/20 text-yellow-300"
+                    : activeProductBid.auctionStatus === "PAUSED"
+                    ? "bg-orange-500/20 text-orange-300"
+                    : "bg-gray-500/20 text-gray-300"
+                }`}
+              >
+                {activeProductBid.auctionStatus === "ACTIVE"
+                  ? "Aktif"
                   : activeProductBid.auctionStatus === "PENDING"
-                  ? "bg-yellow-500/20 text-yellow-300"
+                  ? "Bekliyor"
                   : activeProductBid.auctionStatus === "PAUSED"
-                  ? "bg-orange-500/20 text-orange-300"
-                  : "bg-gray-500/20 text-gray-300"
-              }`}
-            >
-              {activeProductBid.auctionStatus === "ACTIVE"
-                ? "Aktif"
-                : activeProductBid.auctionStatus === "PENDING"
-                ? "Bekliyor"
-                : activeProductBid.auctionStatus === "PAUSED"
-                ? "Durdu"
-                : "Bitti"}
-            </span>
+                  ? "Durdu"
+                  : "Bitti"}
+              </span>
+            ) : (
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  activeProductBid.product.stock > 0
+                    ? "bg-green-500/20 text-green-300"
+                    : "bg-red-500/20 text-red-300"
+                }`}
+              >
+                {activeProductBid.product.stock > 0 ? "Stokta" : "Tükendi"}
+              </span>
+            )}
           </div>
 
           {/* Countdown timer - only for active auctions */}
@@ -348,6 +362,25 @@ const ProductSection: React.FC<ProductSectionProps> = ({
               </div>
             )}
 
+          {/* Stock info - only for stock sale products */}
+          {activeProductBid.productType === "FIXED_PRICE" && (
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-white/80 text-xs">Stok:</span>
+              <span
+                className={`flex items-center text-sm ${
+                  activeProductBid.product.stock <= 0
+                    ? "text-red-400"
+                    : activeProductBid.product.stock <= 3
+                    ? "text-orange-400"
+                    : "text-green-400"
+                }`}
+              >
+                <Package className="w-3.5 h-3.5 mr-1" />
+                {activeProductBid.product.stock} adet
+              </span>
+            </div>
+          )}
+
           {/* Product info */}
           <div className="flex items-center gap-3">
             {product.imageUrl && (
@@ -370,8 +403,20 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                   {formatPrice(product.currentPrice)}
                 </div>
                 <span className="text-white/70 text-xs flex items-center">
-                  <Timer className="w-3 h-3 mr-0.5" />
-                  {activeProductBid.bidCount || 0} teklif
+                  {activeProductBid.productType === "AUCTION" ? (
+                    <>
+                      <Timer className="w-3 h-3 mr-0.5" />
+                      {activeProductBid.bidCount || 0} teklif
+                      {activeProductBid.auctionStatus === "PENDING" && (
+                        <span className="ml-1 text-yellow-400">(Ön teklif)</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Package className="w-3 h-3 mr-0.5" />
+                      {product.stock} adet
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -392,26 +437,28 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                   onClick={() => setShowBidInterface(!showBidInterface)}
                   className="w-full py-2 text-sm bg-[var(--accent)] text-white rounded font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={
-                    activeProductBid.auctionStatus !== "ACTIVE" ||
-                    timeLeft === 0
+                    activeProductBid.auctionStatus === "ENDED" ||
+                    (activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0)
                   }
                 >
-                  {activeProductBid.auctionStatus !== "ACTIVE"
-                    ? "Arttırma Aktif Değil"
-                    : timeLeft === 0
+                  {activeProductBid.auctionStatus === "ENDED"
                     ? "Arttırma Bitti"
-                    : "Teklif Ver"}
+                    : activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0
+                    ? "Arttırma Bitti"
+                    : activeProductBid.auctionStatus === "ACTIVE"
+                    ? "Teklif Ver"
+                    : "Teklif Ver (Ön Teklif)"}
                 </button>
               ) : (
                 <button
-                  onClick={() => {
-                    // Handle fixed price purchase
-                    toast.info("Sabit fiyat satın alma özelliği yakında!");
-                  }}
-                  className="w-full py-2 text-sm bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors"
+                  onClick={() => setShowStockSaleInterface(true)}
+                  className="w-full py-2 text-sm bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  disabled={activeProductBid.product.stock <= 0}
                 >
-                  Satın Al -{" "}
-                  {formatPrice(activeProductBid.product.currentPrice)}
+                  <ShoppingCart className="w-4 h-4" />
+                  {activeProductBid.product.stock <= 0
+                    ? "Stokta Yok"
+                    : `Satın Al - ${formatPrice(activeProductBid.product.currentPrice)}`}
                 </button>
               )}
             </>
@@ -451,7 +498,7 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                             Başlatılıyor...
                           </div>
                         ) : (
-                          "Geri Sayım Başlat (60s)"
+                          `Açık Arttırma Başlat (60s) - ${activeProductBid.highestBidder ? `En yüksek: ${formatPrice(activeProductBid.product.currentPrice)}` : 'Henüz teklif yok'}`
                         )}
                       </button>
                     </div>
@@ -524,16 +571,40 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                   )}
                 </>
               ) : (
-                /* Fixed price controls */
-                <button
-                  onClick={() => {
-                    // Handle removing fixed price product
-                    toast.info("Sabit fiyat ürün kaldırma özelliği yakında!");
-                  }}
-                  className="py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
-                >
-                  Ürünü Kaldır
-                </button>
+                /* Stock sale controls */
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(`/api/live-streams/${streamId}/product`, {
+                          method: "PUT",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${getToken()}`,
+                          },
+                          body: JSON.stringify({
+                            productId: activeProductBid.id,
+                            action: "remove_stock_sale",
+                          }),
+                        });
+
+                        if (response.ok) {
+                          toast.success("Ürün kaldırıldı");
+                          fetchActiveBid();
+                        } else {
+                          const error = await response.json();
+                          toast.error(error.error || "Ürün kaldırılamadı");
+                        }
+                      } catch (error) {
+                        console.error("Error removing stock sale product:", error);
+                        toast.error("Ürün kaldırılırken hata oluştu");
+                      }
+                    }}
+                    className="flex-1 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+                  >
+                    Ürünü Kaldır
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -544,12 +615,25 @@ const ProductSection: React.FC<ProductSectionProps> = ({
           user &&
           !isStreamer &&
           activeProductBid.productType === "AUCTION" &&
-          activeProductBid.auctionStatus === "ACTIVE" && (
+          (activeProductBid.auctionStatus === "ACTIVE" || activeProductBid.auctionStatus === "PENDING") && (
             <BiddingInterface
               activeProductBid={activeProductBid}
               onClose={() => setShowBidInterface(false)}
               onBidSuccess={fetchActiveBid}
               streamId={streamId}
+            />
+          )}
+
+        {/* Stock Sale Interface Modal - Only for stock sale products */}
+        {showStockSaleInterface &&
+          user &&
+          !isStreamer &&
+          activeProductBid.productType === "FIXED_PRICE" && (
+            <StockSaleInterface
+              streamId={streamId}
+              activeProductBid={activeProductBid}
+              onClose={() => setShowStockSaleInterface(false)}
+              onPurchaseSuccess={fetchActiveBid}
             />
           )}
       </div>

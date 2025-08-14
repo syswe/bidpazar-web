@@ -19,6 +19,7 @@ export interface ProductBid {
     imageUrl: string | null;
     basePrice: number;
     currentPrice: number;
+    stock: number; // Stock quantity for stock sale products
   };
   bidCount: number;
   highestBidder: string | null;
@@ -96,6 +97,21 @@ export function useActiveBid({
                 ? activeProduct.bids[0].amount
                 : activeProduct.currentPrice;
 
+            // Calculate auction status based on database fields
+            let auctionStatus: "PENDING" | "ACTIVE" | "PAUSED" | "ENDED" = "PENDING";
+            
+            if (activeProduct.isAuctionMode) {
+              if (!activeProduct.isActive) {
+                auctionStatus = "ENDED";
+              } else if (activeProduct.endTime && new Date() > activeProduct.endTime) {
+                auctionStatus = "ENDED";
+              } else if (activeProduct.endTime && activeProduct.startTime) {
+                auctionStatus = "ACTIVE";
+              } else {
+                auctionStatus = "PENDING"; // Product is created but countdown hasn't started yet
+              }
+            }
+
             const productBid: ProductBid = {
               id: activeProduct.id,
               product: {
@@ -105,6 +121,7 @@ export function useActiveBid({
                 imageUrl: activeProduct.imageUrl,
                 basePrice: activeProduct.basePrice,
                 currentPrice: currentPrice,
+                stock: activeProduct.stock || 1,
               },
               bidCount: activeProduct.bids ? activeProduct.bids.length : 0,
               highestBidder:
@@ -112,10 +129,10 @@ export function useActiveBid({
                   ? activeProduct.bids[0].user?.username || null
                   : null,
               countdownEnd: activeProduct.endTime,
-              productType: activeProduct.productType || "AUCTION",
-              auctionStatus: activeProduct.auctionStatus || "PENDING",
-              countdownDuration: activeProduct.countdownDuration || 60,
-              countdownStartTime: activeProduct.countdownStartTime,
+              productType: activeProduct.isAuctionMode ? "AUCTION" : "FIXED_PRICE",
+              auctionStatus: auctionStatus,
+              countdownDuration: activeProduct.auctionDuration || 60,
+              countdownStartTime: activeProduct.startTime,
             };
 
             setActiveProductBid(productBid);
@@ -190,6 +207,13 @@ export function useActiveBid({
       }
     };
 
+    const handleNewStockSale = (data: any) => {
+      if (data.streamId === streamId) {
+        debugLog("New stock sale created, refreshing");
+        fetchActiveBid();
+      }
+    };
+
     const handleLiveProductEnded = (data: any) => {
       if (data.streamId === streamId) {
         debugLog("Live product ended via socket, refreshing");
@@ -239,9 +263,24 @@ export function useActiveBid({
       }
     };
 
+    const handleStockPurchased = (data: any) => {
+      if (data.streamId === streamId) {
+        debugLog("Stock purchased via socket", data);
+        fetchActiveBid();
+      }
+    };
+
+    const handleStockSaleRemoved = (data: any) => {
+      if (data.streamId === streamId) {
+        debugLog("Stock sale removed via socket", data);
+        fetchActiveBid();
+      }
+    };
+
     // Register listeners
     socket.on("new-bid", handleNewBid);
     socket.on("new-live-product", handleNewLiveProduct);
+    socket.on("new-stock-sale", handleNewStockSale);
     socket.on("live-product-ended", handleLiveProductEnded);
     socket.on("countdown-started", handleCountdownStarted);
     socket.on("countdown-paused", handleCountdownPaused);
@@ -249,11 +288,14 @@ export function useActiveBid({
     socket.on("product-added", handleProductAdded);
     socket.on("product-status-changed", handleProductStatusChanged);
     socket.on("auction-ended", handleAuctionEnded);
+    socket.on("stock-purchased", handleStockPurchased);
+    socket.on("stock-sale-removed", handleStockSaleRemoved);
 
     // Cleanup
     return () => {
       socket.off("new-bid", handleNewBid);
       socket.off("new-live-product", handleNewLiveProduct);
+      socket.off("new-stock-sale", handleNewStockSale);
       socket.off("live-product-ended", handleLiveProductEnded);
       socket.off("countdown-started", handleCountdownStarted);
       socket.off("countdown-paused", handleCountdownPaused);
@@ -261,6 +303,8 @@ export function useActiveBid({
       socket.off("product-added", handleProductAdded);
       socket.off("product-status-changed", handleProductStatusChanged);
       socket.off("auction-ended", handleAuctionEnded);
+      socket.off("stock-purchased", handleStockPurchased);
+      socket.off("stock-sale-removed", handleStockSaleRemoved);
     };
   }, [socket, streamId, fetchActiveBid, activeProductBid?.id]);
 

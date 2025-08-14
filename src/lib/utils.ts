@@ -47,3 +47,59 @@ export function formatCurrency(amount: number): string {
     currency: "TRY",
   }).format(amount);
 }
+
+/**
+ * Calculate minimum bid increment based on current auction price
+ * Rules:
+ * - Min product price: 100 TL
+ * - 100-2000 TL: 100 TL increment
+ * - 2000-5000 TL: 250 TL increment  
+ * - 5000+ TL: 500 TL increment
+ */
+export function calculateMinimumBidIncrement(currentPrice: number): number {
+  if (currentPrice < 100) {
+    return 100; // Minimum product price
+  } else if (currentPrice < 2000) {
+    return 100; // 100-2000 TL range
+  } else if (currentPrice < 5000) {
+    return 250; // 2000-5000 TL range
+  } else {
+    return 500; // 5000+ TL range
+  }
+}
+
+/**
+ * Calculate the minimum valid bid amount for an auction
+ */
+export function calculateMinimumBidAmount(currentPrice: number): number {
+  const increment = calculateMinimumBidIncrement(currentPrice);
+  return currentPrice + increment;
+}
+
+/**
+ * Validate if a bid amount meets the minimum increment requirements
+ */
+export function validateBidAmount(currentPrice: number, bidAmount: number): {
+  isValid: boolean;
+  minimumAmount: number;
+  increment: number;
+  error?: string;
+} {
+  const increment = calculateMinimumBidIncrement(currentPrice);
+  const minimumAmount = currentPrice + increment;
+  
+  if (bidAmount < minimumAmount) {
+    return {
+      isValid: false,
+      minimumAmount,
+      increment,
+      error: `Teklif en az ${minimumAmount} TL olmalıdır (${increment} TL artış)`
+    };
+  }
+  
+  return {
+    isValid: true,
+    minimumAmount,
+    increment
+  };
+}

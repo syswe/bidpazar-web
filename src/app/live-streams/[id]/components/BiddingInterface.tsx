@@ -13,6 +13,7 @@ import {
 import { getAuth } from "@/lib/frontend-auth";
 import { useRouter } from "next/navigation";
 import { ProductBid } from "../hooks/useActiveBid";
+import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from "@/lib/utils";
 
 interface BiddingInterfaceProps {
   streamId: string;
@@ -31,11 +32,12 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
   const { token, user } = getAuth();
   const isAuthenticated = !!user && !!token;
   const [bidAmount, setBidAmount] = useState(
-    activeProductBid.product.currentPrice + 10
+    calculateMinimumBidAmount(activeProductBid.product.currentPrice)
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const isHighestBidder = activeProductBid.highestBidder === user?.username;
+  const isPreBidding = activeProductBid.auctionStatus === "PENDING";
 
   // Format price with Turkish Lira
   const formatPrice = (price: number) => {
@@ -76,8 +78,9 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
   // Increment/decrement bid amount
   const adjustBid = useCallback(
     (amount: number) => {
+      const minimumBidAmount = calculateMinimumBidAmount(activeProductBid.product.currentPrice);
       setBidAmount((prev) =>
-        Math.max(activeProductBid.product.currentPrice + 1, prev + amount)
+        Math.max(minimumBidAmount, prev + amount)
       );
     },
     [activeProductBid.product.currentPrice]
@@ -91,17 +94,17 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
       return;
     }
 
-    if (bidAmount <= activeProductBid.product.currentPrice) {
+    const minimumBidAmount = calculateMinimumBidAmount(activeProductBid.product.currentPrice);
+    if (bidAmount < minimumBidAmount) {
+      const increment = calculateMinimumBidIncrement(activeProductBid.product.currentPrice);
       toast.error(
-        `Teklif en az ${formatPrice(
-          activeProductBid.product.currentPrice + 1
-        )} olmalıdır`
+        `Teklif en az ${formatPrice(minimumBidAmount)} olmalıdır (${formatPrice(increment)} artış)`
       );
-      setBidAmount(activeProductBid.product.currentPrice + 1);
+      setBidAmount(minimumBidAmount);
       return;
     }
 
-    if (timeLeft === 0) {
+    if (activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0) {
       toast.error("Açık arttırma süresi dolmuş");
       return;
     }
@@ -238,8 +241,8 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
             )}
           </div>
 
-          {/* Timer */}
-          {timeLeft !== null && (
+          {/* Timer - Only show for active auctions */}
+          {activeProductBid.auctionStatus === "ACTIVE" && timeLeft !== null && (
             <div className="flex justify-between items-center bg-black/30 rounded p-2">
               <span className="text-white/80 text-sm">Kalan süre:</span>
               <span
@@ -257,12 +260,30 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
             </div>
           )}
 
+          {/* Pre-bidding status */}
+          {isPreBidding && (
+            <div className="flex justify-between items-center bg-yellow-500/20 rounded p-2">
+              <span className="text-yellow-300 text-sm">Durum:</span>
+              <span className="text-yellow-300 text-sm">
+                Ön Teklif Alınıyor
+              </span>
+            </div>
+          )}
+
           {/* Current bid info */}
           <div className="flex justify-between items-center bg-black/30 rounded p-2">
             <span className="text-white/80 text-sm">Şu anki teklif:</span>
             <span className="text-white font-semibold text-sm flex items-center">
               <CircleDollarSign className="w-4 h-4 mr-1 text-[var(--accent)]" />
               {formatPrice(activeProductBid.product.currentPrice)}
+            </span>
+          </div>
+
+          {/* Minimum bid info */}
+          <div className="flex justify-between items-center bg-black/30 rounded p-2">
+            <span className="text-white/80 text-sm">Minimum artış:</span>
+            <span className="text-white text-sm">
+              {formatPrice(calculateMinimumBidIncrement(activeProductBid.product.currentPrice))}
             </span>
           </div>
 
@@ -288,14 +309,14 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
                   onChange={(e) =>
                     setBidAmount(
                       Math.max(
-                        activeProductBid.product.currentPrice + 1,
+                        calculateMinimumBidAmount(activeProductBid.product.currentPrice),
                         Number(e.target.value)
                       )
                     )
                   }
                   className="w-full p-3 pl-8 text-sm bg-black/60 border border-white/20 rounded text-white"
                   disabled={isSubmitting || timeLeft === 0}
-                  min={activeProductBid.product.currentPrice + 1}
+                  min={calculateMinimumBidAmount(activeProductBid.product.currentPrice)}
                 />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70">
                   ₺
@@ -324,21 +345,25 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
 
             {/* Quick bid buttons */}
             <div className="flex gap-2">
-              {[10, 25, 50].map((increment) => (
-                <button
-                  key={increment}
-                  type="button"
-                  onClick={() =>
-                    setBidAmount(
-                      activeProductBid.product.currentPrice + increment
-                    )
-                  }
-                  className="flex-1 py-2 px-3 text-xs bg-black/40 border border-white/20 rounded text-white hover:bg-black/60 transition-colors disabled:opacity-50"
-                  disabled={isSubmitting || timeLeft === 0}
-                >
-                  +{increment}₺
-                </button>
-              ))}
+              {(() => {
+                const currentPrice = activeProductBid.product.currentPrice;
+                const minIncrement = calculateMinimumBidIncrement(currentPrice);
+                const increments = [minIncrement, minIncrement * 2, minIncrement * 3];
+                
+                return increments.map((increment) => (
+                  <button
+                    key={increment}
+                    type="button"
+                    onClick={() =>
+                      setBidAmount(currentPrice + increment)
+                    }
+                    className="flex-1 py-2 px-3 text-xs bg-black/40 border border-white/20 rounded text-white hover:bg-black/60 transition-colors disabled:opacity-50"
+                    disabled={isSubmitting || timeLeft === 0}
+                  >
+                    +{formatPrice(increment)}
+                  </button>
+                ));
+              })()}
             </div>
           </div>
 
@@ -348,7 +373,7 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
             disabled={
               isSubmitting ||
               bidAmount <= activeProductBid.product.currentPrice ||
-              timeLeft === 0
+              (activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0)
             }
             className="w-full py-3 bg-[var(--accent)] text-white rounded-lg font-medium text-sm hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
@@ -359,8 +384,10 @@ const BiddingInterface: React.FC<BiddingInterfaceProps> = ({
             )}
             {isSubmitting
               ? "Teklif Veriliyor..."
-              : timeLeft === 0
+              : activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0
               ? "Süre Doldu"
+              : isPreBidding
+              ? `${formatPrice(bidAmount)} Ön Teklif Ver`
               : `${formatPrice(bidAmount)} Teklif Ver`}
           </button>
 

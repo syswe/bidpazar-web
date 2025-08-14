@@ -101,6 +101,7 @@ export interface ProductAuction {
   productId: string;
   startPrice: number;
   currentPrice: number;
+  minimumBidIncrement: number; // Minimum bid increment based on current price
   duration: number; // Duration in days (1, 3, 5, or 7)
   status: "PENDING" | "ACTIVE" | "COMPLETED" | "CANCELLED";
   startTime?: string;
