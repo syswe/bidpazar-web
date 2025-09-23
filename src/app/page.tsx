@@ -144,13 +144,21 @@ const StoryViewer = ({
         {/* Story Content */}
         <div className="absolute inset-0 flex items-center justify-center">
           {currentStory.type === 'IMAGE' && currentStory.mediaUrl ? (
-            <Image
-              src={currentStory.mediaUrl}
-              alt="Story"
-              fill
-              className="object-cover"
-              unoptimized={true}
-            />
+            (() => {
+              const base = process.env.NEXT_PUBLIC_APP_URL || '';
+              const src = currentStory.mediaUrl.startsWith('http')
+                ? currentStory.mediaUrl
+                : `${base}${currentStory.mediaUrl}`;
+              return (
+                <Image
+                  src={src}
+                  alt="Story"
+                  fill
+                  className="object-cover"
+                  unoptimized={true}
+                />
+              );
+            })()
           ) : (
             <div className="w-full h-full flex items-center justify-center p-8 bg-gradient-to-br from-[var(--accent)] to-[var(--primary)]">
               <p className="text-white text-xl font-medium text-center leading-relaxed">
@@ -731,11 +739,29 @@ export default function Home() {
                     >
                       <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] p-[2px]">
                         <div className="w-full h-full rounded-full border-2 border-[var(--background)] overflow-hidden bg-[var(--background)]">
-                          <div className="w-full h-full bg-[var(--secondary)] flex items-center justify-center">
-                            <span className="text-lg md:text-xl font-bold text-[var(--foreground)]">
-                              {(story.user?.username || story.user?.name || 'A').charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          {story.type === 'IMAGE' && story.mediaUrl ? (
+                            (() => {
+                              const base = process.env.NEXT_PUBLIC_APP_URL || '';
+                              const src = story.mediaUrl.startsWith('http')
+                                ? story.mediaUrl
+                                : `${base}${story.mediaUrl}`;
+                              return (
+                                <Image
+                                  src={src}
+                                  alt={(story.user?.username || story.user?.name || 'Hikaye') + ' hikayesi'}
+                                  fill
+                                  className="object-cover"
+                                  unoptimized={true}
+                                />
+                              );
+                            })()
+                          ) : (
+                            <div className="w-full h-full bg-[var(--secondary)] flex items-center justify-center">
+                              <span className="text-lg md:text-xl font-bold text-[var(--foreground)]">
+                                {(story.user?.username || story.user?.name || 'A').charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </button>

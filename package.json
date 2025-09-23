@@ -16,7 +16,8 @@
     "test:ci": "jest --ci --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "analytics:test": "echo 'Google Analytics test - check browser console for gtag function'"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

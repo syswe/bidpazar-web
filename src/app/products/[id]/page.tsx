@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger';
 import VerifiedSellerBadge from '@/components/VerifiedSellerBadge';
 import BidConfirmationModal from '@/components/BidConfirmationModal';
 import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
+import { analytics } from '@/components/GoogleTagManager';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -52,6 +53,14 @@ export default function ProductDetailPage() {
         });
         
         setProduct(data);
+        
+        // Track product view
+        analytics.trackProductView(
+          data.id,
+          data.title,
+          data.category?.name,
+          data.price
+        );
         
         // Initialize start price based on product price
         setStartPrice(data.price);

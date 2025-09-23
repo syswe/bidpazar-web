@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { X, User, ShoppingBag, LogIn, UserPlus, Store } from "lucide-react";
+import { X, User, ShoppingBag, LogIn, UserPlus, Store, MessageCircle, Trophy, Bell } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 
 interface MobileSidebarProps {
@@ -195,7 +195,7 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
     <>
       {/* Overlay */}
       <div style={overlayStyle} onClick={onClose} />
-      
+
       {/* Sidebar */}
       <div style={sidebarStyle}>
         {/* Header */}
@@ -223,7 +223,7 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
                 <div style={userEmailStyle}>
                   {user.email || 'E-posta bulunamadı'}
                 </div>
-                
+
                 {/* Profile Button */}
                 <Link href="/dashboard" style={primaryButtonStyle} onClick={onClose}>
                   <User size={16} />
@@ -231,16 +231,38 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
                 </Link>
               </div>
 
-              {/* Seller Button */}
-              <Link href="/become-seller" style={secondaryButtonStyle} onClick={onClose}>
-                <Store size={16} />
-                Satıcı Ol
+              {/* Seller Button if not SELLER for MEMBERS ONLY */}
+              {user.userType !== 'SELLER' && (
+                <Link href="/dashboard" style={secondaryButtonStyle} onClick={onClose}>
+                  <Store size={16} />
+                  Satıcı Ol
+                </Link>
+              )}
+
+              {/* My Products Button for SELLERS only. */}
+              {user.userType === 'SELLER' && (
+                <Link href="/dashboard/products" style={secondaryButtonStyle} onClick={onClose}>
+                  <ShoppingBag size={16} />
+                  Ürünlerim
+                </Link>
+              )}
+
+              {/* Messages Button for all users */}
+              <Link href="/dashboard/messages" style={secondaryButtonStyle} onClick={onClose}>
+                <MessageCircle size={16} />
+                Mesajlarım
               </Link>
 
-              {/* My Products Button */}
-              <Link href="/dashboard/products" style={secondaryButtonStyle} onClick={onClose}>
-                <ShoppingBag size={16} />
-                Ürünlerim
+              {/* Won Auctions Button for all users */}
+              <Link href="/dashboard/won-auctions" style={secondaryButtonStyle} onClick={onClose}>
+                <Trophy size={16} />
+                Kazandıklarım
+              </Link>
+
+              {/* Notifications Button for all users */}
+              <Link href="/dashboard/notifications" style={secondaryButtonStyle} onClick={onClose}>
+                <Bell size={16} />
+                Bildirimlerim
               </Link>
 
               {/* Logout Button */}
@@ -257,12 +279,12 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
                 <p style={guestSubtitleStyle}>
                   BidPazar'da canlı müzayedelere katılmak ve benzersiz ürünler bulmak için giriş yapın.
                 </p>
-                
+
                 <Link href="/login" style={primaryButtonStyle} onClick={onClose}>
                   <LogIn size={16} />
                   Giriş Yap
                 </Link>
-                
+
                 <Link href="/register" style={secondaryButtonStyle} onClick={onClose}>
                   <UserPlus size={16} />
                   Kayıt Ol

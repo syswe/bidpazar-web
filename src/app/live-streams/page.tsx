@@ -35,10 +35,12 @@ interface LiveStream {
 }
 
 export default function LiveStreamsPage() {
+  const { user } = useAuth();
   const token = getToken();
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({});
+  const isSeller = user?.userType === "SELLER";
 
   useEffect(() => {
     const fetchLiveStreams = async () => {
@@ -174,13 +176,15 @@ export default function LiveStreamsPage() {
                 yayınınızı başlatın
               </p>
             </div>
-            <Link
-              href="/live-streams/create"
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition-all shadow-lg border border-white/20 group"
-            >
-              <PlusCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span>Yeni Yayın Başlat</span>
-            </Link>
+            {isSeller && (
+              <Link
+                href="/live-streams/create"
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition-all shadow-lg border border-white/20 group"
+              >
+                <PlusCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                <span>Yeni Yayın Başlat</span>
+              </Link>
+            )}
           </div>
         </div>
       </div>

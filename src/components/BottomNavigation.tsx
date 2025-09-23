@@ -84,21 +84,17 @@ const BottomNavigation = () => {
     }
   }, []);
 
-  const handleNavigation = useCallback(async (href: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    
-    // Don't navigate if already on the page
-    if (pathname === href) return;
-    
-    // Set loading state
+  const handleNavigation = useCallback((href: string, e: React.MouseEvent) => {
+    // If already on the page, prevent default and do nothing
+    if (pathname === href) {
+      e.preventDefault();
+      return;
+    }
+
+    // Indicate navigation + haptic, let <Link> handle route change
     setNavigatingTo(href);
-    
-    // Haptic feedback for WebView
     triggerHaptic();
-    
-    // Navigate
-    router.push(href);
-  }, [pathname, router, triggerHaptic]);
+  }, [pathname, triggerHaptic]);
 
   const navItems = useMemo(() => {
     const allItems = [

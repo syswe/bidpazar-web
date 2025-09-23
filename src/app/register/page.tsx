@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { register, login, verifyCode, resendVerificationCode, setAuth } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
+import { analytics } from '@/components/GoogleTagManager';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -214,6 +215,10 @@ export default function Register() {
         console.log('No verification required, logging in automatically');
         const loginResponse = await login(email, password);
         setAuth(loginResponse.token, loginResponse.user);
+        
+        // Track successful registration
+        analytics.trackRegistration('email', loginResponse.user?.id);
+        
         await refreshAuthState();
         router.push('/dashboard');
       }

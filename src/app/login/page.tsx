@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { login, verifyCode, resendVerificationCode } from '@/lib/frontend-auth';
 import { useAuth } from '@/components/AuthProvider';
+import { analytics } from '@/components/GoogleTagManager';
 
 // Create a separate component to handle the params to avoid the error
 function LoginContent() {
@@ -74,6 +75,9 @@ function LoginContent() {
         // No verification needed, set the user in context
         setUser(response.user);
         console.log('[LoginContent] User set in AuthContext:', response.user);
+        
+        // Track successful login
+        analytics.trackLogin('email', response.user?.id);
         
         // Handle seller redirect
         const finalRedirectPath = isSellerRedirect ? '/dashboard/seller-request' : redirectPath;

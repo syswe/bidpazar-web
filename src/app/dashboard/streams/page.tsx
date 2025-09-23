@@ -53,7 +53,7 @@ export default function MyStreamsPage() {
       }
 
       // Fallback method using direct fetch
-      const token = localStorage.getItem("token");
+      const token = getToken();
       if (!token) {
         throw new Error("Authentication required");
       }
@@ -139,10 +139,10 @@ export default function MyStreamsPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">My Streams</h1>
         <Link
-          href="/dashboard/streams/create"
+          href="/live-streams"
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
         >
-          Create New Stream
+          Go to Live Streams
         </Link>
       </div>
 
@@ -163,10 +163,10 @@ export default function MyStreamsPage() {
             You haven&apos;t created any livestreams yet. Start by creating your first stream!
           </p>
           <Link
-            href="/dashboard/streams/create"
+            href="/live-streams"
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
           >
-            Create Your First Stream
+            Browse Live Streams
           </Link>
         </div>
       ) : (

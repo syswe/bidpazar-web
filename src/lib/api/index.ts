@@ -85,7 +85,8 @@ export {
   getConversationMessages,
   getOrCreateConversation,
   getConversationDetails,
-  sendMessage
+  sendMessage,
+  searchSellerRecipients,
 } from "./messages";
 
 // Auctions

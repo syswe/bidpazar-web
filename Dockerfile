@@ -56,6 +56,10 @@ ENV NEXT_PUBLIC_API_URL="https://bidpazar.com/api"
 ENV NEXT_PUBLIC_SOCKET_URL="wss://bidpazar.com"
 ENV NEXT_PUBLIC_WS_URL="/socket.io"
 
+# Google Analytics & Tag Manager
+ENV NEXT_PUBLIC_GTM_CONTAINER_ID="GTM-XXXXXXX"
+ENV GA_MEASUREMENT_ID="G-XXXXXXXXXX"
+
 
 # Build next.js app with standalone output
 RUN npm run build
@@ -120,6 +124,10 @@ ENV SOCKET_URL="ws://localhost:3001"
 ENV WS_URL="/socket.io/"
 ENV PORT="3000"
 ENV PORT_SOCKET="3001"
+
+# Google Analytics & Tag Manager (Production defaults)
+ENV NEXT_PUBLIC_GTM_CONTAINER_ID="GTM-XXXXXXX"
+ENV GA_MEASUREMENT_ID="G-XXXXXXXXXX"
 
 
 # Expose the ports the app runs on

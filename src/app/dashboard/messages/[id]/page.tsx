@@ -64,8 +64,8 @@ export default function ConversationPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const redirectTimeoutRef = useRef<number | null>(null);
+  const refreshIntervalRef = useRef<number | null>(null);
   const failedMessagesRef = useRef<Message[]>([]);
 
   // Clean up timeout on unmount
@@ -141,7 +141,7 @@ export default function ConversationPage() {
                   m.content === pm.content &&
                   Math.abs(
                     new Date(m.createdAt).getTime() -
-                      new Date(pm.createdAt).getTime()
+                    new Date(pm.createdAt).getTime()
                   ) < 5000
               )
           );
@@ -243,18 +243,16 @@ export default function ConversationPage() {
         }
       } catch (err: any) {
         console.error("Failed to initialize conversation:", err);
-        let specificError = err.message || "An unknown error occurred";
+        let specificError = err.message || "Bilinmeyen bir hata oluştu";
         let statusToSet: "not_found" | "error" = "error";
 
         if (err.status === 404) {
-          specificError = `User or conversation not found (${
-            err.message || "404 Not Found"
-          })`;
+          specificError = `Kullanıcı veya sohbet bulunamadı (${err.message || "404 Bulunamadı"
+            })`;
           statusToSet = "not_found";
         } else if (err.status === 403) {
-          specificError = `Access Denied: You don't have permission. (${
-            err.message || "403 Forbidden"
-          })`;
+          specificError = `Erişim reddedildi: Yetkiniz yok. (${err.message || "403 Yasak"
+            })`;
           statusToSet = "error"; // Keep as general error for access issues
         } else if (specificError.includes("User not found")) {
           // Handle specific string messages if status isn't available
@@ -374,13 +372,13 @@ export default function ConversationPage() {
         prev.map((msg) =>
           msg.id === tempId
             ? {
-                ...savedMessage,
-                sender: {
-                  id: user.id,
-                  username: user.username,
-                  name: user.name,
-                },
-              }
+              ...savedMessage,
+              sender: {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+              },
+            }
             : msg
         )
       );
@@ -423,9 +421,9 @@ export default function ConversationPage() {
 
   // Render error state more specifically
   const renderErrorState = () => {
-    let title = "An Error Occurred";
+    let title = "Bir Hata Oluştu";
     if (initializationStatus === "not_found") {
-      title = "Not Found";
+      title = "Bulunamadı";
     }
     // Default error variable should be displayed for other errors
 
@@ -439,14 +437,14 @@ export default function ConversationPage() {
           {error}
         </p>
         <Link href="/dashboard/messages">
-          <Button>Return to Messages</Button>
+          <Button>Mesajlara Dön</Button>
         </Link>
         {(initializationStatus === "not_found" ||
           initializationStatus === "error") && (
-          <p className="text-xs text-gray-500 mt-2">
-            Redirecting in a few seconds...
-          </p>
-        )}
+            <p className="text-xs text-gray-500 mt-2">
+              Birkaç saniye içinde yönlendirileceksiniz...
+            </p>
+          )}
       </div>
     );
   };
@@ -456,7 +454,7 @@ export default function ConversationPage() {
       <div className="flex flex-col h-screen max-h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-[var(--primary)] mb-4" />
         <p className="text-[var(--muted-foreground)]">
-          {authLoading ? "Authenticating..." : "Loading conversation..."}
+          {authLoading ? "Kimlik doğrulanıyor..." : "Sohbet yükleniyor..."}
         </p>
       </div>
     );
@@ -481,11 +479,11 @@ export default function ConversationPage() {
             {conversation?.otherParticipant?.name ||
               conversation?.otherParticipant?.username ||
               (isCreatingConversation
-                ? "Starting conversation..."
-                : "Conversation")}
+                ? "Sohbet başlatılıyor..."
+                : "Sohbet")}
           </h1>
           <span className="text-xs text-gray-500">
-            Last updated: {lastRefresh.toLocaleTimeString()}
+            Son güncelleme: {lastRefresh.toLocaleTimeString()}
           </span>
         </div>
         <Button
@@ -497,7 +495,7 @@ export default function ConversationPage() {
           {refreshing ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           ) : null}
-          Refresh
+          Yenile
         </Button>
       </div>
 
@@ -505,7 +503,7 @@ export default function ConversationPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && initializationStatus === "success" && (
           <div className="text-center text-gray-500 py-8">
-            No messages yet. Start the conversation!
+            Henüz mesaj yok. Sohbete başlayın!
           </div>
         )}
         {initializationStatus === "success" &&
@@ -525,7 +523,7 @@ export default function ConversationPage() {
           <div className="flex space-x-2">
             <Textarea
               className="flex-1 resize-none"
-              placeholder="Type a message..."
+              placeholder="Mesaj yazın..."
               rows={1}
               value={messageContent}
               onChange={(e) => setMessageContent(e.target.value)}

@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ conversationId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const conversationId = (await params).conversationId;
+  const conversationId = (await params).id;
   logger.info(
     `[API][/api/messages/conversations/details/${conversationId}] GET request received`
   );
@@ -71,6 +71,7 @@ export async function GET(
             id: true,
             username: true,
             name: true,
+            userType: true,
           },
         },
         messages: {

@@ -33,7 +33,7 @@ rtc:
   
   # UDP port range for media - matches docker-compose port mapping
   port_range_start: 60500
-  port_range_end: 60999
+  port_range_end: 60599
   
   # TCP fallback - enabled for better connectivity
   tcp_port: 7881

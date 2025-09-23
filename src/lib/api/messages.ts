@@ -1,5 +1,5 @@
 import { fetcher } from "./client";
-import type { Conversation, Message } from "./types";
+import type { Conversation, Message, User } from "./types";
 
 /**
  * Messages API Module
@@ -30,6 +30,32 @@ export const getConversationMessages = async (
     `messages/conversations/${conversationId}/messages?page=${page}&limit=${limit}`,
     { requireAuth: true }
   );
+};
+
+export const searchSellerRecipients = async (
+  query: string
+): Promise<User[]> => {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set("query", query.trim());
+  }
+
+  const url = params.toString()
+    ? `messages/sellers/search?${params.toString()}`
+    : "messages/sellers/search";
+
+  try {
+    const response = await fetcher<{ sellers: User[] }>(url, {
+      requireAuth: true,
+      returnEmptyOnError: true,
+      defaultValue: { sellers: [] },
+    });
+
+    return Array.isArray(response?.sellers) ? response.sellers : [];
+  } catch (error) {
+    console.error("Error searching sellers:", error);
+    return [];
+  }
 };
 
 export const getOrCreateConversation = async (
@@ -74,7 +100,7 @@ export const getOrCreateConversation = async (
 
       // If we get here, attempt to get or create the conversation by user ID
       const conversation = await fetcher<Conversation>(
-        `messages/conversations/${otherUserId}`,
+        `messages/conversations/with/${otherUserId}`,
         {
           requireAuth: true,
         }
@@ -122,7 +148,7 @@ export const getOrCreateConversation = async (
 
       // As a fallback, try the conversation endpoint directly
       const conversation = await fetcher<Conversation>(
-        `messages/conversations/${otherUserId}`,
+        `messages/conversations/with/${otherUserId}`,
         {
           requireAuth: true,
         }
@@ -168,4 +194,4 @@ export const sendMessage = async (
     body: { conversationId, content, receiverId },
     requireAuth: true,
   });
-}; 
+};

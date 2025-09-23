@@ -28,32 +28,33 @@ services:
       - "5349:5349/udp"
       - "5349:5349/tcp"
       # Daraltılmış UDP port aralığı - sistem portlarıyla çakışmayı önler
-      - "60000-60499:60000-60499/udp"
+      - "60000-60099:60000-60099/udp"
     environment:
       # Coturn Configuration for Development
       TURN_USERNAME: "bidpazar_dev"
       TURN_PASSWORD: "coturn_dev_secret"
       REALM: "localhost"
       MIN_PORT: 60000
-      MAX_PORT: 60499
+      MAX_PORT: 60099
       EXTERNAL_IP: "localhost"
-    command: >
-      -n
-      --log-file=stdout
-      --lt-cred-mech
-      --fingerprint
-      --no-multicast-peers
-      --no-cli
-      --no-tlsv1
-      --no-tlsv1_1
-      --realm=localhost
-      --user=bidpazar_dev:coturn_dev_secret
-      --min-port=60000
-      --max-port=60499
-      --allowed-peer-ip=10.0.0.0-10.255.255.255
-      --allowed-peer-ip=192.168.0.0-192.168.255.255
-      --allowed-peer-ip=172.16.0.0-172.31.255.255
-      --allowed-peer-ip=127.0.0.1
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--lt-cred-mech"
+      - "--fingerprint"
+      - "--no-multicast-peers"
+      - "--no-cli"
+      - "--no-tlsv1"
+      - "--no-tlsv1_1"
+      - "--realm=localhost"
+      - "--user=bidpazar_dev:coturn_dev_secret"
+      - "--min-port=60000"
+      - "--max-port=60099"
+      - "--external-ip=127.0.0.1"
+      - "--allowed-peer-ip=10.0.0.0-10.255.255.255"
+      - "--allowed-peer-ip=192.168.0.0-192.168.255.255"
+      - "--allowed-peer-ip=172.16.0.0-172.31.255.255"
+      - "--allowed-peer-ip=127.0.0.1"
     networks:
       - bidpazar-dev-network
 
@@ -63,10 +64,10 @@ services:
     container_name: bidpazar-livekit-dev
     restart: unless-stopped
     ports:
-      - "7880:7880"     # Signal/HTTP - localhost:7880'den erişilebilir  
-      - "7881:7881"     # RTC TCP
+      - "7880:7880" # Signal/HTTP - localhost:7880'den erişilebilir
+      - "7881:7881" # RTC TCP
       # LiveKit için ayrı UDP port aralığı
-      - "60500-60600:60500-60600/udp" # WebRTC UDP range
+      - "60500-60599:60500-60599/udp" # WebRTC UDP range (must match livekit.local.yaml)
     environment:
       # Basic development settings
       LOG_LEVEL: "debug"
@@ -81,7 +82,15 @@ services:
       coturn:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7880/"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:7880/",
+        ]
       interval: 15s
       timeout: 10s
       retries: 5

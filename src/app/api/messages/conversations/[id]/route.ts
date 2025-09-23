@@ -60,12 +60,17 @@ export async function GET(
     // Check if other user exists
     const otherUser = await prisma.user.findUnique({
       where: { id: otherUserId },
-      select: { id: true, username: true, name: true }
+      select: { id: true, username: true, name: true, userType: true }
     });
-    
+
     if (!otherUser) {
       console.warn(`[API][${urlPath}] Not Found (404): Other user does not exist`);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (otherUser.userType !== 'SELLER') {
+      console.warn(`[API][${urlPath}] Forbidden (403): Attempt to message non-seller user ${otherUserId}`);
+      return NextResponse.json({ error: 'Only sellers can be messaged' }, { status: 403 });
     }
 
     // Find existing conversation between these users
@@ -86,7 +91,7 @@ export async function GET(
       },
       include: {
         participants: {
-          select: { id: true, username: true, name: true }
+          select: { id: true, username: true, name: true, userType: true }
         },
         messages: {
           orderBy: { createdAt: 'desc' },
@@ -98,7 +103,18 @@ export async function GET(
     // If conversation exists, return it
     if (existingConversation) {
       console.log(`[API][${urlPath}] Found existing conversation: ${existingConversation.id}`);
-      return NextResponse.json(existingConversation);
+      return NextResponse.json({
+        id: existingConversation.id,
+        updatedAt: existingConversation.updatedAt.toISOString(),
+        participants: existingConversation.participants,
+        latestMessage:
+          existingConversation.messages.length > 0
+            ? {
+              ...existingConversation.messages[0],
+              createdAt: existingConversation.messages[0].createdAt.toISOString(),
+            }
+            : undefined,
+      });
     }
 
     // Create new conversation
@@ -114,13 +130,17 @@ export async function GET(
       },
       include: {
         participants: {
-          select: { id: true, username: true, name: true }
+          select: { id: true, username: true, name: true, userType: true }
         }
       }
     });
 
     console.log(`[API][${urlPath}] Successfully created new conversation: ${newConversation.id}`);
-    return NextResponse.json(newConversation);
+    return NextResponse.json({
+      id: newConversation.id,
+      updatedAt: newConversation.updatedAt.toISOString(),
+      participants: newConversation.participants,
+    });
 
   } catch (error: any) {
     console.error(`[API][${urlPath}] Unexpected error in GET handler:`, error);

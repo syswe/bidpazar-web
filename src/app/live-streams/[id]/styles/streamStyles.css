@@ -479,6 +479,14 @@ video {
   }
 }
 
+/* LiveKit: mirror both local and remote camera videos (flip horizontally) */
+[data-lk-theme] video.lk-participant-media-video[data-lk-source="camera"][data-lk-local-participant="false"],
+[data-lk-theme] video.lk-participant-media-video[data-lk-source="camera"][data-lk-local-participant="true"] {
+  transform: scaleX(-1) !important;
+}
+
+/* Alternative: to show natural (non-mirrored) view for everyone, replace rule above with transform: none */
+
 @media (max-width: 768px) {
   .chat-messages-overlay {
     bottom: 100px;

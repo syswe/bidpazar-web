@@ -39,6 +39,7 @@ import {
 // Import custom hooks
 import { useStreamDetails } from "./hooks/useStreamDetails";
 import { useActiveBid } from "./hooks/useActiveBid";
+import { analytics } from "@/components/GoogleTagManager";
 
 // Import CSS
 import "./styles/streamStyles.css";
@@ -137,6 +138,16 @@ export default function LiveStreamPage() {
     token: authToken,
     logMessage,
   });
+
+  // Track live stream view when stream details are loaded
+  useEffect(() => {
+    if (streamDetails && !isStreamDetailsLoading) {
+      analytics.trackLiveStreamView(
+        streamDetails.id,
+        streamDetails.title || 'Canlı Yayın'
+      );
+    }
+  }, [streamDetails, isStreamDetailsLoading]);
 
   // Handle like button
   const handleLike = useCallback(() => {

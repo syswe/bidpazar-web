@@ -200,7 +200,7 @@ export default function WonAuctions() {
                           
                           {auction.isLiveStream && (
                             <Link
-                              href={`/livestreams/${auction.streamId}`}
+                              href={`/live-streams/${auction.streamId}`}
                               className="px-3 py-1 bg-red-500 text-white rounded-md hover:opacity-90 transition-colors text-sm"
                             >
                               Yayını Görüntüle
@@ -336,7 +336,7 @@ export default function WonAuctions() {
                         
                         {selectedAuction.isLiveStream && selectedAuction.streamId && (
                           <Link
-                            href={`/livestreams/${selectedAuction.streamId}`}
+                            href={`/live-streams/${selectedAuction.streamId}`}
                             onClick={() => setShowDetails(false)}
                             className="px-3 py-1 bg-red-500 text-white rounded-md hover:opacity-90 transition-colors text-sm"
                           >

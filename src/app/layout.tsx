@@ -6,7 +6,8 @@ import MobileLayout from "../components/MobileLayout";
 import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { Toaster } from "sonner";
-
+import { GoogleTagManager } from "../components/GoogleTagManager";
+import { PageTrackingWrapper } from "@/components/PageTrackingWrapper";
 
 const inter = Inter({ 
   subsets: ["latin"],
@@ -36,6 +37,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const gtmId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
+
   return (
     <html lang="tr" suppressHydrationWarning className={inter.variable}>
       <head>
@@ -43,8 +46,14 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className={`${inter.className} antialiased`}>
+        {/* Google Tag Manager */}
+        {gtmId && <GoogleTagManager gtmId={gtmId} />}
+        
         <ThemeProvider>
           <AuthProvider>
+            {/* Page Tracking Hook */}
+            <PageTrackingWrapper />
+            
             <div className="flex h-full min-h-screen bg-[var(--background)]">
               <Sidebar />
               <main className="flex-1 overflow-y-auto w-full">

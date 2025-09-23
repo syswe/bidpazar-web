@@ -60,6 +60,7 @@ export async function GET(
         isAdmin: true,
         createdAt: true,
         updatedAt: true,
+        userType: true,
         _count: {
           select: {
             products: true
@@ -71,6 +72,11 @@ export async function GET(
     if (!user) {
       console.log(`[API][${urlPath}] User not found with username: ${username}`);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.userType !== 'SELLER') {
+      console.warn(`[API][${urlPath}] Forbidden (403): Attempt to message non-seller username: ${username}`);
+      return NextResponse.json({ error: 'Only sellers can be messaged' }, { status: 403 });
     }
 
     // Don't return current user when searching
