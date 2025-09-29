@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
-import { getUserFromToken } from '@/lib/auth';
+import { getUserFromToken, getTokenFromRequest } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { calculateMinimumBidIncrement } from '@/lib/utils';
+import { finalizeExpiredProductAuctions } from '@/lib/server/productAuctionUtils';
 
 // Schema for product auction creation
 const createProductAuctionSchema = z.object({
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
   });
   
   try {
+    await finalizeExpiredProductAuctions();
     logger.debug('Fetching product auctions from database');
     
     // Get query parameters
@@ -133,7 +135,7 @@ export async function POST(request: Request) {
   }
   
   try {
-    const token = request.headers.get('authorization')?.split(' ')[1];
+    const token = getTokenFromRequest(request);
     if (!token) {
       logger.warn('Product auction creation attempt without authentication token');
       return NextResponse.json(

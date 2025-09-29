@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getUserFromToken } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { finalizeExpiredProductAuctions } from "@/lib/server/productAuctionUtils";
 
 // Schema for product creation
 const createProductSchema = z.object({
@@ -29,8 +30,16 @@ export async function GET(request: Request) {
   });
 
   try {
+    await finalizeExpiredProductAuctions();
     logger.debug("Fetching all products from database");
     const products = await prisma.product.findMany({
+      where: {
+        auctions: {
+          some: {
+            status: "ACTIVE",
+          },
+        },
+      },
       include: {
         category: true,
         media: true,

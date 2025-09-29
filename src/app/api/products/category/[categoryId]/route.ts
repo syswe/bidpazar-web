@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { finalizeExpiredProductAuctions } from '@/lib/server/productAuctionUtils';
 
 export async function GET(
   request: Request,
@@ -15,9 +16,17 @@ export async function GET(
       params: { categoryId }
     });
     
+    await finalizeExpiredProductAuctions();
     logger.debug('Fetching products by category', { categoryId });
     const products = await prisma.product.findMany({
-      where: { categoryId },
+      where: {
+        categoryId,
+        auctions: {
+          some: {
+            status: 'ACTIVE',
+          },
+        },
+      },
       include: {
         category: true,
         media: true,

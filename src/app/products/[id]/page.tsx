@@ -11,6 +11,7 @@ import VerifiedSellerBadge from '@/components/VerifiedSellerBadge';
 import BidConfirmationModal from '@/components/BidConfirmationModal';
 import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
 import { analytics } from '@/components/GoogleTagManager';
+import { getToken } from '@/lib/frontend-auth';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -22,7 +23,7 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  
+
   // Auction states
   const [auction, setAuction] = useState<ProductAuction | null>(null);
   const [isAuctionLoading, setIsAuctionLoading] = useState(false);
@@ -33,11 +34,15 @@ export default function ProductDetailPage() {
   const [auctionError, setAuctionError] = useState<string | null>(null);
   const [auctionSuccess, setAuctionSuccess] = useState<string | null>(null);
   const [isBuying, setIsBuying] = useState(false);
-  
+
   // Confirmation modal states
   const [showBidModal, setShowBidModal] = useState(false);
   const [showBuyModal, setShowBuyModal] = useState(false);
   const [pendingBidAmount, setPendingBidAmount] = useState<string>('');
+  const isAuctionExpired = auction?.endTime
+    ? new Date(auction.endTime).getTime() <= Date.now()
+    : false;
+  const hasActiveAuction = !!auction && !isAuctionExpired;
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -45,15 +50,15 @@ export default function ProductDetailPage() {
         logger.debug('Fetching product details', { productId: id });
         setIsLoading(true);
         const data = await getProductById(id);
-        logger.info('Product details fetched successfully', { 
+        logger.info('Product details fetched successfully', {
           productId: id,
           title: data.title,
           price: data.price,
           imageCount: data.images?.length || 0
         });
-        
+
         setProduct(data);
-        
+
         // Track product view
         analytics.trackProductView(
           data.id,
@@ -61,14 +66,14 @@ export default function ProductDetailPage() {
           data.category?.name,
           data.price
         );
-        
+
         // Initialize start price based on product price
         setStartPrice(data.price);
-        
+
         setError(null);
       } catch (err: any) {
-        logger.error('Failed to fetch product details', { 
-          productId: id, 
+        logger.error('Failed to fetch product details', {
+          productId: id,
           error: err.message,
           stack: err.stack
         });
@@ -84,18 +89,18 @@ export default function ProductDetailPage() {
       fetchProductAuction();
     }
   }, [id]);
-  
+
   // Fetch product auction if exists
   const fetchProductAuction = async () => {
     try {
       logger.debug('Fetching product auction', { productId: id });
       setIsAuctionLoading(true);
-      
+
       // Use the new API function to get auction by product ID
       const productAuction = await getProductAuctionByProductId(id);
-      
+
       if (productAuction) {
-        logger.info('Found active auction for product', { 
+        logger.info('Found active auction for product', {
           productId: id,
           auctionId: productAuction.id,
           currentPrice: productAuction.currentPrice,
@@ -107,8 +112,8 @@ export default function ProductDetailPage() {
         logger.debug('No active auction found for product', { productId: id });
       }
     } catch (err: any) {
-      logger.error('Failed to fetch auction data', { 
-        productId: id, 
+      logger.error('Failed to fetch auction data', {
+        productId: id,
         error: err.message,
         stack: err.stack
       });
@@ -117,7 +122,7 @@ export default function ProductDetailPage() {
       setIsAuctionLoading(false);
     }
   };
-  
+
   // Update auction time remaining
   const updateAuctionTimeRemaining = (auctionData: ProductAuction) => {
     if (auctionData.endTime) {
@@ -125,9 +130,9 @@ export default function ProductDetailPage() {
       const updateTimer = () => {
         const now = new Date();
         const diff = endTime.getTime() - now.getTime();
-        
+
         if (diff <= 0) {
-          logger.debug('Auction ended', { 
+          logger.debug('Auction ended', {
             auctionId: auctionData.id,
             productId: auctionData.productId
           });
@@ -135,89 +140,89 @@ export default function ProductDetailPage() {
           clearInterval(interval);
           return;
         }
-        
+
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        
+
         setAuctionEndsIn(`${days}g ${hours}s ${minutes}d ${seconds}sn`);
       };
-      
+
       updateTimer();
       const interval = setInterval(updateTimer, 1000);
-      
+
       return () => clearInterval(interval);
     }
   };
-  
+
   // Create auction
   const handleCreateAuction = async () => {
     if (!product || !user) return;
-    
+
     try {
-      logger.debug('Creating auction for product', { 
-        productId: product.id, 
+      logger.debug('Creating auction for product', {
+        productId: product.id,
         userId: user.id,
         startPrice,
         duration: auctionDuration
       });
-      
+
       setAuctionError(null);
       setIsAuctionLoading(true);
-      
+
       const newAuction = await createProductAuction({
         productId: product.id,
         startPrice: startPrice,
         duration: auctionDuration
       });
-      
-      logger.info('Auction created successfully', { 
+
+      logger.info('Auction created successfully', {
         productId: product.id,
         auctionId: newAuction.id,
         startPrice,
         duration: auctionDuration,
         endTime: newAuction.endTime
       });
-      
+
       setAuction(newAuction);
       setAuctionSuccess('Açık artırma başarıyla oluşturuldu!');
       updateAuctionTimeRemaining(newAuction);
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setAuctionSuccess(null), 3000);
     } catch (err: any) {
-      logger.error('Failed to create auction', { 
-        productId: product.id, 
+      logger.error('Failed to create auction', {
+        productId: product.id,
         userId: user.id,
         error: err.message,
         stack: err.stack
       });
-      
+
       setAuctionError(err.message || 'Açık artırma oluşturulurken bir hata oluştu');
     } finally {
       setIsAuctionLoading(false);
     }
   };
-  
+
   // Show bid confirmation modal
   const handlePlaceBidClick = (e: React.FormEvent) => {
     e.preventDefault();
     if (!auction || !user || !bidAmount) return;
-    
+
     const amount = parseFloat(bidAmount);
     if (isNaN(amount) || amount <= 0) {
       setAuctionError('Geçerli bir teklif tutarı giriniz');
       return;
     }
-    
+
     const minimumBidAmount = calculateMinimumBidAmount(auction.currentPrice);
     if (amount < minimumBidAmount) {
       const increment = calculateMinimumBidIncrement(auction.currentPrice);
       setAuctionError(`Teklif en az ${minimumBidAmount} TL olmalıdır (${increment} TL artış)`);
       return;
     }
-    
+
     setPendingBidAmount(bidAmount);
     setShowBidModal(true);
   };
@@ -225,49 +230,49 @@ export default function ProductDetailPage() {
   // Actually place the bid after confirmation
   const handleConfirmBid = async () => {
     if (!auction || !user || !pendingBidAmount) return;
-    
+
     setShowBidModal(false);
-    
+
     try {
-      logger.debug('Placing bid on auction', { 
-        auctionId: auction.id, 
+      logger.debug('Placing bid on auction', {
+        auctionId: auction.id,
         userId: user.id,
         bidAmount: pendingBidAmount
       });
-      
+
       setAuctionError(null);
       setIsAuctionLoading(true);
-      
+
       const amount = parseFloat(pendingBidAmount);
-      
+
       await addBidToProductAuction(auction.id, amount);
-      logger.info('Bid placed successfully', { 
-        auctionId: auction.id, 
+      logger.info('Bid placed successfully', {
+        auctionId: auction.id,
         userId: user.id,
         bidAmount: amount,
         previousPrice: auction.currentPrice
       });
-      
+
       // Refresh auction data
       logger.debug('Refreshing auction data after bid', { auctionId: auction.id });
       const updatedAuction = await getProductAuctionById(auction.id);
       setAuction(updatedAuction);
       setBidAmount('');
       setPendingBidAmount('');
-      
+
       setAuctionSuccess('Teklifiniz başarıyla verildi!');
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setAuctionSuccess(null), 3000);
     } catch (err: any) {
-      logger.error('Failed to place bid', { 
-        auctionId: auction.id, 
+      logger.error('Failed to place bid', {
+        auctionId: auction.id,
         userId: user.id,
         bidAmount: pendingBidAmount,
         error: err.message,
         stack: err.stack
       });
-      
+
       setAuctionError(err.message || 'Teklif verilirken bir hata oluştu');
     } finally {
       setIsAuctionLoading(false);
@@ -281,7 +286,7 @@ export default function ProductDetailPage() {
       currency: 'TRY'
     }).format(product.price)
     : '';
-    
+
   // Format auction price
   const formattedAuctionPrice = auction
     ? new Intl.NumberFormat('tr-TR', {
@@ -320,14 +325,26 @@ export default function ProductDetailPage() {
   const handleConfirmBuy = async () => {
     setShowBuyModal(false);
 
+    if (!product) {
+      return;
+    }
+
+    const authToken = getToken();
+    if (!authToken) {
+      alert('Oturumunuzun süresi dolmuş. Lütfen tekrar giriş yapın.');
+      router.push(`/login?redirect=${encodeURIComponent(`/products/${product.id}`)}`);
+      return;
+    }
+
     try {
       setIsBuying(true);
-      const response = await fetch(`/api/products/${product?.id}/buy-now`, {
+      const response = await fetch(`/api/products/${product.id}/buy-now`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${authToken}`
         },
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -482,11 +499,10 @@ export default function ProductDetailPage() {
                   <button
                     key={image.id}
                     onClick={() => setActiveImageIndex(index)}
-                    className={`relative h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 flex-shrink-0 rounded-lg overflow-hidden transition-all touch-target ${
-                      activeImageIndex === index
-                        ? 'border-2 border-[var(--accent)] premium-shadow'
-                        : 'border border-[var(--border)] opacity-70 hover:opacity-100'
-                    }`}
+                    className={`relative h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 flex-shrink-0 rounded-lg overflow-hidden transition-all touch-target ${activeImageIndex === index
+                      ? 'border-2 border-[var(--accent)] premium-shadow'
+                      : 'border border-[var(--border)] opacity-70 hover:opacity-100'
+                      }`}
                   >
                     <Image
                       src={image.url}
@@ -547,7 +563,7 @@ export default function ProductDetailPage() {
                     {auction ? formattedAuctionPrice : formattedPrice}
                   </div>
                 </div>
-                
+
                 {formattedBuyNowPrice && (
                   <div className="flex items-center justify-between">
                     <div className="text-xs sm:text-sm uppercase tracking-wider text-green-600">
@@ -559,26 +575,26 @@ export default function ProductDetailPage() {
                   </div>
                 )}
               </div>
-              
+
               {/* Auction Section */}
-              {auction ? (
-                <div className="mb-6 p-4 bg-[var(--accent)] bg-opacity-5 rounded-xl border border-[var(--accent)] border-opacity-20">
+              {hasActiveAuction && (
+                <div className="mb-6 p-4 bg-opacity-5 rounded-xl border border-[var(--accent)] border-opacity-20">
                   <h3 className="text-base sm:text-lg font-semibold text-[var(--accent)] mb-3">Aktif Açık Artırma</h3>
-                  
+
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div>
                       <span className="text-xs text-[var(--muted-foreground)]">Başlangıç Fiyatı</span>
                       <p className="font-medium text-sm sm:text-base">{new Intl.NumberFormat('tr-TR', {
                         style: 'currency',
                         currency: 'TRY'
-                      }).format(auction.startPrice)}</p>
+                      }).format(auction!.startPrice)}</p>
                     </div>
                     <div>
                       <span className="text-xs text-[var(--muted-foreground)]">Kalan Süre</span>
                       <p className="font-medium text-sm sm:text-base">{auctionEndsIn}</p>
                     </div>
                   </div>
-                  
+
                   {!isOwner && user && (
                     <>
                       {auctionError && (
@@ -586,13 +602,13 @@ export default function ProductDetailPage() {
                           {auctionError}
                         </div>
                       )}
-                      
+
                       {auctionSuccess && (
                         <div className="mb-3 p-3 bg-green-100 text-green-600 text-sm rounded-lg">
                           {auctionSuccess}
                         </div>
                       )}
-                      
+
                       <form onSubmit={handlePlaceBidClick} className="mb-3">
                         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                           <div className="relative flex-1">
@@ -600,9 +616,9 @@ export default function ProductDetailPage() {
                               type="number"
                               value={bidAmount}
                               onChange={(e) => setBidAmount(e.target.value)}
-                              placeholder={`${calculateMinimumBidAmount(auction.currentPrice)}+ TL`}
+                              placeholder={`${calculateMinimumBidAmount(auction!.currentPrice)}+ TL`}
                               className="premium-input text-sm sm:text-base"
-                              min={calculateMinimumBidAmount(auction.currentPrice)}
+                              min={calculateMinimumBidAmount(auction!.currentPrice)}
                               step="1"
                             />
                           </div>
@@ -615,25 +631,25 @@ export default function ProductDetailPage() {
                           </button>
                         </div>
                       </form>
-                      
+
                       <div className="text-xs text-[var(--muted-foreground)] space-y-1">
                         <p>
                           Minimum teklif: {new Intl.NumberFormat('tr-TR', {
                             style: 'currency',
                             currency: 'TRY'
-                          }).format(calculateMinimumBidAmount(auction.currentPrice))}
+                          }).format(calculateMinimumBidAmount(auction!.currentPrice))}
                         </p>
                         <p>
                           Minimum artış: {new Intl.NumberFormat('tr-TR', {
                             style: 'currency',
                             currency: 'TRY'
-                          }).format(calculateMinimumBidIncrement(auction.currentPrice))}
+                          }).format(calculateMinimumBidIncrement(auction!.currentPrice))}
                         </p>
                       </div>
                     </>
                   )}
-                  
-                  {auction.bids && auction.bids.length > 0 && (
+
+                  {auction?.bids && auction.bids.length > 0 && (
                     <div className="mt-4">
                       <h4 className="text-sm font-medium mb-2">Son Teklifler</h4>
                       <div className="max-h-32 sm:max-h-40 overflow-y-auto scrollbar-thin">
@@ -653,57 +669,64 @@ export default function ProductDetailPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                isOwner && (
-                  <div className="mb-6 p-4 bg-[var(--accent)] bg-opacity-5 rounded-xl border border-[var(--accent)] border-opacity-20">
-                    <h3 className="text-base sm:text-lg font-semibold text-[var(--accent)] mb-3">Açık Artırma Başlat</h3>
-                    
-                    {auctionError && (
-                      <div className="mb-3 p-3 bg-red-100 text-red-600 text-sm rounded-lg">
-                        {auctionError}
-                      </div>
-                    )}
-                    
-                    {auctionSuccess && (
-                      <div className="mb-3 p-3 bg-green-100 text-green-600 text-sm rounded-lg">
-                        {auctionSuccess}
-                      </div>
-                    )}
-                    
-                    <div className="mb-3">
-                      <label className="premium-label text-sm">Başlangıç Fiyatı</label>
-                      <input
-                        type="number"
-                        value={startPrice}
-                        onChange={(e) => setStartPrice(parseFloat(e.target.value))}
-                        className="premium-input text-sm sm:text-base"
-                        min="1"
-                      />
+              )}
+
+              {!hasActiveAuction && isOwner && (
+                <div className="mb-6 p-4 bg-opacity-5 rounded-xl border border-[var(--accent)] border-opacity-20">
+                  <h3 className="text-base sm:text-lg font-semibold text-[var(--accent)] mb-3">Açık Artırma Başlat</h3>
+
+                  {auctionError && (
+                    <div className="mb-3 p-3 bg-red-100 text-red-600 text-sm rounded-lg">
+                      {auctionError}
                     </div>
-                    
-                    <div className="mb-4">
-                      <label className="premium-label text-sm">Süre</label>
-                      <select
-                        value={auctionDuration}
-                        onChange={(e) => setAuctionDuration(parseInt(e.target.value) as 1 | 3 | 5 | 7)}
-                        className="premium-input text-sm sm:text-base"
-                      >
-                        <option value={1}>1 Gün</option>
-                        <option value={3}>3 Gün</option>
-                        <option value={5}>5 Gün</option>
-                        <option value={7}>7 Gün</option>
-                      </select>
+                  )}
+
+                  {auctionSuccess && (
+                    <div className="mb-3 p-3 bg-green-100 text-green-600 text-sm rounded-lg">
+                      {auctionSuccess}
                     </div>
-                    
-                    <button
-                      onClick={handleCreateAuction}
-                      disabled={isAuctionLoading}
-                      className="premium-button premium-button-accent w-full touch-target text-sm sm:text-base"
-                    >
-                      {isAuctionLoading ? "İşleniyor..." : "Açık Artırma Başlat"}
-                    </button>
+                  )}
+
+                  <div className="mb-3">
+                    <label className="premium-label text-sm">Başlangıç Fiyatı</label>
+                    <input
+                      type="number"
+                      value={startPrice}
+                      onChange={(e) => setStartPrice(parseFloat(e.target.value))}
+                      className="premium-input text-sm sm:text-base"
+                      min="100"
+                      step="50"
+                    />
                   </div>
-                )
+
+                  <div className="mb-4">
+                    <label className="premium-label text-sm">Süre</label>
+                    <select
+                      value={auctionDuration}
+                      onChange={(e) => setAuctionDuration(parseInt(e.target.value) as 1 | 3 | 5 | 7)}
+                      className="premium-input text-sm sm:text-base"
+                    >
+                      <option value={1}>1 Gün</option>
+                      <option value={3}>3 Gün</option>
+                      <option value={5}>5 Gün</option>
+                      <option value={7}>7 Gün</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleCreateAuction}
+                    disabled={isAuctionLoading}
+                    className="premium-button premium-button-accent w-full touch-target text-sm sm:text-base"
+                  >
+                    {isAuctionLoading ? "İşleniyor..." : "Açık Artırma Başlat"}
+                  </button>
+                </div>
+              )}
+
+              {!hasActiveAuction && !isOwner && (
+                <div className="mb-6 p-4 bg-opacity-5 rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--muted-foreground)]">
+                  Bu ürün için şu an aktif bir açık artırma bulunmuyor.
+                </div>
               )}
 
               {isOwner ? (
@@ -745,10 +768,27 @@ export default function ProductDetailPage() {
                       {isBuying ? 'İşleniyor...' : `Hemen Al - ${formattedBuyNowPrice}`}
                     </button>
                   )}
-                  
+
                   <button
-                    onClick={() => {
-                      // Contact seller
+                    onClick={async () => {
+                      if (!product?.userId) {
+                        alert('Satıcı bilgisi bulunamadı.');
+                        return;
+                      }
+
+                      try {
+                        // Navigate to messages with product context
+                        const productInfo = encodeURIComponent(JSON.stringify({
+                          id: product.id,
+                          title: product.title,
+                          price: product.price,
+                          imageUrl: product.images?.[0]?.url
+                        }));
+                        router.push(`/dashboard/messages/${product.userId}?product=${productInfo}`);
+                      } catch (error) {
+                        console.error('Error navigating to messages:', error);
+                        alert('Mesajlaşma sayfasına yönlendirilirken bir hata oluştu.');
+                      }
                     }}
                     className="premium-button premium-button-accent w-full flex items-center justify-center touch-target text-sm sm:text-base"
                   >

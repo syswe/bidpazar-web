@@ -1,9 +1,10 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
-import { getUserFromToken } from '@/lib/auth';
+import { getUserFromToken, getTokenFromRequest } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { validateBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
+import { finalizeProductAuctionIfExpired } from '@/lib/server/productAuctionUtils';
 
 // Validation schema
 const bidSchema = z.object({
@@ -80,7 +81,7 @@ export async function POST(
     });
     
     // Verify user is authenticated
-    const token = request.headers.get('authorization')?.split(' ')[1];
+    const token = getTokenFromRequest(request);
     if (!token) {
       logger.warn('Bid attempt without authentication token', { auctionId: id });
       return NextResponse.json(
@@ -126,6 +127,14 @@ export async function POST(
       return NextResponse.json(
         { error: 'Açık artırma bulunamadı' },
         { status: 404 }
+      );
+    }
+
+    if (auction.endTime && auction.endTime <= new Date()) {
+      await finalizeProductAuctionIfExpired(auction.id);
+      return NextResponse.json(
+        { error: 'Bu açık artırma sona erdi' },
+        { status: 400 }
       );
     }
 

@@ -4,6 +4,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { JWT } from "next-auth/jwt";
 import { jwtVerify, SignJWT, JWTPayload } from "jose";
+import { NextRequest } from "next/server";
 
 // Enable debug logs with DEBUG_AUTH=true
 const DEBUG_AUTH = process.env.DEBUG_AUTH === 'true';
@@ -45,6 +46,54 @@ export interface JwtPayload {
   isAdmin: boolean;
   appVersion: string;
 }
+
+export const sanitizeToken = (input?: string | null) => {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "undefined") {
+    return null;
+  }
+  return trimmed;
+};
+
+const getCookieMap = (cookieHeader: string | null | undefined): Record<string, string> => {
+  if (!cookieHeader) {
+    return {};
+  }
+
+  return cookieHeader.split(";").reduce<Record<string, string>>((acc, pair) => {
+    const [name, ...rest] = pair.trim().split("=");
+    if (!name) {
+      return acc;
+    }
+
+    acc[name] = decodeURIComponent(rest.join("="));
+    return acc;
+  }, {});
+};
+
+export const getTokenFromRequest = (request: Request | NextRequest): string | null => {
+  const headerToken = sanitizeToken(
+    request.headers.get("authorization")?.split(" ")[1] || null
+  );
+
+  const cookieTokenFromNextRequest =
+    "cookies" in request && typeof (request as any).cookies?.get === "function"
+      ? sanitizeToken((request as NextRequest).cookies.get("authToken")?.value) ??
+        sanitizeToken((request as NextRequest).cookies.get("token")?.value)
+      : null;
+
+  if (headerToken) {
+    return headerToken;
+  }
+
+  if (cookieTokenFromNextRequest) {
+    return cookieTokenFromNextRequest;
+  }
+
+  const cookiesFromHeader = getCookieMap(request.headers.get("cookie"));
+  return sanitizeToken(cookiesFromHeader["authToken"]) ?? sanitizeToken(cookiesFromHeader["token"]);
+};
 
 export const authOptions: NextAuthOptions = {
   providers: [

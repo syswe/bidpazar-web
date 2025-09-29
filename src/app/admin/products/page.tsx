@@ -57,7 +57,7 @@ export default function AdminProductsPage() {
   };
 
   const editProduct = (productId: string) => {
-    router.push(`/products/edit/${productId}`);
+    router.push(`/products/${productId}/edit`);
   };
 
   return (

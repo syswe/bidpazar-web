@@ -689,3 +689,77 @@
     margin-top: 1.5rem;
   }
 }
+
+/* Product suggestion panel for messaging */
+.product-suggestion-panel {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to bottom, rgba(166, 135, 104, 0.03), rgba(166, 135, 104, 0.08));
+  backdrop-filter: blur(10px);
+}
+
+@media (min-width: 640px) {
+  .product-suggestion-panel {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .product-suggestion-panel {
+    padding: 1.5rem;
+  }
+}
+
+.dark .product-suggestion-panel {
+  background: linear-gradient(to bottom, rgba(227, 195, 157, 0.05), rgba(227, 195, 157, 0.1));
+}
+
+/* Suggestion chips/pills */
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--accent);
+  background-color: var(--background);
+  border: 1.5px solid var(--accent);
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  min-height: 36px;
+  box-shadow: 0 1px 3px rgba(166, 135, 104, 0.1);
+}
+
+@media (min-width: 640px) {
+  .suggestion-chip {
+    padding: 0.625rem 1rem;
+    font-size: 0.8125rem;
+    min-height: 40px;
+  }
+}
+
+.suggestion-chip:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(166, 135, 104, 0.25);
+}
+
+.suggestion-chip:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(166, 135, 104, 0.2);
+}
+
+.dark .suggestion-chip {
+  color: var(--accent);
+  background-color: rgba(227, 195, 157, 0.05);
+  border-color: var(--accent);
+  box-shadow: 0 1px 3px rgba(227, 195, 157, 0.15);
+}
+
+.dark .suggestion-chip:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: 0 4px 8px rgba(227, 195, 157, 0.3);
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { finalizeProductAuctionIfExpired } from '@/lib/server/productAuctionUtils';
 
 export async function GET(
   request: Request,
@@ -56,6 +57,11 @@ export async function GET(
     
     if (!auction) {
       logger.debug('No active auction found for product', { productId: id });
+      return NextResponse.json(null);
+    }
+
+    if (auction.endTime && auction.endTime <= new Date()) {
+      await finalizeProductAuctionIfExpired(auction.id);
       return NextResponse.json(null);
     }
     

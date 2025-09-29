@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useParams } from "next/navigation";
 import {
   getOrCreateConversation,
@@ -13,7 +13,7 @@ import {
   Conversation as ApiConversationType,
 } from "@/lib/api";
 import MessageComponent from "@/components/MessageComponent";
-import { Send, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { Send, ArrowLeft, Loader2, AlertCircle, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +46,7 @@ export default function ConversationPage() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const idParam = params.id as string;
 
   // State for conversation management
@@ -67,6 +68,34 @@ export default function ConversationPage() {
   const redirectTimeoutRef = useRef<number | null>(null);
   const refreshIntervalRef = useRef<number | null>(null);
   const failedMessagesRef = useRef<Message[]>([]);
+  
+  // Product-related states for message suggestions
+  const [productInfo, setProductInfo] = useState<{
+    id: string;
+    title: string;
+    price: number;
+    imageUrl?: string;
+  } | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [hasUsedSuggestion, setHasUsedSuggestion] = useState(false);
+
+  // Parse product info from URL
+  useEffect(() => {
+    const productParam = searchParams.get('product');
+    if (productParam) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(productParam));
+        setProductInfo(decoded);
+        setShowSuggestions(true);
+        
+        // Set initial message with product context
+        const initialMessage = `Merhaba, "${decoded.title}" ilanınızla ilgili bilgi almak istiyorum. `;
+        setMessageContent(initialMessage);
+      } catch (error) {
+        console.error('Failed to parse product info:', error);
+      }
+    }
+  }, [searchParams]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -179,19 +208,17 @@ export default function ConversationPage() {
       setLoading(true);
       setIsCreatingConversation(false);
 
-      // Regex to check for CUID format (common for conversation IDs)
-      const isCuidFormat = /^c[a-z0-9]{20,30}$/i.test(idParam);
-
       try {
-        if (isCuidFormat) {
-          console.log(
-            `Initializing existing conversation with CUID: ${idParam}`
-          );
-          setConversationId(idParam);
-
-          // Fetch full conversation details to get participants for the header
+        // First, try to fetch as a conversation ID
+        console.log(`Attempting to fetch conversation: ${idParam}`);
+        
+        try {
           const details = await getConversationDetails(idParam);
+          
+          // If successful, it's a valid conversation ID
           if (details && details.participants) {
+            console.log(`Found existing conversation: ${idParam}`);
+            setConversationId(idParam);
             const otherP = details.participants.find((p) => p.id !== user.id);
             setConversation({ ...details, otherParticipant: otherP });
 
@@ -207,39 +234,48 @@ export default function ConversationPage() {
 
             setInitializationStatus("success");
           } else {
-            // This case should ideally be handled by getConversationDetails throwing an error
             throw new Error("Conversation details not found or incomplete.");
           }
-        } else {
-          // Assumed to be a user ID or username for creating/finding a conversation
-          console.log(
-            `Attempting to get or create conversation with user identifier: ${idParam}`
-          );
-          setIsCreatingConversation(true);
-          const createdOrFoundConv = await getOrCreateConversation(idParam);
-
-          setConversationId(createdOrFoundConv.id);
-          const otherP = createdOrFoundConv.participants.find(
-            (p) => p.id !== user.id
-          );
-          setConversation({ ...createdOrFoundConv, otherParticipant: otherP });
-
-          // Fetch messages if this is an existing conversation
-          if (createdOrFoundConv.id) {
-            const messagesResponse = await getConversationMessages(
-              createdOrFoundConv.id,
-              1,
-              50
+        } catch (conversationError: any) {
+          // If conversation not found (404), treat idParam as user ID
+          if (conversationError.message?.includes("not found") || conversationError.message?.includes("404")) {
+            console.log(
+              `Conversation not found, treating as user ID: ${idParam}`
             );
-            if (messagesResponse && messagesResponse.messages) {
-              setMessages(messagesResponse.messages);
-            }
-          }
+            setIsCreatingConversation(true);
+            const createdOrFoundConv = await getOrCreateConversation(idParam);
 
-          if (createdOrFoundConv.id !== idParam) {
-            router.replace(`/dashboard/messages/${createdOrFoundConv.id}`);
+            setConversationId(createdOrFoundConv.id);
+            const otherP = createdOrFoundConv.participants.find(
+              (p) => p.id !== user.id
+            );
+            setConversation({ ...createdOrFoundConv, otherParticipant: otherP });
+
+            // Fetch messages if this is an existing conversation
+            if (createdOrFoundConv.id) {
+              const messagesResponse = await getConversationMessages(
+                createdOrFoundConv.id,
+                1,
+                50
+              );
+              if (messagesResponse && messagesResponse.messages) {
+                setMessages(messagesResponse.messages);
+              }
+            }
+
+            // Update URL to use the actual conversation ID
+            if (createdOrFoundConv.id !== idParam) {
+              const productParam = searchParams.get('product');
+              const newUrl = productParam 
+                ? `/dashboard/messages/${createdOrFoundConv.id}?product=${productParam}`
+                : `/dashboard/messages/${createdOrFoundConv.id}`;
+              router.replace(newUrl);
+            }
+            setInitializationStatus("success");
+          } else {
+            // Re-throw if it's not a "not found" error
+            throw conversationError;
           }
-          setInitializationStatus("success");
         }
       } catch (err: any) {
         console.error("Failed to initialize conversation:", err);
@@ -318,6 +354,38 @@ export default function ConversationPage() {
     // Refresh messages to get the latest from the server
     refreshMessages();
   }, [user?.id, refreshMessages]);
+
+  // Generate message suggestions based on product
+  const getMessageSuggestions = useCallback(() => {
+    if (!productInfo) return [];
+
+    const formattedPrice = new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY'
+    }).format(productInfo.price);
+
+    return [
+      `Ürünün durumu nasıl?`,
+      `Fiyatta indirim yapabilir misiniz?`,
+      `Kargo ücreti ne kadar?`,
+      `Ürünü ne zaman gönderebilirsiniz?`,
+      `${formattedPrice} fiyat için son fiyatınız mı?`,
+      `Ürünle ilgili daha fazla fotoğraf gönderebilir misiniz?`,
+      `Ürün garantisi var mı?`
+    ];
+  }, [productInfo]);
+
+  // Apply a suggestion to message content
+  const applySuggestion = useCallback((suggestion: string) => {
+    setMessageContent((prev) => {
+      // If message already has content, add suggestion as new sentence
+      if (prev.trim()) {
+        return `${prev.trim()} ${suggestion}`;
+      }
+      return suggestion;
+    });
+    setHasUsedSuggestion(true);
+  }, []);
 
   // Send a message
   const handleSendMessage = async () => {
@@ -518,27 +586,82 @@ export default function ConversationPage() {
       </div>
 
       {/* Message input */}
-      <div className="p-4 border-t">
-        {initializationStatus === "success" ? (
-          <div className="flex space-x-2">
-            <Textarea
-              className="flex-1 resize-none"
-              placeholder="Mesaj yazın..."
-              rows={1}
-              value={messageContent}
-              onChange={(e) => setMessageContent(e.target.value)}
-              onKeyDown={handleKeyPress}
-              disabled={disableInput}
-            />
-            <Button
-              className="self-end"
-              onClick={handleSendMessage}
-              disabled={disableInput || !messageContent.trim() || refreshing}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+      <div className="border-t border-[var(--border)]">
+        {/* Product info and suggestions */}
+        {productInfo && showSuggestions && initializationStatus === "success" && (
+          <div className="product-suggestion-panel">
+            <div className="flex items-start gap-3 mb-4">
+              {productInfo.imageUrl && (
+                <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 border-[var(--accent)] premium-shadow">
+                  <img 
+                    src={productInfo.imageUrl} 
+                    alt={productInfo.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-sm sm:text-base text-[var(--foreground)] truncate mb-1">
+                  {productInfo.title}
+                </h3>
+                <p className="text-xs sm:text-sm font-medium text-[var(--accent)] mb-2">
+                  {new Intl.NumberFormat('tr-TR', {
+                    style: 'currency',
+                    currency: 'TRY'
+                  }).format(productInfo.price)}
+                </p>
+                <button
+                  onClick={() => setShowSuggestions(false)}
+                  className="text-xs text-[var(--accent)] hover:text-[var(--primary)] transition-colors font-medium"
+                >
+                  ✕ Önerileri gizle
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[var(--border)]">
+              <Lightbulb className="h-4 w-4 sm:h-5 sm:w-5 text-[var(--accent)]" />
+              <span className="text-xs sm:text-sm font-semibold text-[var(--foreground)]">
+                Mesaj Önerileri
+              </span>
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              {getMessageSuggestions().map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => applySuggestion(suggestion)}
+                  className="suggestion-chip"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
-        ) : null}
+        )}
+
+        <div className="p-4">
+          {initializationStatus === "success" ? (
+            <div className="flex space-x-2">
+              <Textarea
+                className="flex-1 resize-none"
+                placeholder={productInfo && !hasUsedSuggestion ? "Yukarıdaki önerilerden birini seçebilir veya kendi mesajınızı yazabilirsiniz..." : "Mesaj yazın..."}
+                rows={productInfo ? 2 : 1}
+                value={messageContent}
+                onChange={(e) => setMessageContent(e.target.value)}
+                onKeyDown={handleKeyPress}
+                disabled={disableInput}
+              />
+              <Button
+                className="self-end"
+                onClick={handleSendMessage}
+                disabled={disableInput || !messageContent.trim() || refreshing}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserFromToken } from "@/lib/auth";
+import { getUserFromToken, getTokenFromRequest } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { createOrderConversationMessage } from "@/lib/server/conversationMessaging";
 
 export async function POST(
   request: NextRequest,
@@ -16,10 +17,12 @@ export async function POST(
 
   try {
     // Verify authentication
-    const token = request.headers.get("authorization")?.split(" ")[1];
+    const token = getTokenFromRequest(request);
+
     if (!token) {
       logger.warn("Buy now attempt without authentication token", {
         productId,
+        hasAuthHeader: !!request.headers.get("authorization"),
       });
       return NextResponse.json(
         { error: "Kimlik doğrulama gereklidir" },
@@ -41,7 +44,7 @@ export async function POST(
       where: { id: productId },
       include: {
         user: {
-          select: { id: true, username: true, email: true },
+          select: { id: true, username: true, email: true, name: true },
         },
       },
     });
@@ -106,6 +109,26 @@ export async function POST(
           type: "PURCHASE",
           relatedId: productId,
         },
+      });
+
+      await createOrderConversationMessage({
+        tx,
+        buyer: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+        },
+        seller: {
+          id: product.userId,
+          username: product.user?.username,
+          name: product.user?.name,
+        },
+        product: {
+          id: product.id,
+          title: product.title,
+        },
+        price: product.buyNowPrice ?? 0, // Default to 0 if buyNowPrice is null
+        context: "buy-now",
       });
 
       // You might want to mark the product as sold or reduce inventory

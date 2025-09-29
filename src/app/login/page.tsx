@@ -75,10 +75,10 @@ function LoginContent() {
         // No verification needed, set the user in context
         setUser(response.user);
         console.log('[LoginContent] User set in AuthContext:', response.user);
-        
+
         // Track successful login
         analytics.trackLogin('email', response.user?.id);
-        
+
         // Handle seller redirect
         const finalRedirectPath = isSellerRedirect ? '/dashboard/seller-request' : redirectPath;
         console.log('[LoginContent] Redirecting via window.location.href to:', finalRedirectPath);
@@ -111,7 +111,7 @@ function LoginContent() {
       // Set the user in context directly
       setUser(response.user);
       console.log('[LoginContent] User set in AuthContext after verification:', response.user);
-      
+
       // Handle seller redirect
       const finalRedirectPath = isSellerRedirect ? '/dashboard/seller-request' : redirectPath;
       console.log('[LoginContent] Redirecting via window.location.href to:', finalRedirectPath);
@@ -253,13 +253,13 @@ function LoginContent() {
 
         <div className="text-center">
           <h1 className="text-4xl font-bold mb-2 text-[var(--foreground)]">
-            <span className="bg-clip-text text-transparent premium-gradient">
+            <span className="bg-clip-text accent-inherit">
               {isSellerRedirect ? 'Satıcı Olmak İçin Giriş Yapın' : 'Bidpazar\'a Giriş Yap'}
             </span>
           </h1>
           <p className="text-[var(--muted-foreground)]">
-            {isSellerRedirect 
-              ? 'Satıcı başvurunuz için hesabınıza giriş yapın' 
+            {isSellerRedirect
+              ? 'Satıcı başvurunuz için hesabınıza giriş yapın'
               : 'Hesabınıza erişmek için bilgilerinizi girin'
             }
           </p>
@@ -319,8 +319,8 @@ function LoginContent() {
         <div className="text-center mt-4">
           <p className="text-sm text-[var(--muted-foreground)]">
             Hesabınız yok mu?{' '}
-            <Link 
-              href={isSellerRedirect ? "/register?redirect=seller" : "/register"} 
+            <Link
+              href={isSellerRedirect ? "/register?redirect=seller" : "/register"}
               className="text-[var(--accent)] hover:underline transition-all"
             >
               {isSellerRedirect ? 'Hesap Oluştur ve Satıcı Ol' : 'Kayıt Ol'}

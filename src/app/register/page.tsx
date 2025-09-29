@@ -21,11 +21,11 @@ export default function Register() {
   const [userId, setUserId] = useState('');
   const [tempToken, setTempToken] = useState('');
   const [isResending, setIsResending] = useState(false);
-  
+
   // Field validation states
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  
+
   const router = useRouter();
   const { refreshAuthState, isAuthenticated } = useAuth();
 
@@ -43,16 +43,16 @@ export default function Register() {
       console.log('Doğrulama için geçici token alındı');
     }
   }, [tempToken]);
-  
+
   // Validate fields as they change
   useEffect(() => {
     validateField('email', email);
   }, [email]);
-  
+
   useEffect(() => {
     validateField('username', username);
   }, [username]);
-  
+
   useEffect(() => {
     validateField('password', password);
     // Also revalidate confirmPassword when password changes
@@ -60,11 +60,11 @@ export default function Register() {
       validateField('confirmPassword', confirmPassword, password);
     }
   }, [password]);
-  
+
   useEffect(() => {
     validateField('confirmPassword', confirmPassword, password);
   }, [confirmPassword, password]);
-  
+
   useEffect(() => {
     if (phoneNumber) {
       validateField('phoneNumber', phoneNumber);
@@ -77,7 +77,7 @@ export default function Register() {
   // Mark a field as touched when user interacts with it
   const handleBlur = (field: string) => {
     setTouchedFields(prev => ({ ...prev, [field]: true }));
-    
+
     // Validate the field on blur
     switch (field) {
       case 'email':
@@ -97,10 +97,10 @@ export default function Register() {
         break;
     }
   };
-  
+
   const validateField = (field: string, value: string, comparisonValue?: string) => {
     let error = '';
-    
+
     switch (field) {
       case 'email':
         if (!value) {
@@ -109,7 +109,7 @@ export default function Register() {
           error = 'Geçerli bir e-posta adresi giriniz. Örnek: user@example.com';
         }
         break;
-        
+
       case 'username':
         if (!value) {
           error = 'Kullanıcı adı gerekli';
@@ -119,7 +119,7 @@ export default function Register() {
           error = 'Kullanıcı adı sadece harf, rakam, alt çizgi ve kısa çizgi içerebilir';
         }
         break;
-        
+
       case 'password':
         if (!value) {
           error = 'Şifre gerekli';
@@ -127,7 +127,7 @@ export default function Register() {
           error = 'Şifre en az 6 karakter uzunluğunda olmalıdır';
         }
         break;
-        
+
       case 'confirmPassword':
         if (!value) {
           error = 'Şifre onayı gerekli';
@@ -135,18 +135,18 @@ export default function Register() {
           error = 'Şifreler eşleşmiyor';
         }
         break;
-        
+
       case 'phoneNumber':
         if (value && !/^(\+\d{1,3}|0)[0-9]{10,11}$/.test(value.replace(/\s+/g, ''))) {
           error = 'Geçerli bir telefon numarası giriniz (örn: 05XXXXXXXXX)';
         }
         break;
     }
-    
+
     setFieldErrors(prev => ({ ...prev, [field]: error }));
     return !error;
   };
-  
+
   // Get validation status for a field
   const getFieldStatus = (field: string) => {
     if (!touchedFields[field]) return null;
@@ -156,14 +156,14 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     // Validate all fields first
     const emailValid = validateField('email', email);
     const usernameValid = validateField('username', username);
     const passwordValid = validateField('password', password);
     const confirmPasswordValid = validateField('confirmPassword', confirmPassword, password);
     const phoneNumberValid = !phoneNumber || validateField('phoneNumber', phoneNumber);
-    
+
     // Mark all fields as touched to show errors
     setTouchedFields({
       email: true,
@@ -172,7 +172,7 @@ export default function Register() {
       confirmPassword: true,
       phoneNumber: !!phoneNumber
     });
-    
+
     // If any validation fails, return early
     if (!emailValid || !usernameValid || !passwordValid || !confirmPasswordValid || !phoneNumberValid) {
       return;
@@ -181,16 +181,16 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      console.log('Attempting to register with:', { 
-        email, 
-        username, 
-        name: name || undefined, 
-        phoneNumber: phoneNumber || undefined 
+      console.log('Attempting to register with:', {
+        email,
+        username,
+        name: name || undefined,
+        phoneNumber: phoneNumber || undefined
       });
-      
+
       // Register the user
       const response = await register(email, password, username, name, phoneNumber);
-      
+
       console.log('Registration response:', {
         requireVerification: response.requireVerification,
         userId: response.user?.id,
@@ -203,7 +203,7 @@ export default function Register() {
         setUserId(response.user.id);
         setTempToken(response.token);
         setShowVerification(true);
-        
+
         // Display SMS delivery error if needed
         if (phoneNumber && response.smsSent === false) {
           setError('Doğrulama kodu gönderilemedi. "Doğrulama kodunu tekrar gönder" seçeneğini kullanabilirsiniz.');
@@ -215,10 +215,10 @@ export default function Register() {
         console.log('No verification required, logging in automatically');
         const loginResponse = await login(email, password);
         setAuth(loginResponse.token, loginResponse.user);
-        
+
         // Track successful registration
         analytics.trackRegistration('email', loginResponse.user?.id);
-        
+
         await refreshAuthState();
         router.push('/dashboard');
       }
@@ -249,20 +249,20 @@ export default function Register() {
         userId,
         hasToken: !!tempToken
       });
-      
+
       // Verify the code
       const response = await verifyCode(verificationCode, userId);
-      
+
       console.log('Verification response:', {
         success: true,
         hasToken: !!response.token,
         hasUser: !!response.user
       });
-      
+
       // Store authentication data
       setAuth(response.token, response.user);
       await refreshAuthState();
-      
+
       // Navigate to dashboard
       router.push('/dashboard');
     } catch (err) {
@@ -280,7 +280,7 @@ export default function Register() {
     try {
       const response = await resendVerificationCode(userId);
       console.log('Resend verification response:', response);
-      
+
       if (response.smsSent === false) {
         setError('Doğrulama kodu gönderilirken teknik bir sorun oluştu. Lütfen daha sonra tekrar deneyin veya destek ile iletişime geçin.');
       } else {
@@ -373,7 +373,7 @@ export default function Register() {
       <div className="w-full max-w-md space-y-8 bg-[var(--background)] p-8 rounded-lg shadow-lg premium-shadow border border-[var(--border)]">
         <div className="text-center">
           <h1 className="text-4xl font-bold mb-2 text-[var(--foreground)]">
-            <span className="bg-clip-text text-transparent premium-gradient">Hesap Oluştur</span>
+            <span className="bg-clip-text">Hesap Oluştur</span>
           </h1>
           <p className="text-[var(--muted-foreground)]">Bidpazar hesabınızı oluşturmak için bilgilerinizi doldurun</p>
         </div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Product } from '@/lib/api';
 import VerifiedSellerBadge from './VerifiedSellerBadge';
 import { useAuth } from './AuthProvider';
+import { getToken } from '@/lib/frontend-auth';
 
 interface ProductCardProps {
   product: Product;
@@ -44,14 +45,22 @@ export default function ProductCard({ product }: ProductCardProps) {
     }
 
     try {
+      const authToken = getToken();
+      if (!authToken) {
+        alert('Oturumunuzun süresi dolmuş. Lütfen tekrar giriş yapın.');
+        window.location.href = `/login?redirect=${encodeURIComponent(`/products/${product.id}`)}`;
+        return;
+      }
+
       setIsBuying(true);
       // TODO: Implement buy now API call
       const response = await fetch(`/api/products/${product.id}/buy-now`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${authToken}`,
         },
+        credentials: 'include',
       });
 
       if (!response.ok) {
