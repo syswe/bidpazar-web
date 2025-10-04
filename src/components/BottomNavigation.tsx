@@ -84,17 +84,25 @@ const BottomNavigation = () => {
     }
   }, []);
 
-  const handleNavigation = useCallback((href: string, e: React.MouseEvent) => {
-    // If already on the page, prevent default and do nothing
-    if (pathname === href) {
-      e.preventDefault();
-      return;
-    }
+  const handleNavigation = useCallback(
+    (
+      href: string,
+      e:
+        | React.MouseEvent<HTMLAnchorElement>
+        | React.KeyboardEvent<HTMLAnchorElement>
+    ) => {
+      // If already on the page, prevent default and do nothing
+      if (pathname === href) {
+        e.preventDefault();
+        return;
+      }
 
-    // Indicate navigation + haptic, let <Link> handle route change
-    setNavigatingTo(href);
-    triggerHaptic();
-  }, [pathname, triggerHaptic]);
+      // Indicate navigation + haptic, let <Link> handle route change
+      setNavigatingTo(href);
+      triggerHaptic();
+    },
+    [pathname, triggerHaptic]
+  );
 
   const navItems = useMemo(() => {
     const allItems = [
@@ -123,7 +131,7 @@ const BottomNavigation = () => {
         isActive: pathname.startsWith("/dashboard"),
       },
     ];
-    
+
     // If in guest mode, filter out the "Hesabım" (Account) link
     if (isGuest) {
       return allItems.filter(item => item.href !== '/dashboard');
@@ -243,7 +251,7 @@ const BottomNavigation = () => {
   if (isDesktop) return null;
 
   return (
-    <nav 
+    <nav
       ref={swipeRef}
       style={navStyle}
       role="navigation"
@@ -260,18 +268,20 @@ const BottomNavigation = () => {
               aria-label={item.label}
               aria-current={item.isActive ? 'page' : undefined}
               tabIndex={0}
-              onClick={(e) => handleNavigation(item.href, e)}
-              onFocus={(e) => {
+              onClick={(e: React.MouseEvent<HTMLAnchorElement>) =>
+                handleNavigation(item.href, e)
+              }
+              onFocus={(e: React.FocusEvent<HTMLAnchorElement>) => {
                 Object.assign((e.target as HTMLElement).style, getFocusStyle());
               }}
-              onBlur={(e) => {
+              onBlur={(e: React.FocusEvent<HTMLAnchorElement>) => {
                 (e.target as HTMLElement).style.outline = 'none';
                 (e.target as HTMLElement).style.outlineOffset = '';
               }}
-              onKeyDown={(e) => {
+              onKeyDown={(e: React.KeyboardEvent<HTMLAnchorElement>) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  handleNavigation(item.href, e as any);
+                  handleNavigation(item.href, e);
                 }
                 // Arrow key navigation
                 if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

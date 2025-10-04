@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "../components/Sidebar";
@@ -9,7 +10,7 @@ import { Toaster } from "sonner";
 import { GoogleTagManager } from "../components/GoogleTagManager";
 import { PageTrackingWrapper } from "@/components/PageTrackingWrapper";
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ["latin"],
   display: 'swap',
   variable: '--font-inter',
@@ -48,12 +49,14 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased`}>
         {/* Google Tag Manager */}
         {gtmId && <GoogleTagManager gtmId={gtmId} />}
-        
+
         <ThemeProvider>
           <AuthProvider>
             {/* Page Tracking Hook */}
-            <PageTrackingWrapper />
-            
+            <Suspense fallback={null}>
+              <PageTrackingWrapper />
+            </Suspense>
+
             <div className="flex h-full min-h-screen bg-[var(--background)]">
               <Sidebar />
               <main className="flex-1 overflow-y-auto w-full">
@@ -62,8 +65,8 @@ export default function RootLayout({
                 </MobileLayout>
               </main>
             </div>
-            <Toaster 
-              position="top-right" 
+            <Toaster
+              position="top-right"
               toastOptions={{
                 style: {
                   background: 'var(--background)',

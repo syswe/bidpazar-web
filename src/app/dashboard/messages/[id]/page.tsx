@@ -65,8 +65,8 @@ export default function ConversationPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const redirectTimeoutRef = useRef<number | null>(null);
-  const refreshIntervalRef = useRef<number | null>(null);
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | number | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | number | null>(null);
   const failedMessagesRef = useRef<Message[]>([]);
   
   // Product-related states for message suggestions
@@ -125,9 +125,11 @@ export default function ConversationPage() {
       refreshMessages();
 
       // Setup regular polling (every 3 seconds)
-      refreshIntervalRef.current = setInterval(() => {
-        refreshMessages();
-      }, 3000);
+      if (typeof window !== "undefined") {
+        refreshIntervalRef.current = window.setInterval(() => {
+          refreshMessages();
+        }, 3000);
+      }
     }
 
     return () => {

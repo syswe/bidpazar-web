@@ -35,7 +35,7 @@ const nextConfig = {
   // Add enhanced webpack config for WebSocket support
   webpack: (config, { isServer, dev }) => {
     // Add WebSocket externals
-    config.externals = [
+    (config.externals = [
       ...(Array.isArray(config.externals)
         ? config.externals
         : [config.externals].filter(Boolean)),
@@ -43,7 +43,10 @@ const nextConfig = {
         "utf-8-validate": "commonjs utf-8-validate",
         bufferutil: "commonjs bufferutil",
       },
-    ];
+    ]),
+      (config.watchOptions = {
+        ignored: /node_modules|bpmobile|\.git/,
+      });
 
     // Add fallbacks for WebSocket modules
     config.resolve.fallback = {

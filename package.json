@@ -43,6 +43,7 @@
     "module-alias": "^2.2.3",
     "next": "^15.3.2",
     "next-auth": "^4.24.11",
+    "node-fetch": "^3.3.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.54.2",

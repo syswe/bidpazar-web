@@ -389,7 +389,7 @@ export default function LiveStreamPage() {
           setShowDebug(false); // Hide debug after successful connection
           setError(null); // Clear any previous errors
         }}
-        onDisconnected={(reason) => {
+        onDisconnected={(reason: any) => {
           console.log("Disconnected from LiveKit room", { reason });
           // Only redirect on intentional disconnect (user leaving), not on connection errors
           if (reason && reason.toString() !== "UNKNOWN") {
@@ -399,7 +399,7 @@ export default function LiveStreamPage() {
             setError("Connection lost. Please try reconnecting.");
           }
         }}
-        onError={(error) => {
+        onError={(error: any) => {
           console.error("LiveKit room error:", error);
           const browserInfo = getBrowserInfo();
 
@@ -531,7 +531,7 @@ function CustomLiveStreamUI({
     streamId: streamDetails.id,
     token: authToken,
     isStreamer: isStreamer,
-    logMessage: isStreamer ? logMessage : () => {}, // Only log for streamers
+    logMessage: isStreamer ? logMessage : () => { }, // Only log for streamers
     socket,
   });
 
