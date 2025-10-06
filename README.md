@@ -1,4 +1,4 @@
-# BidPazar Frontend
+# BidPazar Web Core
 
 This repository contains the frontend user interface for the BidPazar application, built with Next.js.
 
