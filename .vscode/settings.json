@@ -15,5 +15,6 @@
     "**/id_dsa",
     "**/.ssh/id_*"
   ],
-  "java.compile.nullAnalysis.mode": "automatic"
+  "java.compile.nullAnalysis.mode": "automatic",
+  "kiroAgent.configureMCP": "Disabled"
 }

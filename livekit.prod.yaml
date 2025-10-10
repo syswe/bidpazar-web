@@ -2,68 +2,80 @@ port: 7880
 bind_addresses:
   - ""
 
-# API key and secret for production
+# API key and secret for development
 keys:
-  prodkey: change-this-livekit-secret-key-in-production-at-least-32-chars
+  devkey: dev-secret-key-at-least-32-characters-long-for-security
 
-# Redis for scaling - production format
+# Redis for scaling - using proper format
 redis:
   address: redis:6379
-  password: change_this_redis_password_in_production
+  password: redis_dev_password
   db: 0
 
-# TURN servers for NAT traversal
+# Disable TURN servers - use public STUN only for development
 turn:
   enabled: true
   domain: "207.180.247.20"
   udp_port: 3478
   external_tls: false
-  
-# WebRTC configuration for production
+
+# WebRTC configuration with public STUN servers
 rtc:
-  # TURN servers for production
+  # Use Google's public STUN servers for NAT traversal
+  stun_servers:
+    - "stun.l.google.com:19302"
+    - "stun1.l.google.com:19302"
+    - "stun2.l.google.com:19302"
+    - "stun3.l.google.com:19302"
+    - "stun4.l.google.com:19302"
+    - "stun.cloudflare.com:3478"
+    - "stun.services.mozilla.com:3478"
+
+  # UDP port range for media - matches docker-compose port mapping
+  port_range_start: 50000
+  port_range_end: 50050
+
+  # TCP fallback - enabled for better connectivity
+  tcp_port: 7881
+
+  # External IP settings - critical for production
+  use_external_ip: true
+  # Force external IP for candidates
+  node_ip: "207.180.247.20"
+
+  # TURN servers for NAT traversal - aligned with Coturn config
   turn_servers:
     - host: "207.180.247.20"
       port: 3478
       protocol: udp
-      username: bidpazar_prod
-      credential: change_this_coturn_password_in_production
-    - host: coturn
+      username: bidpazar_dev
+      credential: coturn_dev_secret
+    - host: "207.180.247.20"
       port: 3478
-      protocol: udp
-      username: bidpazar_prod
-      credential: change_this_coturn_password_in_production
-  
-  # Use external IP for production
-  use_external_ip: true
-  
-  # UDP port range for media
-  port_range_start: 50000
-  port_range_end: 60000
-  
-  # TCP fallback
-  tcp_port: 7881
+      protocol: tcp
+      username: bidpazar_dev
+      credential: coturn_dev_secret
 
-# Room settings for production
+# Room settings
 room:
   enabled_codecs:
     - mime: audio/opus
     - mime: video/h264
     - mime: video/vp8
     - mime: video/vp9
-  
+
   # Auto create rooms
   auto_create: true
-  
-  # Room timeouts (longer for production)
+
+  # Room timeouts (in seconds)
   empty_timeout: 600
   departure_timeout: 30
 
-# Logging for production
-log_level: info
+# Logging for development - detailed debugging
+log_level: debug
 
-# Production settings
-development: false
+# Development settings
+development: true
 
 # Audio settings
 audio:
@@ -72,4 +84,4 @@ audio:
   # Minimum percentile for audio level detection
   min_percentile: 40
   # Update interval for audio levels (milliseconds)
-  update_interval: 200 
+  update_interval: 100

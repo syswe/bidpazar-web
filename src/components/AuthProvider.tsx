@@ -36,9 +36,9 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isLoggedIn: false,
   isAuthenticated: false,
-  logout: async () => {},
-  setUser: () => {},
-  refreshAuthState: async () => {},
+  logout: async () => { },
+  setUser: () => { },
+  refreshAuthState: async () => { },
   appVersion: APP_VERSION,
 });
 
@@ -59,8 +59,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Get current token to help with debugging
       const currentToken = getToken();
       console.log(
-        `[AuthProvider] Current token: ${currentToken ? "Found" : "Missing"} (${
-          currentToken ? `length: ${currentToken.length}` : "null"
+        `[AuthProvider] Current token: ${currentToken ? "Found" : "Missing"} (${currentToken ? `length: ${currentToken.length}` : "null"
         })`
       );
 
@@ -107,8 +106,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const token = getToken();
 
         console.log(
-          `[AuthProvider] Initial auth check - Token: ${
-            token ? "Found" : "Missing"
+          `[AuthProvider] Initial auth check - Token: ${token ? "Found" : "Missing"
           }, User: ${storedUser ? "Found" : "Missing"}`
         );
 
