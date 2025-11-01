@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { 
-  Product, 
-  getProducts, 
-  Story, 
+import { useRouter } from "next/navigation";
+import {
+  Product,
+  getProducts,
+  Story,
   LiveStream,
-  getStories, 
+  getStories,
   createStory as createStoryAPI,
   getLiveStreamsForHomepage,
   uploadStoryImage,
@@ -20,6 +21,21 @@ import { X, ChevronRight, Clock, TrendingUp, Award, Users, Heart, Eye, ChevronDo
 import { useAuth } from "@/components/AuthProvider";
 import { toast } from "sonner";
 
+// Deterministic helpers to avoid SSR/CSR mismatches (hydration errors)
+const formatPrice = (value: number) => new Intl.NumberFormat('tr-TR').format(value);
+const formatDateTR = (input: string | number | Date) =>
+  new Date(input).toLocaleDateString('tr-TR', { timeZone: 'UTC' });
+const seededNumber = (seed: string, min: number, max: number) => {
+  // Simple deterministic hash -> [min, max]
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
+  }
+  const range = max - min + 1;
+  const unsigned = (h >>> 0);
+  return min + (unsigned % range);
+};
+
 // Coming Soon Popup component
 const ComingSoonPopup = ({ isOpen, onClose, feature }: { isOpen: boolean, onClose: () => void, feature: string }) => {
   if (!isOpen) return null;
@@ -27,25 +43,25 @@ const ComingSoonPopup = ({ isOpen, onClose, feature }: { isOpen: boolean, onClos
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-md w-full p-6 relative border border-[var(--border)]">
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-3 right-3 text-[var(--foreground)] hover:text-[var(--accent)] transition-colors"
         >
           <X size={20} />
         </button>
-        
+
         <div className="text-center mb-4">
           <div className="mx-auto w-16 h-16 bg-[var(--accent)] bg-opacity-10 rounded-full flex items-center justify-center mb-4">
             <Clock className="h-8 w-8 text-[var(--accent)]" />
           </div>
           <h3 className="text-xl font-bold text-[var(--foreground)]">Çok Yakında</h3>
         </div>
-        
+
         <p className="text-center text-[var(--foreground)] opacity-90 mb-6">
           "{feature}" özelliği çok yakında BidPazar'da olacak. Gelişmelerden haberdar olmak için bizi takip edin!
         </p>
-        
-        <button 
+
+        <button
           onClick={onClose}
           className="w-full py-2.5 bg-[var(--accent)] text-white rounded-lg font-medium hover:bg-opacity-90 transition-colors"
         >
@@ -57,17 +73,17 @@ const ComingSoonPopup = ({ isOpen, onClose, feature }: { isOpen: boolean, onClos
 };
 
 // Instagram-like Story Viewer Component
-const StoryViewer = ({ 
-  stories, 
-  currentStoryIndex, 
-  isOpen, 
-  onClose, 
-  onNext, 
-  onPrevious 
-}: { 
-  stories: Story[], 
-  currentStoryIndex: number, 
-  isOpen: boolean, 
+const StoryViewer = ({
+  stories,
+  currentStoryIndex,
+  isOpen,
+  onClose,
+  onNext,
+  onPrevious
+}: {
+  stories: Story[],
+  currentStoryIndex: number,
+  isOpen: boolean,
   onClose: () => void,
   onNext: () => void,
   onPrevious: () => void
@@ -109,11 +125,11 @@ const StoryViewer = ({
         <div className="absolute top-4 left-4 right-4 z-30 flex gap-1">
           {stories.map((_, index) => (
             <div key={index} className="flex-1 h-1 bg-white bg-opacity-30 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-white rounded-full transition-all duration-100"
                 style={{
-                  width: index < currentStoryIndex ? '100%' : 
-                         index === currentStoryIndex ? `${progress}%` : '0%'
+                  width: index < currentStoryIndex ? '100%' :
+                    index === currentStoryIndex ? `${progress}%` : '0%'
                 }}
               />
             </div>
@@ -129,11 +145,11 @@ const StoryViewer = ({
             <div>
               <p className="font-semibold text-sm">{currentStory.user?.username || currentStory.user?.name || 'Anonim'}</p>
               <p className="text-xs opacity-70">
-                {new Date(currentStory.createdAt).toLocaleDateString('tr-TR')}
+                {formatDateTR(currentStory.createdAt)}
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="text-white hover:text-gray-300 transition-colors p-2"
           >
@@ -170,7 +186,7 @@ const StoryViewer = ({
 
         {/* Navigation areas */}
         <div className="absolute inset-0 flex">
-          <button 
+          <button
             className="flex-1 bg-transparent"
             onClick={onPrevious}
             onMouseDown={() => setIsPaused(true)}
@@ -178,7 +194,7 @@ const StoryViewer = ({
             onTouchStart={() => setIsPaused(true)}
             onTouchEnd={() => setIsPaused(false)}
           />
-          <button 
+          <button
             className="flex-1 bg-transparent"
             onClick={onNext}
             onMouseDown={() => setIsPaused(true)}
@@ -208,10 +224,10 @@ const StoryViewer = ({
 };
 
 // Enhanced Story Creation Modal with Image Upload
-const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: { 
-  isOpen: boolean, 
-  onClose: () => void, 
-  onCreateStory: (content: string, type?: "TEXT" | "IMAGE", mediaUrl?: string) => void 
+const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
+  isOpen: boolean,
+  onClose: () => void,
+  onCreateStory: (content: string, type?: "TEXT" | "IMAGE", mediaUrl?: string) => void
 }) => {
   const [content, setContent] = useState('');
   const [storyType, setStoryType] = useState<"TEXT" | "IMAGE">("TEXT");
@@ -235,7 +251,7 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
 
       setSelectedImage(file);
       setStoryType("IMAGE");
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -256,12 +272,12 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (storyType === "TEXT" && !content.trim()) {
       toast.error('Lütfen hikaye içeriği girin');
       return;
     }
-    
+
     if (storyType === "IMAGE" && !selectedImage) {
       toast.error('Lütfen bir görsel seçin');
       return;
@@ -270,16 +286,16 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
     setIsSubmitting(true);
     try {
       let mediaUrl: string | undefined = undefined;
-      
+
       if (storyType === "IMAGE" && selectedImage) {
         console.log('Uploading image:', selectedImage.name);
         mediaUrl = await uploadStoryImage(selectedImage);
         console.log('Image uploaded successfully:', mediaUrl);
       }
-      
+
       await onCreateStory(
-        content.trim() || (storyType === "IMAGE" ? 'Görsel hikayesi' : ''), 
-        storyType, 
+        content.trim() || (storyType === "IMAGE" ? 'Görsel hikayesi' : ''),
+        storyType,
         mediaUrl
       );
       setContent('');
@@ -299,14 +315,14 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-[var(--background)] rounded-xl shadow-2xl max-w-md w-full p-6 relative border border-[var(--border)] max-h-[90vh] overflow-y-auto">
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-3 right-3 text-[var(--foreground)] hover:text-[var(--accent)] transition-colors"
           disabled={isSubmitting}
         >
           <X size={20} />
         </button>
-        
+
         <div className="text-center mb-4">
           <h3 className="text-xl font-bold text-[var(--foreground)]">Hikaye Oluştur</h3>
         </div>
@@ -319,11 +335,10 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
               setStoryType("TEXT");
               clearImage();
             }}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              storyType === "TEXT" 
-                ? 'bg-[var(--accent)] text-white' 
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${storyType === "TEXT"
+                ? 'bg-[var(--accent)] text-white'
                 : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
-            }`}
+              }`}
             disabled={isSubmitting}
           >
             Metin
@@ -331,22 +346,21 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
           <button
             type="button"
             onClick={() => setStoryType("IMAGE")}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              storyType === "IMAGE" 
-                ? 'bg-[var(--accent)] text-white' 
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${storyType === "IMAGE"
+                ? 'bg-[var(--accent)] text-white'
                 : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
-            }`}
+              }`}
             disabled={isSubmitting}
           >
             Görsel
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit}>
           {storyType === "IMAGE" && (
             <div className="mb-4">
               {!imagePreview ? (
-                <div 
+                <div
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full h-64 border-2 border-dashed border-[var(--border)] rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-[var(--accent)] transition-colors"
                 >
@@ -398,7 +412,7 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
           <div className="text-right text-sm text-[var(--foreground)] opacity-70 mt-1">
             {content.length}/500
           </div>
-          
+
           <div className="flex gap-3 mt-4">
             <button
               type="button"
@@ -411,8 +425,8 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
             <button
               type="submit"
               disabled={
-                isSubmitting || 
-                (storyType === "TEXT" && !content.trim()) || 
+                isSubmitting ||
+                (storyType === "TEXT" && !content.trim()) ||
                 (storyType === "IMAGE" && !selectedImage)
               }
               className="flex-1 py-2.5 bg-[var(--accent)] text-white rounded-lg font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -468,6 +482,7 @@ const favoriteSellers = [
 
 export default function Home() {
   const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
@@ -483,6 +498,13 @@ export default function Home() {
   const [storyCreateModalOpen, setStoryCreateModalOpen] = useState(false);
   const [storyViewerOpen, setStoryViewerOpen] = useState(false);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
+  const [homeSearch, setHomeSearch] = useState('');
+
+  const handleHomeSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = homeSearch.trim();
+    router.push(q ? `/search?q=${encodeURIComponent(q)}` : '/search');
+  };
 
   const handleMockLink = useCallback((featureName: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -524,7 +546,7 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      
+
       try {
         // Load products, stories, live streams, and categories in parallel
         const [productsData, storiesData, liveStreamsData, categoriesData] = await Promise.all([
@@ -549,14 +571,14 @@ export default function Home() {
       } catch (error) {
         console.error("Error loading data:", error);
         setError('Veriler yüklenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
-        
+
         // Ensure all state variables are arrays
         setProducts([]);
         setStories([]);
         setLiveStreams([]);
         setCategories([]);
         setLiveStreamsMeta({ totalLiveStreams: 0, hasActiveStreams: false });
-        
+
         // Set mock data for development
         if (process.env.NODE_ENV === 'development') {
           setProducts([
@@ -574,53 +596,53 @@ export default function Home() {
               images: []
             },
           ]);
-          
+
           // Mock categories if API fails
           setCategories([
-            { 
-              id: '1', 
-              name: 'Antikalar', 
-              emoji: '🏺', 
+            {
+              id: '1',
+              name: 'Antikalar',
+              emoji: '🏺',
               productCount: 452,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             },
-            { 
-              id: '2', 
-              name: 'Sanat', 
-              emoji: '🎨', 
+            {
+              id: '2',
+              name: 'Sanat',
+              emoji: '🎨',
               productCount: 328,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             },
-            { 
-              id: '3', 
-              name: 'Koleksiyon', 
-              emoji: '📚', 
+            {
+              id: '3',
+              name: 'Koleksiyon',
+              emoji: '📚',
               productCount: 296,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             },
-            { 
-              id: '4', 
-              name: 'Takı & Mücevher', 
-              emoji: '💎', 
+            {
+              id: '4',
+              name: 'Takı & Mücevher',
+              emoji: '💎',
               productCount: 214,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             },
-            { 
-              id: '5', 
-              name: 'Vintage Giyim', 
-              emoji: '👗', 
+            {
+              id: '5',
+              name: 'Vintage Giyim',
+              emoji: '👗',
               productCount: 183,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             },
-            { 
-              id: '6', 
-              name: 'El Yapımı Ürünler', 
-              emoji: '✂️', 
+            {
+              id: '6',
+              name: 'El Yapımı Ürünler',
+              emoji: '✂️',
               productCount: 174,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
@@ -640,10 +662,10 @@ export default function Home() {
 
   return (
     <>
-      <ComingSoonPopup 
-        isOpen={popupOpen} 
-        onClose={() => setPopupOpen(false)} 
-        feature={popupFeature} 
+      <ComingSoonPopup
+        isOpen={popupOpen}
+        onClose={() => setPopupOpen(false)}
+        feature={popupFeature}
       />
 
       <StoryCreateModal
@@ -671,8 +693,8 @@ export default function Home() {
                 Canlı yayın müzayede platformunda benzersiz ürünleri keşfedin, teklif verin ve koleksiyonunuzu genişletin.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link 
-                  href="/live-streams" 
+                <Link
+                  href="/live-streams"
                   className="bg-white text-[var(--accent)] font-medium px-6 py-2.5 rounded-lg hover:bg-opacity-90 transition-colors text-center"
                 >
                   Canlı Yayınları Keşfet
@@ -692,6 +714,32 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Search Section (above Stories) */}
+        <section className="mb-6 md:mb-8">
+          <form onSubmit={handleHomeSearchSubmit} className="flex items-center gap-2">
+            <div className="flex-1 flex items-center bg-[var(--background)] border border-[var(--border)] rounded-xl px-3 py-2 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[var(--foreground)] opacity-60 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                value={homeSearch}
+                onChange={(e) => setHomeSearch(e.target.value)}
+                placeholder="Ürün veya ilan ara"
+                className="w-full bg-transparent outline-none text-[var(--foreground)] placeholder-[var(--foreground)] placeholder-opacity-60"
+                aria-label="Arama"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl bg-[var(--accent)] text-white font-medium hover:bg-opacity-90 transition-colors"
+            >
+              Ara
+            </button>
+          </form>
+        </section>
 
         {/* Instagram-like Stories Section */}
         <section className="mb-6 md:mb-10">
@@ -718,7 +766,7 @@ export default function Home() {
               {user && (
                 <div className="flex flex-col items-center">
                   <button
-                    onClick={() => setStoryCreateModalOpen(true)} 
+                    onClick={() => setStoryCreateModalOpen(true)}
                     className="w-16 h-16 md:w-20 md:h-20 relative flex-shrink-0"
                   >
                     <div className="w-full h-full rounded-full flex items-center justify-center bg-[var(--secondary)] border-2 border-[var(--accent)] hover:opacity-90 transition-opacity cursor-pointer">
@@ -802,7 +850,7 @@ export default function Home() {
           ) : categories.length > 0 ? (
             <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-[var(--secondary)] scrollbar-thumb-[var(--accent)] scrollbar-thumb-rounded-full">
               {categories.map(category => (
-                <Link 
+                <Link
                   href={`/categories/${category.id}`}
                   key={category.id}
                   className="flex flex-col items-center p-3 md:p-4 border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-colors bg-[var(--muted)] hover:bg-[var(--background)] group min-w-[100px] md:min-w-[120px] flex-shrink-0"
@@ -837,8 +885,8 @@ export default function Home() {
             <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Canlı Müzayedeler</span>
             </h2>
-            <Link 
-              href="/live-streams" 
+            <Link
+              href="/live-streams"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -861,9 +909,9 @@ export default function Home() {
           ) : liveStreams.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {liveStreams.map(stream => (
-                <Link 
+                <Link
                   href={`/live-streams/${stream.id}`}
-                  key={stream.id} 
+                  key={stream.id}
                   className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-md transition group cursor-pointer"
                 >
                   <div className="relative h-32 md:h-48 bg-[var(--secondary)]">
@@ -913,7 +961,7 @@ export default function Home() {
                       </span>
                       <span className="font-bold text-[var(--primary)] text-xs md:text-sm">
                         {stream.listings && stream.listings.length > 0 && stream.listings[0].product
-                          ? `${stream.listings[0].product.price.toLocaleString()} ₺` 
+                          ? `${formatPrice(stream.listings[0].product.price)} ₺`
                           : 'Başlıyor'
                         }
                       </span>
@@ -947,8 +995,8 @@ export default function Home() {
             <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Öne Çıkan Açık Arttırmalar</span>
             </h2>
-            <Link 
-              href="/auctions" 
+            <Link
+              href="/auctions"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -957,9 +1005,9 @@ export default function Home() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
             {featuredAuctions.map(auction => (
-              <Link 
+              <Link
                 href={`/auctions/${auction.id}`}
-                key={auction.id} 
+                key={auction.id}
                 className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg transition group cursor-pointer relative"
               >
                 <div className="absolute top-2 right-2 z-10">
@@ -971,7 +1019,7 @@ export default function Home() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
                   </div>
-                  
+
                   {/* Countdown Badge */}
                   <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
                     <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
@@ -982,15 +1030,15 @@ export default function Home() {
                 <div className="p-3 md:p-4">
                   <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{auction.title}</h3>
                   <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{auction.sellerName}</p>
-                  
+
                   <div className="flex justify-between items-center mb-2 md:mb-3">
                     <div className="flex items-center text-xs text-[var(--foreground)] opacity-70">
                       <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
                       <span>{auction.bidCount} teklif</span>
                     </div>
-                    <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{auction.currentBid.toLocaleString()} ₺</span>
+                    <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{formatPrice(auction.currentBid)} ₺</span>
                   </div>
-                  
+
                   <button className="w-full py-1.5 md:py-2 bg-[var(--accent)] text-white rounded-md text-xs md:text-sm font-medium hover:bg-opacity-90 transition-colors">
                     Teklif Ver
                   </button>
@@ -1006,8 +1054,8 @@ export default function Home() {
             <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Popüler Yayıncılar</span>
             </h2>
-            <Link 
-              href="/streamers" 
+            <Link
+              href="/streamers"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -1016,9 +1064,9 @@ export default function Home() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {popularStreamers.map(streamer => (
-              <Link 
+              <Link
                 href={`/streamers/${streamer.id}`}
-                key={streamer.id} 
+                key={streamer.id}
                 className="rounded-xl border border-[var(--border)] overflow-hidden hover:border-[var(--accent)] transition-colors bg-[var(--background)] cursor-pointer"
               >
                 <div className="bg-gradient-to-b from-[var(--accent)] to-[var(--primary)] p-2 md:p-3">
@@ -1033,16 +1081,16 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="p-3 md:p-4 text-center">
                   <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1">{streamer.username}</h3>
                   <p className="text-xs text-[var(--foreground)] opacity-70 mb-2 md:mb-3">{streamer.category}</p>
-                  
+
                   <div className="flex items-center justify-center text-xs md:text-sm mb-2 md:mb-3">
                     <Users className="h-3 w-3 md:h-4 md:w-4 mr-1 text-[var(--accent)]" />
                     <span className="text-[var(--foreground)]">{(streamer.followers / 1000).toFixed(1)}K takipçi</span>
                   </div>
-                  
+
                   <button className="w-full py-1 md:py-1.5 text-xs border border-[var(--accent)] text-[var(--accent)] rounded-md font-medium hover:bg-[var(--accent)] hover:text-white transition-colors">
                     Takip Et
                   </button>
@@ -1058,8 +1106,8 @@ export default function Home() {
             <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Açık Arttırmalar</span>
             </h2>
-            <Link 
-              href="/auctions" 
+            <Link
+              href="/auctions"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -1097,17 +1145,17 @@ export default function Home() {
                         <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
                       </div>
                     )}
-                    
+
                     {/* Bid Count Badge */}
                     <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
                       <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      {Math.floor(Math.random() * 50) + 5} teklif
+                      {seededNumber(product.id, 5, 54)} teklif
                     </div>
-                    
+
                     {/* Time Left Badge */}
                     <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
                       <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      {Math.floor(Math.random() * 12) + 1} saat
+                      {seededNumber(product.id + '-t', 1, 12)} saat
                     </div>
                   </div>
 
@@ -1127,7 +1175,7 @@ export default function Home() {
                       <span className="text-xs text-[var(--foreground)] opacity-70">
                         {product.user?.name || product.user?.username || 'Anonim'}
                       </span>
-                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{product.price.toLocaleString()} ₺</span>
+                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{formatPrice(product.price)} ₺</span>
                     </div>
                   </div>
                 </Link>
@@ -1142,8 +1190,8 @@ export default function Home() {
             <h2 className="text-lg md:text-2xl font-bold text-[var(--foreground)]">
               <span className="border-b-4 border-[var(--accent)] pb-1">Favori Satıcılar</span>
             </h2>
-            <Link 
-              href="/sellers" 
+            <Link
+              href="/sellers"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -1152,9 +1200,9 @@ export default function Home() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {favoriteSellers.map(seller => (
-              <Link 
+              <Link
                 href={`/sellers/${seller.id}`}
-                key={seller.id} 
+                key={seller.id}
                 className="bg-[var(--background)] border border-[var(--border)] rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer group"
               >
                 <div className="p-3 md:p-4 flex flex-col items-center">
@@ -1195,7 +1243,7 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              
+
               <div className="flex-shrink-0">
                 {user ? (
                   <Link

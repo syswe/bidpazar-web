@@ -41,3 +41,58 @@ ON CONFLICT (id) DO UPDATE SET
 -- Kategorilerin başarıyla eklendiğini kontrol et
 SELECT COUNT(*) as kategori_sayisi FROM "Category";
 SELECT name, emoji FROM "Category" ORDER BY name; 
+
+-- Test kullanıcıları (UPSERT ile güvenli ekleme)
+INSERT INTO "User" (
+  id,
+  email,
+  username,
+  password,
+  name,
+  "isVerified",
+  "userType",
+  "updatedAt"
+) VALUES 
+  (
+    md5(random()::text || clock_timestamp()::text),
+    'streamer1@test.com',
+    'streamer1',
+    '$2a$10$PTZIYRUf0x394y492uc0fe/VsxM.tOmUl0sgvELIkzrTxwjCyFwKy',
+    'streamer1',
+    true,
+    'MEMBER',
+    NOW()
+  ),
+  (
+    md5(random()::text || clock_timestamp()::text),
+    'watcher1@test.com',
+    'watcher1',
+    '$2a$10$6s1CzNKizqqh3QSd/xCFVevKana1H1dpv41b4XU/j9yld53UrJ5LW',
+    'watcher1',
+    true,
+    'MEMBER',
+    NOW()
+  ),
+  (
+    md5(random()::text || clock_timestamp()::text),
+    'watcher2@test.com',
+    'watcher2',
+    '$2a$10$zr8zZs4F1lI.D6NgygWG5uZ2..2L7AQ.quB0pqxD2DCsatqOOQVue',
+    'watcher2',
+    true,
+    'MEMBER',
+    NOW()
+  )
+ON CONFLICT (email) DO NOTHING;
+
+-- Test kullanıcılarını doğrula
+SELECT 
+  username,
+  email,
+  name,
+  "isVerified",
+  "userType",
+  "createdAt"
+FROM "User" 
+WHERE email LIKE '%@test.com'
+ORDER BY username;
