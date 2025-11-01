@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Product, getProducts } from '@/lib/api';
 import ProductGrid from '@/components/ProductGrid';
 
-export default function SearchPage() {
+function SearchPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const q = (searchParams.get('q') || '').trim();
 
   const [inputValue, setInputValue] = useState(q);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +20,15 @@ export default function SearchPage() {
   useEffect(() => {
     setInputValue(q);
   }, [q]);
+
+  // Autofocus input when page loads (mobile-friendly)
+  useEffect(() => {
+    // Small timeout helps some mobile browsers/webviews
+    const t = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -74,6 +84,7 @@ export default function SearchPage() {
               placeholder="Ürün veya ilan ara"
               className="w-full bg-transparent outline-none text-[var(--foreground)] placeholder-[var(--foreground)] placeholder-opacity-60"
               aria-label="Arama"
+              ref={inputRef}
             />
           </div>
           <button
@@ -136,3 +147,11 @@ export default function SearchPage() {
   );
 }
 
+export default function SearchPage() {
+  // Wrap the component using useSearchParams with Suspense to satisfy Next.js requirements
+  return (
+    <Suspense fallback={<div className="p-6">Yükleniyor...</div>}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
