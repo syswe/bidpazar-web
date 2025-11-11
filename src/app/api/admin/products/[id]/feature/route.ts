@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { verifyAuth } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getTokenFromRequest, getUserFromTokenInNode } from "@/lib/auth";
 
 /**
  * PATCH /api/admin/products/[id]/feature
@@ -8,32 +8,34 @@ import { verifyAuth } from '@/lib/auth';
  */
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication and admin status
-    const auth = await verifyAuth(req);
-    if (!auth.valid || !auth.payload) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const token = getTokenFromRequest(req);
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is admin
-    const user = await prisma.user.findUnique({
-      where: { id: auth.payload.userId },
-      select: { isAdmin: true },
-    });
-
-    if (!user?.isAdmin) {
-      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    const user = await getUserFromTokenInNode(token);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    if (!user.isAdmin) {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
     const body = await req.json();
     const { isFeatured } = body;
 
-    if (typeof isFeatured !== 'boolean') {
+    if (typeof isFeatured !== "boolean") {
       return NextResponse.json(
-        { error: 'isFeatured must be a boolean' },
+        { error: "isFeatured must be a boolean" },
         { status: 400 }
       );
     }
@@ -60,15 +62,16 @@ export async function PATCH(
     });
 
     return NextResponse.json({
-      message: isFeatured ? 'Product featured successfully' : 'Product unfeatured successfully',
+      message: isFeatured
+        ? "Product featured successfully"
+        : "Product unfeatured successfully",
       product,
     });
   } catch (error) {
-    console.error('[API] Error toggling product feature status:', error);
+    console.error("[API] Error toggling product feature status:", error);
     return NextResponse.json(
-      { error: 'Failed to update product feature status' },
+      { error: "Failed to update product feature status" },
       { status: 500 }
     );
   }
 }
-

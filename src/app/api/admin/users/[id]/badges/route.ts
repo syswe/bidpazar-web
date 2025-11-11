@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { verifyAuth } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getTokenFromRequest, getUserFromTokenInNode } from "@/lib/auth";
 
 /**
  * PATCH /api/admin/users/[id]/badges
@@ -8,41 +8,43 @@ import { verifyAuth } from '@/lib/auth';
  */
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication and admin status
-    const auth = await verifyAuth(req);
-    if (!auth.valid || !auth.payload) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const token = getTokenFromRequest(req);
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is admin
-    const adminUser = await prisma.user.findUnique({
-      where: { id: auth.payload.userId },
-      select: { isAdmin: true },
-    });
-
-    if (!adminUser?.isAdmin) {
-      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    const adminUser = await getUserFromTokenInNode(token);
+    if (!adminUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    if (!adminUser.isAdmin) {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
     const body = await req.json();
     const { isPopularStreamer, isFavoriteSeller } = body;
 
     // Build update data
     const updateData: any = {};
-    if (typeof isPopularStreamer === 'boolean') {
+    if (typeof isPopularStreamer === "boolean") {
       updateData.isPopularStreamer = isPopularStreamer;
     }
-    if (typeof isFavoriteSeller === 'boolean') {
+    if (typeof isFavoriteSeller === "boolean") {
       updateData.isFavoriteSeller = isFavoriteSeller;
     }
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
-        { error: 'At least one badge field must be provided' },
+        { error: "At least one badge field must be provided" },
         { status: 400 }
       );
     }
@@ -64,15 +66,14 @@ export async function PATCH(
     });
 
     return NextResponse.json({
-      message: 'User badges updated successfully',
+      message: "User badges updated successfully",
       user,
     });
   } catch (error) {
-    console.error('[API] Error updating user badges:', error);
+    console.error("[API] Error updating user badges:", error);
     return NextResponse.json(
-      { error: 'Failed to update user badges' },
+      { error: "Failed to update user badges" },
       { status: 500 }
     );
   }
 }
-
