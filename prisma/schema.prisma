@@ -9,21 +9,23 @@ datasource db {
 }
 
 model User {
-  id               String             @id @default(cuid())
-  email            String             @unique
-  username         String             @unique
-  password         String
-  name             String?
-  phoneNumber      String?            @unique
-  verificationCode String?
-  isVerified       Boolean            @default(false)
-  isAdmin          Boolean            @default(false)
-  videoDeviceId    String?
-  audioDeviceId    String?
-  points           Int                @default(0)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  userType         UserType           @default(MEMBER)
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  username           String             @unique
+  password           String
+  name               String?
+  phoneNumber        String?            @unique
+  verificationCode   String?
+  isVerified         Boolean            @default(false)
+  isAdmin            Boolean            @default(false)
+  videoDeviceId      String?
+  audioDeviceId      String?
+  points             Int                @default(0)
+  isPopularStreamer  Boolean            @default(false)
+  isFavoriteSeller   Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  userType           UserType           @default(MEMBER)
   bids             Bid[]
   chatMessages     ChatMessage[]
   liveStreams      LiveStream[]       @relation("HostedStreams")
@@ -80,6 +82,7 @@ model Product {
   currency    String           @default("TRY")
   userId      String
   categoryId  String
+  isFeatured  Boolean          @default(false)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   buyNowPrice Float?
@@ -88,6 +91,8 @@ model Product {
   user        User             @relation(fields: [userId], references: [id])
   auctions    ProductAuction[]
   media       ProductMedia[]
+
+  @@index([isFeatured])
 }
 
 model ProductMedia {

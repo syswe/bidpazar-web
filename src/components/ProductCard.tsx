@@ -1,162 +1,162 @@
+'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Product } from '@/lib/api';
 import VerifiedSellerBadge from './VerifiedSellerBadge';
-import { useAuth } from './AuthProvider';
-import { getToken } from '@/lib/frontend-auth';
+import BidModal from './BidModal';
+import BuyNowModal from './BuyNowModal';
+import { Clock } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const { user } = useAuth();
-  const [isBuying, setIsBuying] = useState(false);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [showBuyNowModal, setShowBuyNowModal] = useState(false);
 
   // Ürün resmi varsa ilkini al, yoksa placeholder kullan
   const imageUrl = product.images && product.images.length > 0
     ? product.images[0].url
     : '/images/product-placeholder.jpg';
 
-  // Fiyatı Türk Lirası formatında göster
-  const formattedPrice = new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY'
-  }).format(product.price);
+  // Fiyatı formatla (₺ sembolü olmadan)
+  const formatPrice = (price: number) => new Intl.NumberFormat('tr-TR').format(price);
 
-  const formattedBuyNowPrice = product.buyNowPrice ? new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY'
-  }).format(product.buyNowPrice) : null;
+  // Teklif fiyatı (şimdilik product.price - gelecekte bids'den gelecek)
+  const currentBidPrice = product.price;
+  const hasBuyNowPrice = !!product.buyNowPrice;
 
-  const handleBuyNow = async (e: React.MouseEvent) => {
+  const handleBidClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    if (!user) {
-      window.location.href = `/login?redirect=${encodeURIComponent(`/products/${product.id}`)}`;
-      return;
-    }
+    setShowBidModal(true);
+  };
 
-    if (user.id === product.userId) {
-      alert('Kendi ürününüzü satın alamazsınız.');
-      return;
-    }
-
-    try {
-      const authToken = getToken();
-      if (!authToken) {
-        alert('Oturumunuzun süresi dolmuş. Lütfen tekrar giriş yapın.');
-        window.location.href = `/login?redirect=${encodeURIComponent(`/products/${product.id}`)}`;
-        return;
-      }
-
-      setIsBuying(true);
-      // TODO: Implement buy now API call
-      const response = await fetch(`/api/products/${product.id}/buy-now`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Satın alma işlemi başarısız oldu');
-      }
-
-      const result = await response.json();
-      alert('Ürün başarıyla satın alındı!');
-      // Optionally refresh the page or redirect to orders
-      window.location.reload();
-    } catch (error: any) {
-      console.error('Buy now error:', error);
-      alert(error.message || 'Satın alma işlemi sırasında bir hata oluştu');
-    } finally {
-      setIsBuying(false);
-    }
+  const handleBuyNowClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowBuyNowModal(true);
   };
 
   return (
-    <div className="group relative rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg hover:border-[var(--accent)] transition-all duration-300">
-      <Link href={`/products/${product.id}`} className="block h-full">
-        <div className="relative h-64 w-full bg-[var(--secondary)] overflow-hidden">
+    <>
+      <Link
+        href={`/products/${product.id}`}
+        className="product-card group block rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg hover:border-[var(--accent)] transition-all duration-300"
+      >
+        {/* Ürün Görseli */}
+        <div className="relative h-48 sm:h-56 md:h-64 w-full bg-[var(--secondary)] overflow-hidden">
           <Image
             src={imageUrl}
             alt={product.title}
             fill
             className="object-cover transition-transform duration-500 group-hover:scale-105"
+            unoptimized={true}
           />
-          {/* Price badges */}
-          <div className="absolute bottom-3 right-3 space-y-1">
-            <div className="bg-[var(--background)] px-3 py-1.5 rounded-full shadow-md font-bold text-[var(--accent)]">
-              {formattedPrice}
-            </div>
-            {formattedBuyNowPrice && (
-              <div className="bg-green-600 px-3 py-1.5 rounded-full shadow-md font-bold text-white text-sm">
-                Hemen Al: {formattedBuyNowPrice}
-              </div>
-            )}
-          </div>
 
-          {/* Quick view and buy now buttons */}
-          <div className="absolute inset-0 bg-black bg-opacity-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <div className="flex flex-col gap-2 items-center transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-              <span className="bg-white text-[var(--accent)] px-4 py-2 rounded-md font-medium">
-                İncele
+          {/* Kategori Badge - Sol üst */}
+          {product.category && (
+            <div className="absolute top-2 left-2">
+              <span className="inline-block px-2.5 py-1 bg-[var(--background)]/90 backdrop-blur-sm text-[var(--accent)] text-xs font-medium rounded-md border border-[var(--border)]">
+                {product.category.name}
               </span>
-              {formattedBuyNowPrice && (
-                <button
-                  onClick={handleBuyNow}
-                  disabled={isBuying}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isBuying ? 'İşleniyor...' : 'Hemen Al'}
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="p-5">
-          <div className="flex justify-between items-start mb-3">
-            <h3 className="text-lg font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors duration-300 line-clamp-1">
-              {product.title}
-            </h3>
-            <span className="ml-2 px-2 py-0.5 bg-[var(--accent)] bg-opacity-10 text-[var(--accent)] text-xs rounded-md whitespace-nowrap">
-              {product.category?.name || 'Kategori Yok'}
-            </span>
-          </div>
+        {/* Ürün Bilgileri */}
+        <div className="p-3 sm:p-4">
+          {/* Ürün Başlığı */}
+          <h3 className="text-sm sm:text-base font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors duration-300 line-clamp-2 mb-2 min-h-[2.5rem] sm:min-h-[3rem]">
+            {product.title}
+          </h3>
 
-          <p className="text-sm text-[var(--foreground)] opacity-70 mb-4 line-clamp-2 min-h-[40px]">
-            {product.description}
-          </p>
-
-          <div className="flex justify-between items-center pt-3 border-t border-[var(--border)]">
+          {/* Satıcı Bilgisi ve Tarih */}
+          <div className="flex items-center justify-between text-xs text-[var(--foreground)] opacity-70 mb-3 pb-3 border-b border-[var(--border)]">
             {product.user && (
-              <span className="text-xs text-[var(--foreground)] opacity-70 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                <span className="flex items-center">
+                <span className="truncate flex items-center">
                   {product.user.username}
-                  <VerifiedSellerBadge userType={product.user.userType} variant="inline" className="scale-75" />
+                  <VerifiedSellerBadge userType={product.user.userType} variant="inline" className="scale-75 ml-0.5" />
                 </span>
-              </span>
+              </div>
             )}
 
-            <div className="flex items-center text-xs text-[var(--foreground)] opacity-70">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {new Date(product.createdAt).toLocaleDateString('tr-TR')}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Clock className="h-3 w-3" />
+              <span className="whitespace-nowrap">
+                {new Date(product.createdAt).toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'short'
+                })}
+              </span>
             </div>
           </div>
+
+          {/* Fiyat Bilgileri ve Aksiyon Butonları */}
+          {hasBuyNowPrice ? (
+            // İki butonlu layout (Teklif Ver + Hemen Al)
+            <div className="grid grid-cols-2 gap-2">
+              {/* Sol: Teklif Ver */}
+              <button
+                onClick={handleBidClick}
+                className="flex flex-col items-center justify-center py-2 px-2 bg-[var(--secondary)] rounded-lg border border-[var(--border)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+              >
+                <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1">
+                  Teklif Ver
+                </span>
+                <span className="text-sm sm:text-base font-bold text-[var(--accent)]">
+                  {formatPrice(currentBidPrice)} ₺
+                </span>
+              </button>
+
+              {/* Sağ: Hemen Al */}
+              <button
+                onClick={handleBuyNowClick}
+                className="flex flex-col items-center justify-center py-2 px-2 bg-[var(--secondary)] rounded-lg border border-[var(--border)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+              >
+                <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1">
+                  Hemen Al
+                </span>
+                <span className="text-sm sm:text-base font-bold text-[var(--accent)]">
+                  {formatPrice(product.buyNowPrice!)} ₺
+                </span>
+              </button>
+            </div>
+          ) : (
+            // Tek butonlu layout (Sadece Teklif Ver - Ortalanmış)
+            <button
+              onClick={handleBidClick}
+              className="flex flex-col items-center justify-center py-3 px-3 bg-[var(--secondary)] rounded-lg border border-[var(--border)] hover:border-[var(--accent)] transition-colors cursor-pointer w-full"
+            >
+              <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1.5">
+                Teklif Ver
+              </span>
+              <span className="text-lg font-bold text-[var(--accent)]">
+                {formatPrice(currentBidPrice)} ₺
+              </span>
+            </button>
+          )}
         </div>
       </Link>
-    </div>
+
+      {/* Modals */}
+      <BidModal
+        isOpen={showBidModal}
+        onClose={() => setShowBidModal(false)}
+        product={product}
+      />
+      <BuyNowModal
+        isOpen={showBuyNowModal}
+        onClose={() => setShowBuyNowModal(false)}
+        product={product}
+      />
+    </>
   );
 } 

@@ -52,6 +52,37 @@ export default function AdminProductsPage() {
     }
   };
 
+  const handleToggleFeatured = async (productId: string, currentStatus: boolean) => {
+    if (actionInProgress) return;
+
+    try {
+      setActionInProgress(productId);
+      const response = await fetch(`/api/admin/products/${productId}/feature`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isFeatured: !currentStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update featured status');
+      }
+
+      // Update the product in state
+      setProducts(products.map(product =>
+        product.id === productId
+          ? { ...product, isFeatured: !currentStatus }
+          : product
+      ));
+    } catch (err) {
+      console.error('Öne çıkarma durumu güncellenirken hata:', err);
+      alert('Öne çıkarma durumu güncellenirken bir hata oluştu.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const viewProduct = (productId: string) => {
     router.push(`/products/${productId}`);
   };
@@ -117,6 +148,9 @@ export default function AdminProductsPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Fiyat
                     </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Öne Çıkarıldı
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       İşlemler
                     </th>
@@ -125,7 +159,7 @@ export default function AdminProductsPage() {
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {products.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                         Henüz ürün bulunmuyor
                       </td>
                     </tr>
@@ -185,6 +219,18 @@ export default function AdminProductsPage() {
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {formatCurrency(product.price)}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <button
+                            onClick={() => handleToggleFeatured(product.id, (product as any).isFeatured || false)}
+                            disabled={actionInProgress === product.id}
+                            className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${(product as any).isFeatured
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-800'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                              } ${actionInProgress === product.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {(product as any).isFeatured ? '⭐ Öne Çıkarıldı' : 'Öne Çıkar'}
+                          </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">

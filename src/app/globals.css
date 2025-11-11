@@ -451,23 +451,27 @@
 @media (min-width: 768px) {
   .card {
     border-radius: 1rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -1px rgba(0, 0, 0, 0.06);
   }
 }
 
 .card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
   transform: translateY(-2px);
 }
 
 /* Enhanced premium shadow */
 .premium-shadow {
-  box-shadow: 0 4px 6px -1px rgba(166, 135, 104, 0.1), 0 2px 4px -1px rgba(166, 135, 104, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(166, 135, 104, 0.1),
+    0 2px 4px -1px rgba(166, 135, 104, 0.06);
 }
 
 @media (min-width: 768px) {
   .premium-shadow {
-    box-shadow: 0 10px 15px -3px rgba(166, 135, 104, 0.1), 0 4px 6px -2px rgba(166, 135, 104, 0.05);
+    box-shadow: 0 10px 15px -3px rgba(166, 135, 104, 0.1),
+      0 4px 6px -2px rgba(166, 135, 104, 0.05);
   }
 }
 
@@ -694,7 +698,11 @@
 .product-suggestion-panel {
   padding: 1rem;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(to bottom, rgba(166, 135, 104, 0.03), rgba(166, 135, 104, 0.08));
+  background: linear-gradient(
+    to bottom,
+    rgba(166, 135, 104, 0.03),
+    rgba(166, 135, 104, 0.08)
+  );
   backdrop-filter: blur(10px);
 }
 
@@ -711,7 +719,86 @@
 }
 
 .dark .product-suggestion-panel {
-  background: linear-gradient(to bottom, rgba(227, 195, 157, 0.05), rgba(227, 195, 157, 0.1));
+  background: linear-gradient(
+    to bottom,
+    rgba(227, 195, 157, 0.05),
+    rgba(227, 195, 157, 0.1)
+  );
+}
+
+/* Product Card Styles */
+.product-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.product-card:hover {
+  box-shadow: 0 10px 25px -5px rgba(166, 135, 104, 0.15),
+    0 8px 10px -6px rgba(166, 135, 104, 0.1);
+}
+
+.product-card:active {
+  transform: scale(0.98);
+}
+
+/* Responsive Product Card Heights */
+@media (max-width: 640px) {
+  .product-card h3 {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .product-card .relative {
+    min-height: 12rem; /* 192px */
+  }
+}
+
+@media (min-width: 640px) and (max-width: 768px) {
+  .product-card .relative {
+    min-height: 14rem; /* 224px */
+  }
+}
+
+@media (min-width: 768px) {
+  .product-card .relative {
+    min-height: 16rem; /* 256px */
+  }
+}
+
+/* Live Stream Card Styles */
+.live-stream-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.live-stream-card:hover {
+  box-shadow: 0 10px 25px -5px rgba(166, 135, 104, 0.15),
+    0 8px 10px -6px rgba(166, 135, 104, 0.1);
+}
+
+.live-stream-card:active {
+  transform: scale(0.98);
+}
+
+/* Responsive Live Stream Card Heights */
+@media (max-width: 640px) {
+  .live-stream-card h3 {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
+/* CANLI badge animation */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Suggestion chips/pills */

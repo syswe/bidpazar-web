@@ -118,6 +118,37 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleToggleBadge = async (userId: string, badgeType: 'isPopularStreamer' | 'isFavoriteSeller', currentStatus: boolean) => {
+    if (actionInProgress) return;
+
+    try {
+      setActionInProgress(userId);
+      const response = await fetch(`/api/admin/users/${userId}/badges`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ [badgeType]: !currentStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update badge');
+      }
+
+      // Update the user in state
+      setUsers(users.map((user) =>
+        user.id === userId
+          ? { ...user, [badgeType]: !currentStatus }
+          : user
+      ));
+    } catch (err) {
+      console.error('Badge güncelleme işlemi başarısız:', err);
+      alert('Badge güncelleme işlemi başarısız oldu.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (actionInProgress) return;
 
@@ -256,6 +287,9 @@ export default function AdminUsersPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Durum
                     </th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Badges
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Ürün Sayısı
                     </th>
@@ -312,6 +346,30 @@ export default function AdminUsersPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-2">
+                          <button
+                            onClick={() => handleToggleBadge(user.id, 'isPopularStreamer', (user as any).isPopularStreamer || false)}
+                            disabled={actionInProgress === user.id}
+                            className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${(user as any).isPopularStreamer
+                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 hover:bg-purple-200 dark:hover:bg-purple-800'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                              } ${actionInProgress === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {(user as any).isPopularStreamer ? '🎥 Popüler Yayıncı' : 'Popüler Yayıncı Yap'}
+                          </button>
+                          <button
+                            onClick={() => handleToggleBadge(user.id, 'isFavoriteSeller', (user as any).isFavoriteSeller || false)}
+                            disabled={actionInProgress === user.id}
+                            className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${(user as any).isFavoriteSeller
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-800'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                              } ${actionInProgress === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {(user as any).isFavoriteSeller ? '⭐ Favori Satıcı' : 'Favori Yayıncı Yap'}
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {user._count?.products || 0}
                       </td>
@@ -324,12 +382,11 @@ export default function AdminUsersPage() {
                                 actionInProgress === user.id ||
                                 user.id === currentUser?.id
                               }
-                              className={`text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 ${
-                                actionInProgress === user.id ||
+                              className={`text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 ${actionInProgress === user.id ||
                                 user.id === currentUser?.id
-                                  ? "opacity-50 cursor-not-allowed"
-                                  : ""
-                              }`}
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                                }`}
                             >
                               Admin Yetkisini Kaldır
                             </button>
@@ -337,11 +394,10 @@ export default function AdminUsersPage() {
                             <button
                               onClick={() => handleMakeAdmin(user.id)}
                               disabled={actionInProgress === user.id}
-                              className={`text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 ${
-                                actionInProgress === user.id
-                                  ? "opacity-50 cursor-not-allowed"
-                                  : ""
-                              }`}
+                              className={`text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 ${actionInProgress === user.id
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                                }`}
                             >
                               Admin Yap
                             </button>
@@ -349,11 +405,10 @@ export default function AdminUsersPage() {
                           <button
                             onClick={() => handleResetPassword(user.id)}
                             disabled={actionInProgress === user.id}
-                            className={`text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 ${
-                              actionInProgress === user.id
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
+                            className={`text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 ${actionInProgress === user.id
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                              }`}
                           >
                             Şifre Sıfırla
                           </button>
@@ -363,12 +418,11 @@ export default function AdminUsersPage() {
                               actionInProgress === user.id ||
                               user.id === currentUser?.id
                             }
-                            className={`text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 ${
-                              actionInProgress === user.id ||
+                            className={`text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 ${actionInProgress === user.id ||
                               user.id === currentUser?.id
-                                ? "opacity-50 cursor-not-allowed"
-                                : ""
-                            }`}
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                              }`}
                           >
                             Sil
                           </button>
@@ -478,11 +532,10 @@ export default function AdminUsersPage() {
               <button
                 onClick={handleCreateUser}
                 disabled={actionInProgress === "createUser"}
-                className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 ${
-                  actionInProgress === "createUser"
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
-                }`}
+                className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 ${actionInProgress === "createUser"
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+                  }`}
               >
                 {actionInProgress === "createUser"
                   ? "Oluşturuluyor..."
@@ -528,12 +581,11 @@ export default function AdminUsersPage() {
                   !newPassword.trim() ||
                   actionInProgress === resetPasswordUserId
                 }
-                className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 ${
-                  !newPassword.trim() ||
+                className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 ${!newPassword.trim() ||
                   actionInProgress === resetPasswordUserId
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
-                }`}
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+                  }`}
               >
                 {actionInProgress === resetPasswordUserId
                   ? "Sıfırlanıyor..."

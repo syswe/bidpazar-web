@@ -55,12 +55,13 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
           <button
             key={category.id}
             onClick={() => onCategoryChange(category.id)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategoryId === category.id
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${selectedCategoryId === category.id
               ? 'bg-[var(--primary)] text-white'
               : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--highlight)]'
               }`}
           >
-            {category.name}
+            {category.emoji && <span className="text-base">{category.emoji}</span>}
+            <span>{category.name}</span>
           </button>
         ))}
       </div>

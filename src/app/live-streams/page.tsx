@@ -189,101 +189,107 @@ export default function LiveStreamsPage() {
         </div>
       </div>
 
-      <div className="container mx-auto max-w-7xl px-6 py-10">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-6 md:py-10">
         {liveStreams.length > 0 ? (
           <>
             {/* Live Streams Section */}
             <div className="mb-12">
-              <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-8">
+              <h2 className="text-xl md:text-2xl font-semibold text-[var(--foreground)] mb-4 md:mb-6">
                 <span className="border-b-3 border-[var(--accent)] pb-1">
                   Aktif ve Planlanan Yayınlar
                 </span>
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
                 {liveStreams.map((stream, index) => (
                   <Link
                     key={stream.id}
                     href={`/live-streams/${stream.id}`}
-                    className="bg-[var(--background)] border border-[var(--border)] hover:border-[var(--accent)] rounded-xl overflow-hidden group hover:shadow-xl transition-all"
+                    className="live-stream-card group block rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg hover:border-[var(--accent)] transition-all duration-300"
                   >
-                    <div className="aspect-video bg-[var(--secondary)] relative">
+                    {/* Yayın Görseli */}
+                    <div className="relative h-32 sm:h-40 md:h-48 w-full bg-[var(--secondary)] overflow-hidden">
                       {stream.thumbnailUrl ? (
                         <Image
                           src={stream.thumbnailUrl}
                           alt={stream.title}
                           fill
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                          sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
                           className="object-cover transition-transform duration-500 group-hover:scale-105"
-                          priority={index < 3}
+                          unoptimized={true}
+                          priority={index < 4}
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--accent)]/5 to-[#071739]/10">
-                          <span className="text-[var(--accent)]">
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--accent)]/10 to-[#071739]/20">
+                          <span className="text-[var(--accent)] text-xs sm:text-sm opacity-70">
                             Görsel Yok
                           </span>
                         </div>
                       )}
-                      <div className="absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md bg-[var(--background)]/80 shadow-md">
+                      
+                      {/* Status Badge - Sol üst */}
+                      <div className="absolute top-2 left-2">
                         {stream.status === "LIVE" ? (
-                          <span className="flex items-center gap-2 text-red-500">
-                            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
-                            CANLI
-                          </span>
+                          <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md bg-red-600 text-white text-xs font-bold shadow-lg">
+                            <span className="flex h-1.5 w-1.5 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
+                            </span>
+                            <span className="hidden sm:inline">CANLI</span>
+                            <span className="sm:hidden">●</span>
+                          </div>
                         ) : (
-                          <span className="text-[var(--accent)]">
-                            PLANLANMIŞ
-                          </span>
+                          <div className="px-2 sm:px-2.5 py-1 rounded-md bg-[var(--background)]/90 backdrop-blur-sm border border-[var(--border)] text-[var(--accent)] text-xs font-medium">
+                            Planlı
+                          </div>
                         )}
                       </div>
+
+                      {/* İzleyici Sayısı - Sağ üst */}
+                      <div className="absolute top-2 right-2">
+                        <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-sm text-white text-xs">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <span className="font-medium">
+                            {viewerCounts[stream.id] !== undefined
+                              ? viewerCounts[stream.id]
+                              : stream._count?.viewers ?? 0}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="p-5">
-                      <h3 className="font-semibold text-lg text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors truncate">
+
+                    {/* Yayın Bilgileri */}
+                    <div className="p-3 sm:p-4">
+                      {/* Başlık */}
+                      <h3 className="text-sm sm:text-base font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors duration-300 line-clamp-2 mb-2 min-h-[2.5rem] sm:min-h-[3rem]">
                         {stream.title}
                       </h3>
-                      <p className="text-sm text-[var(--foreground)]/70 mb-3 flex items-center gap-1">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                          />
-                        </svg>
-                        {stream.user?.name || stream.user?.username}
-                      </p>
-                      <div className="flex justify-between items-center pt-3 border-t border-[var(--border)]">
-                        <span className="text-xs text-[var(--foreground)]/60 flex items-center gap-1">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
+
+                      {/* Yayıncı ve Tarih */}
+                      <div className="flex items-center justify-between text-xs text-[var(--foreground)] opacity-70 mb-3 pb-3 border-b border-[var(--border)]">
+                        <div className="flex items-center gap-1 min-w-0 flex-1 mr-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
-                          {stream.status === "SCHEDULED"
-                            ? `${formatDate(stream.startTime)}`
-                            : stream.status === "LIVE"
-                            ? "Şu an Canlı"
-                            : "Sona Erdi"}
+                          <span className="truncate">
+                            {stream.user?.name || stream.user?.username || 'Anonim'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Durum ve Bilgi */}
+                      <div className="flex flex-col items-center justify-center py-2 px-2 bg-[var(--secondary)] rounded-lg border border-[var(--border)] group-hover:border-[var(--accent)] transition-colors">
+                        <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1">
+                          {stream.status === "LIVE" ? "Şu an Canlı" : "Başlangıç"}
                         </span>
-                        <span className="text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] px-2 py-0.5 rounded-full">
-                          {viewerCounts[stream.id] !== undefined
-                            ? viewerCounts[stream.id]
-                            : stream._count?.viewers ?? 0}{" "}
-                          izleyici
+                        <span className="text-xs sm:text-sm font-bold text-[var(--accent)] text-center">
+                          {stream.status === "SCHEDULED"
+                            ? formatDate(stream.startTime)
+                            : stream.status === "LIVE"
+                            ? "Yayında"
+                            : "Sona Erdi"}
                         </span>
                       </div>
                     </div>

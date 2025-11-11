@@ -17,6 +17,10 @@ import {
 } from "@/app/api/client";
 import Image from "next/image";
 import Footer from "@/components/Footer";
+import ProductGrid from "@/components/ProductGrid";
+import FeaturedAuctionCard from "@/components/FeaturedAuctionCard";
+import PopularStreamerCard from "@/components/PopularStreamerCard";
+import FavoriteSellerCard from "@/components/FavoriteSellerCard";
 import { X, ChevronRight, Clock, TrendingUp, Award, Users, Heart, Eye, ChevronDown, Video, Bookmark, Plus, ChevronLeft, Upload, ImageIcon } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { toast } from "sonner";
@@ -25,16 +29,6 @@ import { toast } from "sonner";
 const formatPrice = (value: number) => new Intl.NumberFormat('tr-TR').format(value);
 const formatDateTR = (input: string | number | Date) =>
   new Date(input).toLocaleDateString('tr-TR', { timeZone: 'UTC' });
-const seededNumber = (seed: string, min: number, max: number) => {
-  // Simple deterministic hash -> [min, max]
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
-  }
-  const range = max - min + 1;
-  const unsigned = (h >>> 0);
-  return min + (unsigned % range);
-};
 
 // Coming Soon Popup component
 const ComingSoonPopup = ({ isOpen, onClose, feature }: { isOpen: boolean, onClose: () => void, feature: string }) => {
@@ -119,104 +113,105 @@ const StoryViewer = ({
       {/* Background overlay */}
       <div className="absolute inset-0 bg-black" />
 
-      {/* Story Container */}
-      <div className="relative w-full max-w-md h-full max-h-[800px] bg-black rounded-lg overflow-hidden">
-        {/* Progress bars */}
-        <div className="absolute top-4 left-4 right-4 z-30 flex gap-1">
-          {stories.map((_, index) => (
-            <div key={index} className="flex-1 h-1 bg-white bg-opacity-30 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white rounded-full transition-all duration-100"
-                style={{
-                  width: index < currentStoryIndex ? '100%' :
-                    index === currentStoryIndex ? `${progress}%` : '0%'
-                }}
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* Header */}
-        <div className="absolute top-12 left-4 right-4 z-30 flex items-center justify-between text-white">
-          <div className="flex items-center">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white font-bold mr-3">
-              {(currentStory.user?.username || currentStory.user?.name || 'A').charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <p className="font-semibold text-sm">{currentStory.user?.username || currentStory.user?.name || 'Anonim'}</p>
-              <p className="text-xs opacity-70">
-                {formatDateTR(currentStory.createdAt)}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-300 transition-colors p-2"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        {/* Story Content */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          {currentStory.type === 'IMAGE' && currentStory.mediaUrl ? (
-            (() => {
-              const base = process.env.NEXT_PUBLIC_APP_URL || '';
-              const src = currentStory.mediaUrl.startsWith('http')
-                ? currentStory.mediaUrl
-                : `${base}${currentStory.mediaUrl}`;
-              return (
-                <Image
-                  src={src}
-                  alt="Story"
-                  fill
-                  className="object-cover"
-                  unoptimized={true}
+      {/* Story Container - Instagram style 9:16 aspect ratio */}
+      <div className="relative w-full max-w-md mx-auto" style={{ aspectRatio: '9/16', maxHeight: '90vh' }}>
+        <div className="w-full h-full bg-black rounded-xl overflow-hidden relative">
+          {/* Progress bars */}
+          <div className="absolute top-4 left-4 right-4 z-30 flex gap-1">
+            {stories.map((_, index) => (
+              <div key={index} className="flex-1 h-1 bg-white bg-opacity-30 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-white rounded-full transition-all duration-100"
+                  style={{
+                    width: index < currentStoryIndex ? '100%' :
+                      index === currentStoryIndex ? `${progress}%` : '0%'
+                  }}
                 />
-              );
-            })()
-          ) : (
-            <div className="w-full h-full flex items-center justify-center p-8 bg-gradient-to-br from-[var(--accent)] to-[var(--primary)]">
-              <p className="text-white text-xl font-medium text-center leading-relaxed">
-                {currentStory.content}
-              </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Header */}
+          <div className="absolute top-12 left-4 right-4 z-30 flex items-center justify-between text-white">
+            <div className="flex items-center">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] flex items-center justify-center text-white font-bold mr-3 shadow-lg">
+                {(currentStory.user?.username || currentStory.user?.name || 'A').charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="font-semibold text-sm drop-shadow-lg">{currentStory.user?.username || currentStory.user?.name || 'Anonim'}</p>
+                <p className="text-xs opacity-70 drop-shadow-lg">
+                  {formatDateTR(currentStory.createdAt)}
+                </p>
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Navigation areas */}
-        <div className="absolute inset-0 flex">
-          <button
-            className="flex-1 bg-transparent"
-            onClick={onPrevious}
-            onMouseDown={() => setIsPaused(true)}
-            onMouseUp={() => setIsPaused(false)}
-            onTouchStart={() => setIsPaused(true)}
-            onTouchEnd={() => setIsPaused(false)}
-          />
-          <button
-            className="flex-1 bg-transparent"
-            onClick={onNext}
-            onMouseDown={() => setIsPaused(true)}
-            onMouseUp={() => setIsPaused(false)}
-            onTouchStart={() => setIsPaused(true)}
-            onTouchEnd={() => setIsPaused(false)}
-          />
-        </div>
-
-        {/* Navigation indicators (optional) */}
-        <div className="absolute bottom-8 left-4 right-4 flex justify-between text-white opacity-50">
-          {currentStoryIndex > 0 && (
-            <button onClick={onPrevious} className="flex items-center">
-              <ChevronLeft size={20} />
+            <button
+              onClick={onClose}
+              className="text-white hover:text-gray-300 transition-colors p-2 bg-black bg-opacity-30 rounded-full"
+            >
+              <X size={24} />
             </button>
-          )}
-          <div className="flex-1" />
-          {currentStoryIndex < stories.length - 1 && (
-            <button onClick={onNext} className="flex items-center">
-              <ChevronRight size={20} />
-            </button>
-          )}
+          </div>
+
+          {/* Story Content */}
+          <div className="absolute inset-0 flex items-center justify-center bg-black">
+            {currentStory.type === 'IMAGE' && currentStory.mediaUrl ? (
+              (() => {
+                const base = process.env.NEXT_PUBLIC_APP_URL || '';
+                const src = currentStory.mediaUrl.startsWith('http')
+                  ? currentStory.mediaUrl
+                  : `${base}${currentStory.mediaUrl}`;
+                return (
+                  <Image
+                    src={src}
+                    alt="Story"
+                    fill
+                    className="object-contain"
+                    unoptimized={true}
+                  />
+                );
+              })()
+            ) : (
+              <div className="w-full h-full flex items-center justify-center p-8 bg-gradient-to-br from-[var(--accent)] to-[var(--primary)]">
+                <p className="text-white text-xl font-medium text-center leading-relaxed">
+                  {currentStory.content}
+                </p>
+              </div>
+            )}
+          </div>
+          {/* Navigation areas */}
+          <div className="absolute inset-0 flex z-20">
+            <button
+              className="flex-1 bg-transparent"
+              onClick={onPrevious}
+              onMouseDown={() => setIsPaused(true)}
+              onMouseUp={() => setIsPaused(false)}
+              onTouchStart={() => setIsPaused(true)}
+              onTouchEnd={() => setIsPaused(false)}
+            />
+            <button
+              className="flex-1 bg-transparent"
+              onClick={onNext}
+              onMouseDown={() => setIsPaused(true)}
+              onMouseUp={() => setIsPaused(false)}
+              onTouchStart={() => setIsPaused(true)}
+              onTouchEnd={() => setIsPaused(false)}
+            />
+          </div>
+
+          {/* Navigation indicators (optional) */}
+          <div className="absolute bottom-8 left-4 right-4 flex justify-between text-white opacity-50 z-20">
+            {currentStoryIndex > 0 && (
+              <button onClick={onPrevious} className="flex items-center bg-black bg-opacity-30 rounded-full p-2">
+                <ChevronLeft size={20} />
+              </button>
+            )}
+            <div className="flex-1" />
+            {currentStoryIndex < stories.length - 1 && (
+              <button onClick={onNext} className="flex items-center bg-black bg-opacity-30 rounded-full p-2">
+                <ChevronRight size={20} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -336,8 +331,8 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
               clearImage();
             }}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${storyType === "TEXT"
-                ? 'bg-[var(--accent)] text-white'
-                : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
               }`}
             disabled={isSubmitting}
           >
@@ -347,8 +342,8 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
             type="button"
             onClick={() => setStoryType("IMAGE")}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${storyType === "IMAGE"
-                ? 'bg-[var(--accent)] text-white'
-                : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
               }`}
             disabled={isSubmitting}
           >
@@ -459,26 +454,36 @@ const liveStreams = [
   { id: 4, title: 'Antika Mobilya Mezatı', sellerName: 'Eski Zaman Eserleri', viewerCount: 325, currentBid: 8700, thumbnailUrl: '/images/stream4.jpg' },
 ];
 
-const featuredAuctions = [
-  { id: 1, title: 'El Yapımı Bakır Vazo', sellerName: 'Bakırcı Emre', currentBid: 2850, imageUrl: '/images/auction1.jpg', endTime: '2 saat', bidCount: 37 },
-  { id: 2, title: 'Antika Cep Saati', sellerName: 'Antikacı Kemal', currentBid: 4750, imageUrl: '/images/auction2.jpg', endTime: '5 saat', bidCount: 24 },
-  { id: 3, title: 'Sanat Eseri Tablo', sellerName: 'Galeri İstanbul', currentBid: 7300, imageUrl: '/images/auction3.jpg', endTime: '1 gün', bidCount: 42 },
-];
+// API data types
+interface FeaturedProduct extends Product {
+  auctions?: Array<{
+    id: string;
+    endTime?: Date | string | null;
+    bids?: Array<{
+      amount: number;
+    }>;
+  }>;
+}
 
-const popularStreamers = [
-  { id: 1, username: 'AntikaUstası', followers: 15420, image: '/images/streamer1.jpg', category: 'Antika' },
-  { id: 2, username: 'KoleksiyonDünyası', followers: 8765, image: '/images/streamer2.jpg', category: 'Koleksiyon' },
-  { id: 3, username: 'SanatSever', followers: 12340, image: '/images/streamer3.jpg', category: 'Sanat' },
-  { id: 4, username: 'TakıTasarım', followers: 6890, image: '/images/streamer4.jpg', category: 'Takı' },
-];
+interface PopularStreamer {
+  id: string;
+  username: string;
+  name?: string | null;
+  isVerified: boolean;
+  totalStreams: number;
+  totalProducts: number;
+  isLive: boolean;
+  currentViewers: number;
+}
 
-const favoriteSellers = [
-  { id: 1, name: 'Antika Sandığı', rating: 4.8, products: 124, followers: 1.2, image: '/images/seller1.jpg' },
-  { id: 2, name: 'Kuyumcu Ahmet', rating: 4.9, products: 87, followers: 3.4, image: '/images/seller2.jpg' },
-  { id: 3, name: 'Vintage Koleksiyoncu', rating: 4.7, products: 56, followers: 0.8, image: '/images/seller3.jpg' },
-  { id: 4, name: 'Sanat Eserleri', rating: 5.0, products: 32, followers: 2.1, image: '/images/seller4.jpg' },
-  { id: 5, name: 'Nadir Bulunanlar', rating: 4.6, products: 92, followers: 1.5, image: '/images/seller5.jpg' },
-];
+interface FavoriteSeller {
+  id: string;
+  username: string;
+  name?: string | null;
+  isVerified: boolean;
+  totalProducts: number;
+  activeProducts: number;
+}
 
 export default function Home() {
   const { user, isLoading: authLoading } = useAuth();
@@ -499,6 +504,12 @@ export default function Home() {
   const [storyViewerOpen, setStoryViewerOpen] = useState(false);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [homeSearch, setHomeSearch] = useState('');
+  const [featuredProducts, setFeaturedProducts] = useState<FeaturedProduct[]>([]);
+  const [popularStreamers, setPopularStreamers] = useState<PopularStreamer[]>([]);
+  const [favoriteSellers, setFavoriteSellers] = useState<FavoriteSeller[]>([]);
+  const [featuredLoading, setFeaturedLoading] = useState(true);
+  const [streamersLoading, setStreamersLoading] = useState(true);
+  const [sellersLoading, setSellersLoading] = useState(true);
 
   const handleHomeSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -660,6 +671,55 @@ export default function Home() {
     loadData();
   }, []);
 
+  // Load featured products, popular streamers, and favorite sellers
+  useEffect(() => {
+    async function loadFeaturedData() {
+      try {
+        // Fetch featured products
+        setFeaturedLoading(true);
+        const featuredRes = await fetch('/api/products/featured?limit=3');
+        if (featuredRes.ok) {
+          const featuredData = await featuredRes.json();
+          setFeaturedProducts(featuredData.products || []);
+        }
+      } catch (error) {
+        console.error('Error loading featured products:', error);
+      } finally {
+        setFeaturedLoading(false);
+      }
+
+      try {
+        // Fetch popular streamers
+        setStreamersLoading(true);
+        const streamersRes = await fetch('/api/users/popular-streamers?limit=4');
+        if (streamersRes.ok) {
+          const streamersData = await streamersRes.json();
+          setPopularStreamers(streamersData.streamers || []);
+        }
+      } catch (error) {
+        console.error('Error loading popular streamers:', error);
+      } finally {
+        setStreamersLoading(false);
+      }
+
+      try {
+        // Fetch favorite sellers
+        setSellersLoading(true);
+        const sellersRes = await fetch('/api/users/favorite-sellers?limit=5');
+        if (sellersRes.ok) {
+          const sellersData = await sellersRes.json();
+          setFavoriteSellers(sellersData.sellers || []);
+        }
+      } catch (error) {
+        console.error('Error loading favorite sellers:', error);
+      } finally {
+        setSellersLoading(false);
+      }
+    }
+
+    loadFeaturedData();
+  }, []);
+
   return (
     <>
       <ComingSoonPopup
@@ -785,26 +845,28 @@ export default function Home() {
                       onClick={(e) => handleStoryClick(stories.indexOf(story))}
                       className="w-16 h-16 md:w-20 md:h-20 relative flex-shrink-0"
                     >
-                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] p-[2px]">
-                        <div className="w-full h-full rounded-full border-2 border-[var(--background)] overflow-hidden bg-[var(--background)]">
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] p-[3px]">
+                        <div className="w-full h-full rounded-full border-2 border-[var(--background)] bg-[var(--background)] relative overflow-hidden">
                           {story.type === 'IMAGE' && story.mediaUrl ? (
-                            (() => {
-                              const base = process.env.NEXT_PUBLIC_APP_URL || '';
-                              const src = story.mediaUrl.startsWith('http')
-                                ? story.mediaUrl
-                                : `${base}${story.mediaUrl}`;
-                              return (
-                                <Image
-                                  src={src}
-                                  alt={(story.user?.username || story.user?.name || 'Hikaye') + ' hikayesi'}
-                                  fill
-                                  className="object-cover"
-                                  unoptimized={true}
-                                />
-                              );
-                            })()
+                            <div className="w-full h-full rounded-full overflow-hidden relative">
+                              {(() => {
+                                const base = process.env.NEXT_PUBLIC_APP_URL || '';
+                                const src = story.mediaUrl.startsWith('http')
+                                  ? story.mediaUrl
+                                  : `${base}${story.mediaUrl}`;
+                                return (
+                                  <Image
+                                    src={src}
+                                    alt={(story.user?.username || story.user?.name || 'Hikaye') + ' hikayesi'}
+                                    fill
+                                    className="object-cover rounded-full"
+                                    unoptimized={true}
+                                  />
+                                );
+                              })()}
+                            </div>
                           ) : (
-                            <div className="w-full h-full bg-[var(--secondary)] flex items-center justify-center">
+                            <div className="w-full h-full bg-[var(--secondary)] flex items-center justify-center rounded-full">
                               <span className="text-lg md:text-xl font-bold text-[var(--foreground)]">
                                 {(story.user?.username || story.user?.name || 'A').charAt(0).toUpperCase()}
                               </span>
@@ -1003,49 +1065,31 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
-            {featuredAuctions.map(auction => (
-              <Link
-                href={`/auctions/${auction.id}`}
-                key={auction.id}
-                className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-lg transition group cursor-pointer relative"
-              >
-                <div className="absolute top-2 right-2 z-10">
-                  <button className="bg-white bg-opacity-90 rounded-full p-1.5 md:p-2 shadow-md hover:bg-[var(--accent)] hover:text-white transition-colors">
-                    <Bookmark className="h-3 w-3 md:h-4 md:w-4" />
-                  </button>
-                </div>
-                <div className="relative h-32 md:h-52 bg-[var(--secondary)]">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
-                  </div>
-
-                  {/* Countdown Badge */}
-                  <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
-                    <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                    {auction.endTime} kaldı
+          {featuredLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="rounded-2xl overflow-hidden border-2 border-[var(--accent)]/30 bg-[var(--secondary)] animate-pulse">
+                  <div className="h-52 md:h-64 bg-[var(--secondary)]"></div>
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 bg-[var(--secondary)] rounded w-3/4"></div>
+                    <div className="h-3 bg-[var(--secondary)] rounded w-1/2"></div>
+                    <div className="h-8 bg-[var(--secondary)] rounded"></div>
                   </div>
                 </div>
-
-                <div className="p-3 md:p-4">
-                  <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{auction.title}</h3>
-                  <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{auction.sellerName}</p>
-
-                  <div className="flex justify-between items-center mb-2 md:mb-3">
-                    <div className="flex items-center text-xs text-[var(--foreground)] opacity-70">
-                      <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      <span>{auction.bidCount} teklif</span>
-                    </div>
-                    <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{formatPrice(auction.currentBid)} ₺</span>
-                  </div>
-
-                  <button className="w-full py-1.5 md:py-2 bg-[var(--accent)] text-white rounded-md text-xs md:text-sm font-medium hover:bg-opacity-90 transition-colors">
-                    Teklif Ver
-                  </button>
-                </div>
-              </Link>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : featuredProducts.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+              {featuredProducts.map(product => (
+                <FeaturedAuctionCard key={product.id} product={product} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-[var(--muted)] rounded-xl">
+              <Award className="h-12 w-12 mx-auto mb-4 text-[var(--foreground)] opacity-50" />
+              <p className="text-[var(--foreground)] opacity-70">Şu anda öne çıkan açık arttırma bulunmuyor.</p>
+            </div>
+          )}
         </section>
 
         {/* Popular Streamers Section */}
@@ -1062,42 +1106,33 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            {popularStreamers.map(streamer => (
-              <Link
-                href={`/streamers/${streamer.id}`}
-                key={streamer.id}
-                className="rounded-xl border border-[var(--border)] overflow-hidden hover:border-[var(--accent)] transition-colors bg-[var(--background)] cursor-pointer"
-              >
-                <div className="bg-gradient-to-b from-[var(--accent)] to-[var(--primary)] p-2 md:p-3">
-                  <div className="flex justify-center">
-                    <div className="w-12 h-12 md:w-16 md:h-16 rounded-full border-2 border-white overflow-hidden">
-                      {/* Placeholder for streamer image */}
-                      <div className="w-full h-full bg-[var(--muted)] flex items-center justify-center">
-                        <span className="text-base md:text-xl font-bold text-[var(--foreground)]">
-                          {streamer.username.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
+          {streamersLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--secondary)] animate-pulse">
+                  <div className="bg-gradient-to-br from-purple-500/30 to-indigo-600/30 p-6">
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-[var(--secondary)] mx-auto"></div>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 bg-[var(--secondary)] rounded w-3/4 mx-auto"></div>
+                    <div className="h-3 bg-[var(--secondary)] rounded w-1/2 mx-auto"></div>
+                    <div className="h-8 bg-[var(--secondary)] rounded"></div>
                   </div>
                 </div>
-
-                <div className="p-3 md:p-4 text-center">
-                  <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1">{streamer.username}</h3>
-                  <p className="text-xs text-[var(--foreground)] opacity-70 mb-2 md:mb-3">{streamer.category}</p>
-
-                  <div className="flex items-center justify-center text-xs md:text-sm mb-2 md:mb-3">
-                    <Users className="h-3 w-3 md:h-4 md:w-4 mr-1 text-[var(--accent)]" />
-                    <span className="text-[var(--foreground)]">{(streamer.followers / 1000).toFixed(1)}K takipçi</span>
-                  </div>
-
-                  <button className="w-full py-1 md:py-1.5 text-xs border border-[var(--accent)] text-[var(--accent)] rounded-md font-medium hover:bg-[var(--accent)] hover:text-white transition-colors">
-                    Takip Et
-                  </button>
-                </div>
-              </Link>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : popularStreamers.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              {popularStreamers.map(streamer => (
+                <PopularStreamerCard key={streamer.id} streamer={streamer} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-[var(--muted)] rounded-xl">
+              <Video className="h-12 w-12 mx-auto mb-4 text-[var(--foreground)] opacity-50" />
+              <p className="text-[var(--foreground)] opacity-70">Şu anda popüler yayıncı bulunmuyor.</p>
+            </div>
+          )}
         </section>
 
         {/* Products Section -> Renamed to Auctions */}
@@ -1107,7 +1142,7 @@ export default function Home() {
               <span className="border-b-4 border-[var(--accent)] pb-1">Açık Arttırmalar</span>
             </h2>
             <Link
-              href="/auctions"
+              href="/products"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -1121,66 +1156,11 @@ export default function Home() {
             </div>
           ) : error ? (
             <div className="text-center py-6 md:py-8 text-red-500 text-sm md:text-base">{error}</div>
-          ) : products.length === 0 ? (
-            <div className="text-center py-6 md:py-8 text-[var(--foreground)] text-sm md:text-base">Henüz açık arttırma bulunmuyor.</div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-              {products.map(product => (
-                <Link
-                  href={`/products/${product.id}`}
-                  key={product.id}
-                  className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-md transition block group"
-                >
-                  <div className="h-32 md:h-48 relative bg-[var(--secondary)]">
-                    {product.images && product.images.length > 0 ? (
-                      <Image
-                        src={product.images[0].url}
-                        alt={product.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
-                        unoptimized={true}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Ürün Görseli</span>
-                      </div>
-                    )}
-
-                    {/* Bid Count Badge */}
-                    <div className="absolute bottom-2 left-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
-                      <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      {seededNumber(product.id, 5, 54)} teklif
-                    </div>
-
-                    {/* Time Left Badge */}
-                    <div className="absolute bottom-2 right-2 bg-[var(--background)] text-[var(--foreground)] text-xs font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
-                      <Clock className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      {seededNumber(product.id + '-t', 1, 12)} saat
-                    </div>
-                  </div>
-
-                  <div className="p-3 md:p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors text-xs md:text-base flex-1 mr-2">{product.title}</h3>
-                      <span className="bg-[var(--secondary)] text-[var(--foreground)] text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded flex-shrink-0">
-                        {product.category?.name || 'Kategori'}
-                      </span>
-                    </div>
-
-                    <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3 line-clamp-2">
-                      {product.description}
-                    </p>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[var(--foreground)] opacity-70">
-                        {product.user?.name || product.user?.username || 'Anonim'}
-                      </span>
-                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">{formatPrice(product.price)} ₺</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <ProductGrid
+              products={products}
+              emptyMessage="Henüz açık arttırma bulunmuyor."
+            />
           )}
         </section>
 
@@ -1198,32 +1178,31 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-            {favoriteSellers.map(seller => (
-              <Link
-                href={`/sellers/${seller.id}`}
-                key={seller.id}
-                className="bg-[var(--background)] border border-[var(--border)] rounded-xl overflow-hidden hover:shadow-md transition-shadow cursor-pointer group"
-              >
-                <div className="p-3 md:p-4 flex flex-col items-center">
-                  <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] text-white flex items-center justify-center mb-2 md:mb-3 font-bold text-base md:text-xl">
-                    {seller.name.charAt(0)}
-                  </div>
-                  <h3 className="font-medium text-center mb-1 group-hover:text-[var(--accent)] transition-colors text-xs md:text-sm">{seller.name}</h3>
-                  <div className="flex items-center text-amber-500 mb-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 md:h-4 md:w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118l-2.8-2.034c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                    <span className="ml-1 text-xs md:text-sm">{seller.rating}</span>
-                  </div>
-                  <div className="text-xs text-[var(--foreground)] opacity-70 flex justify-between w-full mt-2">
-                    <span>{seller.products} Ürün</span>
-                    <span>{seller.followers}K Takipçi</span>
+          {sellersLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--secondary)] animate-pulse">
+                  <div className="p-5 space-y-3 flex flex-col items-center">
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-[var(--secondary)]"></div>
+                    <div className="h-4 bg-[var(--secondary)] rounded w-3/4"></div>
+                    <div className="h-3 bg-[var(--secondary)] rounded w-1/2"></div>
+                    <div className="h-8 bg-[var(--secondary)] rounded w-full"></div>
                   </div>
                 </div>
-              </Link>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : favoriteSellers.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+              {favoriteSellers.map(seller => (
+                <FavoriteSellerCard key={seller.id} seller={seller} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-[var(--muted)] rounded-xl">
+              <Users className="h-12 w-12 mx-auto mb-4 text-[var(--foreground)] opacity-50" />
+              <p className="text-[var(--foreground)] opacity-70">Şu anda favori satıcı bulunmuyor.</p>
+            </div>
+          )}
         </section>
 
         {/* Become Seller Section - Only show to non-sellers */}
