@@ -40,10 +40,10 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
   return (
     <div className="mb-6">
       <h3 className="text-lg font-semibold mb-3 text-[var(--foreground)]">Kategoriler</h3>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap overflow-x-auto gap-2 pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:pb-0 no-scrollbar">
         <button
           onClick={() => onCategoryChange(null)}
-          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedCategoryId === null
+          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors shrink-0 ${selectedCategoryId === null
             ? 'bg-[var(--primary)] text-white'
             : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--highlight)]'
             }`}
@@ -55,7 +55,7 @@ export default function CategoryFilter({ selectedCategoryId, onCategoryChange }:
           <button
             key={category.id}
             onClick={() => onCategoryChange(category.id)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${selectedCategoryId === category.id
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 shrink-0 ${selectedCategoryId === category.id
               ? 'bg-[var(--primary)] text-white'
               : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--highlight)]'
               }`}
