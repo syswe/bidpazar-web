@@ -300,7 +300,7 @@ export default function Dashboard() {
                       Hemen bir canlı yayın oluşturun ve ürünlerinizi gerçek zamanlı satışa sunun.
                     </p>
                     <Link
-                      href="/dashboard/streams/create"
+                      href="/live-streams/create"
                       className="inline-flex items-center px-3 sm:px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-xs sm:text-sm hover:shadow-lg transition-all"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -323,7 +323,7 @@ export default function Dashboard() {
                       İleriki bir tarih için yayın planlayın ve izleyicilerinizi bilgilendirin.
                     </p>
                     <Link
-                      href="/dashboard/streams/create"
+                      href="/live-streams/create"
                       className="inline-flex items-center px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-xs sm:text-sm hover:shadow-lg transition-all"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

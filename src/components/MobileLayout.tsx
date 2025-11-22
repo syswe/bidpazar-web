@@ -17,8 +17,8 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
-  // Check if current page is a live stream page
-  const isStreamPage = pathname?.includes('/live-streams/') && pathname !== '/live-streams';
+  // Check if current page is a live stream page (excluding create page)
+  const isStreamPage = pathname?.includes('/live-streams/') && pathname !== '/live-streams' && pathname !== '/live-streams/create';
 
   const handleMenuClick = () => {
     setSidebarOpen(true);
@@ -29,9 +29,9 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
   };
 
   const LoadingFallback = () => (
-    <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
+    <div style={{
+      display: 'flex',
+      justifyContent: 'center',
       alignItems: 'center',
       height: '40px'
     }}>
@@ -47,19 +47,19 @@ const MobileLayout = ({ children }: MobileLayoutProps) => {
           <MobileSidebar isOpen={sidebarOpen} onClose={handleSidebarClose} />
         </Suspense>
       )}
-      
+
       {/* Top mobile bar - Hidden on stream pages */}
       {!isStreamPage && (
         <Suspense fallback={<LoadingFallback />}>
           <TopMobileBar onMenuClick={handleMenuClick} />
         </Suspense>
       )}
-      
+
       {/* Main content with mobile-aware padding */}
       <div className={`mobile-layout-content ${isStreamPage ? 'stream-page' : ''}`}>
         {children}
       </div>
-      
+
       {/* Bottom navigation - Hidden on stream pages */}
       {!isStreamPage && (
         <Suspense fallback={<LoadingFallback />}>

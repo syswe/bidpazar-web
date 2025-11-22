@@ -198,7 +198,7 @@ export async function PUT(
 
     // Parse request body
     const body = await request.json();
-    const { title, description, thumbnailUrl, status } = body;
+    const { title, description, thumbnailUrl, status, startTime } = body;
 
     logger.info("API PUT /api/live-streams/[id] - Request body", { body });
 
@@ -239,6 +239,7 @@ export async function PUT(
         ...(status !== undefined && {
           status: status as "SCHEDULED" | "LIVE" | "ENDED",
         }),
+        ...(startTime !== undefined && { startTime: new Date(startTime) }),
         updatedAt: new Date(),
       },
       include: {
@@ -267,6 +268,7 @@ export async function PUT(
           description: description !== undefined,
           thumbnailUrl: thumbnailUrl !== undefined,
           status: status !== undefined,
+          startTime: startTime !== undefined,
         },
       }
     );

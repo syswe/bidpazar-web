@@ -75,14 +75,22 @@ export const updateLiveStream = async (
     description?: string;
     thumbnailUrl?: string;
     status?: "SCHEDULED" | "LIVE" | "ENDED";
-  }
+    startTime?: string;
+  },
+  token?: string
 ): Promise<LiveStream> => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   return await fetcher(`${apiBaseUrl}/live-streams/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     requireAuth: true,
   });
 };

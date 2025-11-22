@@ -1,34 +1,103 @@
 "use client";
 
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getUserLiveStreams, LiveStream, startLiveStream, endLiveStream } from "@/lib/api";
+import {
+  getUserLiveStreams,
+  LiveStream,
+  startLiveStream,
+  endLiveStream,
+  deleteLiveStream,
+  updateLiveStream
+} from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { getToken } from "@/lib/frontend-auth";
-
+import {
+  Play,
+  Calendar,
+  Users,
+  Settings,
+  Edit,
+  Trash2,
+  Plus,
+  Video,
+  AlertCircle,
+  X,
+  Loader2,
+  StopCircle
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
-  let bgColor = "bg-gray-200";
-  let textColor = "text-gray-800";
+  let bgColor = "bg-gray-100";
+  let textColor = "text-gray-600";
+  let label = status;
+  let dotColor = "bg-gray-400";
 
   if (status === "LIVE") {
-    bgColor = "bg-red-500";
-    textColor = "text-white";
+    bgColor = "bg-red-100";
+    textColor = "text-red-600";
+    label = "CANLI";
+    dotColor = "bg-red-600";
   } else if (status === "SCHEDULED") {
-    bgColor = "bg-blue-500";
-    textColor = "text-white";
+    bgColor = "bg-blue-100";
+    textColor = "text-blue-600";
+    label = "PLANLANDI";
+    dotColor = "bg-blue-600";
   } else if (status === "ENDED") {
-    bgColor = "bg-gray-500";
-    textColor = "text-white";
+    bgColor = "bg-gray-100";
+    textColor = "text-gray-600";
+    label = "SONA ERDİ";
+    dotColor = "bg-gray-500";
   }
 
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${bgColor} ${textColor}`}>
-      {status}
+    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${bgColor} ${textColor} border border-opacity-20 border-current`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${status === 'LIVE' ? 'animate-pulse' : ''}`}></span>
+      {label}
     </span>
+  );
+};
+
+// Simple Modal Component
+const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-lg w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="flex justify-between items-center p-4 border-b border-[var(--border)]">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">{title}</h3>
+          <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          {children}
+        </div>
+        {footer && (
+          <div className="p-4 border-t border-[var(--border)] bg-[var(--secondary)]/20 flex justify-end gap-2">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -36,51 +105,47 @@ export default function MyStreamsPage() {
   const [streams, setStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const router = useRouter();
+
+  // Edit Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingStream, setEditingStream] = useState<LiveStream | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    startTime: "",
+  });
+
+  // Delete Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletingStreamId, setDeletingStreamId] = useState<string | null>(null);
+
+  // Dropdown State
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Fetch user's streams
   const fetchStreams = async () => {
     try {
       setLoading(true);
-      // First try with our helper function (uses relative paths)
-      try {
-        const userStreams = await getUserLiveStreams();
-        setStreams(userStreams);
-        setError(null);
-        return;
-      } catch (error) {
-        console.warn("First attempt to fetch streams failed, trying alternative method", error);
-      }
-
-      // Fallback method using direct fetch
-      const token = getToken();
-      if (!token) {
-        throw new Error("Authentication required");
-      }
-      
-      // Get API URL from environment variable for fallback
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-
-      // Construct the full URL using environment variable
-      const fetchUrl = `${apiUrl}/live-streams/user/streams`; 
-      console.warn(`Using fallback fetch URL: ${fetchUrl}`);
-      
-      const response = await fetch(fetchUrl, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch streams: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      setStreams(data);
+      const userStreams = await getUserLiveStreams();
+      setStreams(userStreams);
       setError(null);
     } catch (err) {
       console.error("Error fetching streams:", err);
-      setError("Failed to load your streams. Please try again.");
+      setError("Yayınlarınız yüklenirken bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
       setLoading(false);
     }
@@ -90,206 +155,345 @@ export default function MyStreamsPage() {
     fetchStreams();
   }, []);
 
-  // Start stream handler
-  const handleStartStream = async (streamId: string) => {
-    try {
-      const token = getToken(); // Get token using the imported function
-      if (!token) {
-        throw new Error("Authentication required to start a stream");
-      }
-      await startLiveStream(streamId, token);
-      // Redirect to the stream page
-      router.push(`/live-streams/${streamId}`);
-    } catch (err) {
-      console.error("Error starting stream:", err);
-      setError("Failed to start stream. Please try again.");
-    }
-  };
+
 
   // End stream handler
   const handleEndStream = async (streamId: string) => {
-    try {
-      if (confirm("Are you sure you want to end this stream?")) {
-        // Get token using the helper function instead of directly from localStorage
-        const token = getToken();
-        if (!token) {
-          throw new Error("Authentication required to end a stream");
-        }
+    if (!confirm("Yayını sonlandırmak istediğinize emin misiniz?")) return;
 
-        await endLiveStream(streamId, token);
-        // Refresh the streams list
-        fetchStreams();
-      }
+    try {
+      setActionLoading(streamId);
+      const token = getToken();
+      if (!token) throw new Error("Oturum açmanız gerekiyor");
+
+      await endLiveStream(streamId, token);
+      await fetchStreams();
     } catch (err) {
       console.error("Error ending stream:", err);
-      setError("Failed to end stream. Please try again.");
+      setError("Yayın sonlandırılamadı.");
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  // Delete stream handler - Removing this function as per requirements
-  // Users should only be able to END streams, not delete them
+  // Open Edit Modal
+  const openEditModal = (stream: LiveStream) => {
+    setEditingStream(stream);
+    setEditForm({
+      title: stream.title,
+      description: stream.description || "",
+      startTime: stream.startTime ? new Date(stream.startTime).toISOString().slice(0, 16) : "",
+    });
+    setIsEditModalOpen(true);
+    setOpenDropdownId(null);
+  };
 
-  // Manage stream handler - redirects to the stream detail/management page
-  const handleManageStream = (streamId: string) => {
-    router.push(`/dashboard/streams/${streamId}`);
+  // Handle Edit Submit
+  const handleEditSubmit = async () => {
+    if (!editingStream) return;
+
+    try {
+      setActionLoading("edit");
+      // updateLiveStream does not take token as 3rd argument in the definition provided
+      await updateLiveStream(editingStream.id, {
+        title: editForm.title,
+        description: editForm.description,
+        startTime: editForm.startTime ? new Date(editForm.startTime).toISOString() : undefined,
+      });
+
+      setIsEditModalOpen(false);
+      setEditingStream(null);
+      await fetchStreams();
+    } catch (err) {
+      console.error("Error updating stream:", err);
+      setError("Yayın güncellenemedi.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Open Delete Modal
+  const openDeleteModal = (streamId: string) => {
+    setDeletingStreamId(streamId);
+    setIsDeleteModalOpen(true);
+    setOpenDropdownId(null);
+  };
+
+  // Handle Delete Confirm
+  const handleDeleteConfirm = async () => {
+    if (!deletingStreamId) return;
+
+    try {
+      setActionLoading("delete");
+      // deleteLiveStream does not take token as 2nd argument in the definition provided
+      await deleteLiveStream(deletingStreamId);
+      setIsDeleteModalOpen(false);
+      setDeletingStreamId(null);
+      await fetchStreams();
+    } catch (err) {
+      console.error("Error deleting stream:", err);
+      setError("Yayın silinemedi.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const toggleDropdown = (e: React.MouseEvent, streamId: string) => {
+    e.stopPropagation();
+    setOpenDropdownId(openDropdownId === streamId ? null : streamId);
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">My Streams</h1>
-        <Link
-          href="/live-streams"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          Go to Live Streams
-        </Link>
+    <div className="min-h-screen bg-[var(--background)]">
+      {/* Header */}
+      <div className="bg-[var(--card)] border-b border-[var(--border)]">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">Yayınlarım</h1>
+              <p className="text-[var(--muted-foreground)] text-sm mt-1">
+                Canlı yayınlarınızı buradan yönetebilirsiniz
+              </p>
+            </div>
+            <Link href="/live-streams/create">
+              <Button className="bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Yeni Yayın Oluştur
+              </Button>
+            </Link>
+          </div>
+        </div>
       </div>
 
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
+      <div className="container mx-auto px-4 py-8">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
 
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <p className="text-gray-500">Loading your streams...</p>
-        </div>
-      ) : streams.length === 0 ? (
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <h2 className="text-xl font-semibold mb-2">No Streams Found</h2>
-          <p className="text-gray-600 mb-4">
-            You haven&apos;t created any livestreams yet. Start by creating your first stream!
-          </p>
-          <Link
-            href="/live-streams"
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-          >
-            Browse Live Streams
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          {streams.map((stream) => (
-            <div key={stream.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
-              <div className="flex flex-col md:flex-row">
-                {/* Thumbnail */}
-                <div className="w-full md:w-1/4 aspect-video md:aspect-square overflow-hidden bg-gray-100">
-                  {stream.thumbnailUrl ? (
-                    <img
-                      src={stream.thumbnailUrl}
-                      alt={stream.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                      <span className="text-gray-400">No thumbnail</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Stream details */}
-                <div className="p-4 md:p-6 flex-1">
-                  <div className="flex justify-between items-start mb-2">
-                    <h2 className="text-xl font-semibold">{stream.title}</h2>
-                    <StatusBadge status={stream.status} />
-                  </div>
-
-                  <p className="text-gray-600 mb-4 line-clamp-2">{stream.description || "No description"}</p>
-
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Scheduled Start:</p>
-                      <p className="font-medium">{stream.startTime ? formatDateTime(stream.startTime) : "Not set"}</p>
-                    </div>
-                    {stream.endTime && (
-                      <div>
-                        <p className="text-sm text-gray-500">End Time:</p>
-                        <p className="font-medium">{formatDateTime(stream.endTime)}</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mb-4" />
+            <p className="text-[var(--muted-foreground)]">Yayınlarınız yükleniyor...</p>
+          </div>
+        ) : streams.length === 0 ? (
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-12 text-center">
+            <div className="w-16 h-16 bg-[var(--secondary)] rounded-full flex items-center justify-center mx-auto mb-4">
+              <Video className="w-8 h-8 text-[var(--muted-foreground)]" />
+            </div>
+            <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2">Henüz Yayın Yok</h2>
+            <p className="text-[var(--muted-foreground)] mb-6 max-w-md mx-auto">
+              Henüz bir canlı yayın oluşturmadınız. İzleyicilerinizle buluşmak için hemen ilk yayınınızı planlayın!
+            </p>
+            <Link href="/live-streams/create">
+              <Button className="bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white">
+                İlk Yayınını Oluştur
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6">
+            {streams.map((stream) => (
+              <div
+                key={stream.id}
+                className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden hover:shadow-md transition-shadow duration-200"
+              >
+                <div className="flex flex-col md:flex-row">
+                  {/* Thumbnail Section */}
+                  <div className="w-full md:w-72 aspect-video md:aspect-[4/3] relative bg-gray-100 shrink-0">
+                    {stream.thumbnailUrl ? (
+                      <img
+                        src={stream.thumbnailUrl}
+                        alt={stream.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-[var(--secondary)] text-[var(--muted-foreground)]">
+                        <Video className="w-10 h-10 mb-2 opacity-50" />
+                        <span className="text-xs font-medium">Görsel Yok</span>
                       </div>
                     )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <div className="flex gap-2 text-sm text-gray-600">
-                      <span>{stream._count?.listings || 0} Products</span>
-                      <span>•</span>
-                      <span>{stream._count?.viewers || 0} Viewers</span>
+                    <div className="absolute top-3 left-3">
+                      <StatusBadge status={stream.status} />
                     </div>
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {stream.status === "SCHEDULED" && (
-                      <>
-                        <button
-                          onClick={() => handleStartStream(stream.id)}
-                          className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700"
-                        >
-                          Go Live
-                        </button>
-                        <button
-                          onClick={() => handleManageStream(stream.id)}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                        >
-                          Manage
-                        </button>
-                        <button
-                          onClick={() => handleEndStream(stream.id)}
-                          className="px-3 py-1.5 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200"
-                        >
-                          End Stream
-                        </button>
-                      </>
-                    )}
+                  {/* Content Section */}
+                  <div className="p-6 flex-1 flex flex-col">
+                    <div className="flex justify-between items-start mb-4 relative">
+                      <div>
+                        <h2 className="text-xl font-bold text-[var(--foreground)] mb-2 line-clamp-1">
+                          {stream.title}
+                        </h2>
+                        <p className="text-[var(--muted-foreground)] text-sm line-clamp-2 mb-4">
+                          {stream.description || "Açıklama yok"}
+                        </p>
+                      </div>
 
-                    {stream.status === "LIVE" && (
-                      <>
-                        <button
-                          onClick={() => router.push(`/live-streams/${stream.id}`)}
-                          className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                      <div className="relative" ref={openDropdownId === stream.id ? dropdownRef : null}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => toggleDropdown(e, stream.id)}
                         >
-                          View Stream
-                        </button>
-                        <button
-                          onClick={() => handleManageStream(stream.id)}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                        >
-                          Manage Products
-                        </button>
-                        <button
-                          onClick={() => handleEndStream(stream.id)}
-                          className="px-3 py-1.5 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200"
-                        >
-                          End Stream
-                        </button>
-                      </>
-                    )}
+                          <Settings className="w-4 h-4" />
+                        </Button>
 
-                    {stream.status === "ENDED" && (
-                      <>
-                        <button
-                          onClick={() => handleManageStream(stream.id)}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => handleManageStream(stream.id)}
-                          className="px-3 py-1.5 bg-gray-200 text-gray-800 rounded text-sm hover:bg-gray-300"
-                        >
-                          View History
-                        </button>
-                      </>
-                    )}
+                        {openDropdownId === stream.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-[var(--background)] border border-[var(--border)] rounded-md shadow-lg z-10 py-1 animate-in fade-in zoom-in-95 duration-100">
+                            <button
+                              onClick={() => openEditModal(stream)}
+                              className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--secondary)] flex items-center"
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Düzenle
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(stream.id)}
+                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Sil
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          {stream.startTime ? formatDateTime(stream.startTime) : "Belirlenmedi"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                        <Users className="w-4 h-4" />
+                        <span>{stream._count?.viewers || 0} İzleyici</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap gap-3 pt-4 border-t border-[var(--border)]">
+                      {stream.status === "SCHEDULED" && (
+                        <>
+                          <Link href={`/live-streams/${stream.id}`}>
+                            <Button
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <Video className="w-4 h-4 mr-2" />
+                              Yayına Git
+                            </Button>
+                          </Link>
+                        </>
+                      )}
+
+                      {stream.status === "LIVE" && (
+                        <>
+                          <Link href={`/live-streams/${stream.id}`}>
+                            <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                              <Video className="w-4 h-4 mr-2" />
+                              Yayına Git
+                            </Button>
+                          </Link>
+                          <Button
+                            onClick={() => handleEndStream(stream.id)}
+                            disabled={!!actionLoading}
+                            variant="destructive"
+                          >
+                            {actionLoading === stream.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                              <StopCircle className="w-4 h-4 mr-2" />
+                            )}
+                            Yayını Bitir
+                          </Button>
+                        </>
+                      )}
+
+                      {stream.status === "ENDED" && (
+                        <Button variant="secondary" disabled>
+                          Yayın Sona Erdi
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Yayını Düzenle"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>İptal</Button>
+            <Button onClick={handleEditSubmit} disabled={actionLoading === "edit"}>
+              {actionLoading === "edit" && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Kaydet
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="title" className="text-sm font-medium text-[var(--foreground)]">Başlık</label>
+            <Input
+              id="title"
+              value={editForm.title}
+              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="description" className="text-sm font-medium text-[var(--foreground)]">Açıklama</label>
+            <Textarea
+              id="description"
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="startTime" className="text-sm font-medium text-[var(--foreground)]">Başlangıç Zamanı</label>
+            <Input
+              id="startTime"
+              type="datetime-local"
+              value={editForm.startTime}
+              onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+            />
+          </div>
         </div>
-      )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Yayını Sil"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>İptal</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={actionLoading === "delete"}
+            >
+              {actionLoading === "delete" && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Sil
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[var(--muted-foreground)]">
+          Bu yayını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+        </p>
+      </Modal>
     </div>
   );
-} 
+}
