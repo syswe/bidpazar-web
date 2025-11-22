@@ -57,6 +57,9 @@ export const addBidToProductAuction = async (
   auctionId: string,
   amount: number
 ): Promise<Bid> => {
+  console.log('[addBidToProductAuction] Called with:', { auctionId, amount });
+  console.log('[addBidToProductAuction] Will call endpoint:', `product-auctions/${auctionId}/bids`);
+  
   return fetcher<Bid>(`product-auctions/${auctionId}/bids`, {
     method: "POST",
     body: JSON.stringify({ amount }),

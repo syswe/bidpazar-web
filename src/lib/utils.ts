@@ -77,14 +77,38 @@ export function calculateMinimumBidAmount(currentPrice: number): number {
 }
 
 /**
+ * Calculate next valid bid amount for an auction
+ * Handles first bid exception: if no bids yet (currentPrice === startPrice), next bid is startPrice
+ * Otherwise applies increment rules
+ */
+export function calculateNextBidAmount(currentPrice: number, startPrice: number): number {
+  // First bid exception: if current price equals start price, the first bid can be the start price
+  if (currentPrice === startPrice) {
+    return startPrice;
+  }
+  
+  // Otherwise, apply normal increment rules
+  return calculateMinimumBidAmount(currentPrice);
+}
+
+/**
  * Validate if a bid amount meets the minimum increment requirements
  */
-export function validateBidAmount(currentPrice: number, bidAmount: number): {
+export function validateBidAmount(currentPrice: number, bidAmount: number, startPrice?: number): {
   isValid: boolean;
   minimumAmount: number;
   increment: number;
   error?: string;
 } {
+  // Handle first bid exception
+  if (startPrice && currentPrice === startPrice && bidAmount === startPrice) {
+    return {
+      isValid: true,
+      minimumAmount: startPrice,
+      increment: 0
+    };
+  }
+  
   const increment = calculateMinimumBidIncrement(currentPrice);
   const minimumAmount = currentPrice + increment;
   

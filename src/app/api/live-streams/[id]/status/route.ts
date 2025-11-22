@@ -138,6 +138,61 @@ export async function POST(
     logger.info(
       `API POST /api/live-streams/[id]/status - Stream ${id} status updated from ${stream.status} to ${status}`
     );
+
+    // Send notifications when stream goes LIVE
+    if (status === 'LIVE' && stream.status !== 'LIVE') {
+      try {
+        // Get stream details with user info
+        const streamWithUser = await prisma.liveStream.findUnique({
+          where: { id },
+          include: {
+            user: {
+              select: {
+                username: true,
+                name: true
+              }
+            }
+          }
+        });
+
+        if (streamWithUser) {
+          // Get all users except the streamer (future: filter by followers)
+          const users = await prisma.user.findMany({
+            where: {
+              id: {
+                not: streamWithUser.userId
+              }
+            },
+            select: {
+              id: true
+            }
+          });
+
+          // Create notifications for all users
+          if (users.length > 0) {
+            const streamerName = streamWithUser.user.name || streamWithUser.user.username;
+            const notifications = users.map(user => ({
+              userId: user.id,
+              content: `${streamerName} "${streamWithUser.title}" başlıklı yayını başlattı!`,
+              type: 'STREAM_STARTED',
+              relatedId: id
+            }));
+
+            await prisma.notification.createMany({
+              data: notifications
+            });
+
+            logger.info(
+              `Created ${notifications.length} STREAM_STARTED notifications for stream ${id}`
+            );
+          }
+        }
+      } catch (notificationError) {
+        // Log error but don't fail the status update
+        logger.error('Error creating stream start notifications:', notificationError);
+      }
+    }
+
     return NextResponse.json({
       id: updatedStream.id,
       status: updatedStream.status,

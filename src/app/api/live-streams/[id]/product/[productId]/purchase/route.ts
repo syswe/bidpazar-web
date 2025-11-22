@@ -132,6 +132,31 @@ export async function POST(
       });
     }
 
+    // Create notifications for buyer and seller
+    const totalPrice = product.currentPrice * quantity;
+    
+    // Notification for buyer (link to seller for messaging)
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        content: `"${product.liveStream.title}" canlı yayınında "${product.title}" ürününün (${quantity} adet, ${totalPrice} TL) satın alımı gerçekleşti.`,
+        type: 'LIVE_STREAM_PURCHASE',
+        relatedId: product.liveStream.userId, // Seller ID for buyer to message
+        isRead: false,
+      },
+    });
+
+    // Notification for seller (link to buyer for messaging)
+    await prisma.notification.create({
+      data: {
+        userId: product.liveStream.userId,
+        content: `"${product.liveStream.title}" canlı yayınınızda eklediğiniz "${product.title}" ürünü ${user.username} tarafından ${totalPrice} TL bedelle satın alındı.`,
+        type: 'LIVE_STREAM_PURCHASE',
+        relatedId: user.id, // Buyer ID for seller to message
+        isRead: false,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       purchase: {

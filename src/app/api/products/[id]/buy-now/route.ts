@@ -90,6 +90,38 @@ export async function POST(
 
     // For now, we'll create a simple purchase record
     const purchase = await prisma.$transaction(async (tx) => {
+      // Mark product as sold
+      await tx.product.update({
+        where: { id: productId },
+        data: {
+          isSold: true,
+          soldAt: new Date(),
+          soldTo: user.id,
+        },
+      });
+
+      // End active auction if exists
+      const activeAuction = await tx.productAuction.findFirst({
+        where: {
+          productId: productId,
+          status: 'ACTIVE',
+        },
+      });
+
+      if (activeAuction) {
+        await tx.productAuction.update({
+          where: { id: activeAuction.id },
+          data: {
+            status: 'COMPLETED',
+            endTime: new Date(),
+          },
+        });
+        logger.info('Ended active auction after buy-now purchase', {
+          auctionId: activeAuction.id,
+          productId,
+        });
+      }
+
       // Create a purchase record (you might want to create a Purchase model)
       // For now, we'll create a notification for the seller
       await tx.notification.create({
@@ -101,17 +133,7 @@ export async function POST(
         },
       });
 
-      // Create notification for buyer
-      await tx.notification.create({
-        data: {
-          userId: user.id,
-          content: `"${product.title}" ürününü başarıyla satın aldınız. Satıcı ile iletişime geçebilirsiniz.`,
-          type: "PURCHASE",
-          relatedId: productId,
-        },
-      });
-
-      await createOrderConversationMessage({
+      const conversationId = await createOrderConversationMessage({
         tx,
         buyer: {
           id: user.id,
@@ -129,6 +151,17 @@ export async function POST(
         },
         price: product.buyNowPrice ?? 0, // Default to 0 if buyNowPrice is null
         context: "buy-now",
+        skipBuyerNotification: true,
+      });
+
+      // Create notification for buyer with link to conversation
+      await tx.notification.create({
+        data: {
+          userId: user.id,
+          content: `"${product.title}" ürününü başarıyla satın aldınız. Hemen satıcı ile iletişime geçin.`,
+          type: "PURCHASE",
+          relatedId: conversationId,
+        },
       });
 
       // You might want to mark the product as sold or reduce inventory

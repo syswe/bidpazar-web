@@ -9,7 +9,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { logger } from '@/lib/logger';
 import VerifiedSellerBadge from '@/components/VerifiedSellerBadge';
 import BidConfirmationModal from '@/components/BidConfirmationModal';
-import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
+import { calculateMinimumBidAmount, calculateMinimumBidIncrement, calculateNextBidAmount } from '@/lib/utils';
 import { analytics } from '@/components/GoogleTagManager';
 import { getToken } from '@/lib/frontend-auth';
 
@@ -253,9 +253,9 @@ export default function ProductDetailPage() {
         previousPrice: auction.currentPrice
       });
 
-      // Refresh auction data
-      logger.debug('Refreshing auction data after bid', { auctionId: auction.id });
-      const updatedAuction = await getProductAuctionById(auction.id);
+      // Refresh auction data using the correct endpoint
+      logger.debug('Refreshing auction data after bid', { productId: product?.id });
+      const updatedAuction = await getProductAuctionByProductId(product!.id);
       setAuction(updatedAuction);
       setBidAmount('');
       setPendingBidAmount('');
@@ -273,7 +273,17 @@ export default function ProductDetailPage() {
         stack: err.stack
       });
 
-      setAuctionError(err.message || 'Teklif verilirken bir hata oluştu');
+      // Extract error message from response
+      let errorMessage = 'Teklif verilirken bir hata oluştu';
+
+      // Check if error has a response with error field
+      if (err.response?.error) {
+        errorMessage = err.response.error;
+      } else if (err.message && !err.message.includes('API error')) {
+        errorMessage = err.message;
+      }
+
+      setAuctionError(errorMessage);
     } finally {
       setIsAuctionLoading(false);
     }
@@ -452,6 +462,164 @@ export default function ProductDetailPage() {
     );
   }
 
+  // Handle sold product views
+  if (product?.isSold) {
+    const isSeller = user?.id === product.userId;
+    const isBuyer = user?.id === product.soldTo;
+
+    // Seller view: Show product details with "Sold" badge
+    if (isSeller) {
+      return (
+        <div className="min-h-screen bg-[var(--background)] p-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-4 sm:mb-6">
+              <Link
+                href="/products"
+                className="text-[var(--accent)] hover:underline flex items-center group text-sm sm:text-base touch-target"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Ürünlere geri dön
+              </Link>
+            </div>
+
+            <div className="bg-green-50 border-2 border-green-500 rounded-xl p-6 mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-green-700">✅ Ürün Satıldı!</h2>
+                  <p className="text-green-600">Bu ürün başarıyla satıldı</p>
+                </div>
+              </div>
+              {product.soldAt && (
+                <p className="text-sm text-green-600 mb-2">
+                  Satış Tarihi: {new Date(product.soldAt).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              )}
+            </div>
+
+            {/* Product details still visible to seller */}
+            <div className="bg-[var(--card-background)] border border-[var(--border)] rounded-xl p-6">
+              <h1 className="text-2xl font-bold text-[var(--foreground)] mb-4">{product.title}</h1>
+              {product.images && product.images.length > 0 && (
+                <div className="relative h-64 mb-4 rounded-lg overflow-hidden">
+                  <Image
+                    src={product.images[0].url}
+                    alt={product.title}
+                    fill
+                    className="object-contain"
+                    unoptimized={true}
+                  />
+                </div>
+              )}
+              <p className="text-[var(--foreground)] mb-4">{product.description}</p>
+              <p className="text-xl font-bold text-[var(--accent)]">
+                Satış Fiyatı: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(product.buyNowPrice || product.price)}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Buyer view: Show purchase confirmation
+    if (isBuyer) {
+      return (
+        <div className="min-h-screen bg-[var(--background)] p-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-4 sm:mb-6">
+              <Link
+                href="/products"
+                className="text-[var(--accent)] hover:underline flex items-center group text-sm sm:text-base touch-target"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Ürünlere geri dön
+              </Link>
+            </div>
+
+            <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-6 mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-blue-700">✅ Bu Ürünü Satın Aldınız!</h2>
+                  <p className="text-blue-600">Satıcı ile iletişime geçebilirsiniz</p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard/messages"
+                className="inline-block mt-4 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Satıcı ile Mesajlaş
+              </Link>
+            </div>
+
+            {/* Product details visible to buyer */}
+            <div className="bg-[var(--card-background)] border border-[var(--border)] rounded-xl p-6">
+              <h1 className="text-2xl font-bold text-[var(--foreground)] mb-4">{product.title}</h1>
+              {product.images && product.images.length > 0 && (
+                <div className="relative h-64 mb-4 rounded-lg overflow-hidden">
+                  <Image
+                    src={product.images[0].url}
+                    alt={product.title}
+                    fill
+                    className="object-contain"
+                    unoptimized={true}
+                  />
+                </div>
+              )}
+              <p className="text-[var(--foreground)] mb-4">{product.description}</p>
+              <p className="text-xl font-bold text-[var(--accent)]">
+                Ödediğiniz Tutar: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(product.buyNowPrice || product.price)}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Other users: Show "product sold" message
+    return (
+      <div className="min-h-screen bg-[var(--background)] p-3 sm:p-4 md:p-6 lg:p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-[var(--card-background)] border border-[var(--border)] rounded-xl p-8 text-center">
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-[var(--foreground)] mb-4">Bu Ürün Satıldı</h1>
+            <p className="text-[var(--muted-foreground)] mb-8">
+              Bu ürün başka bir kullanıcı tarafından satın alındı. Diğer ürünlere göz atabilirsiniz.
+            </p>
+            <Link
+              href="/products"
+              className="inline-block px-8 py-4 bg-[var(--accent)] text-white rounded-lg hover:bg-opacity-90 transition-colors font-medium"
+            >
+              Diğer Ürünleri İncele
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)] p-3 sm:p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -609,36 +777,41 @@ export default function ProductDetailPage() {
                         </div>
                       )}
 
-                      <form onSubmit={handlePlaceBidClick} className="mb-3">
-                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                          <div className="relative flex-1">
-                            <input
-                              type="number"
-                              value={bidAmount}
-                              onChange={(e) => setBidAmount(e.target.value)}
-                              placeholder={`${calculateMinimumBidAmount(auction!.currentPrice)}+ TL`}
-                              className="premium-input text-sm sm:text-base"
-                              min={calculateMinimumBidAmount(auction!.currentPrice)}
-                              step="1"
-                            />
+                      <div className="mb-3">
+                        {/* Display auto-calculated next bid */}
+                        <div className="bg-[var(--primary)]/10 rounded-lg p-4 border border-[var(--primary)]/20">
+                          <div className="text-center">
+                            <p className="text-sm text-[var(--foreground)] opacity-70 mb-2">
+                              Sonraki Teklif Tutarı
+                            </p>
+                            <p className="text-2xl font-bold text-[var(--accent)]">
+                              {new Intl.NumberFormat('tr-TR', {
+                                style: 'currency',
+                                currency: 'TRY'
+                              }).format(calculateNextBidAmount(auction!.currentPrice, auction!.startPrice))}
+                            </p>
+                            {auction!.currentPrice === auction!.startPrice && (
+                              <p className="text-xs text-green-600 mt-2">
+                                İlk teklif: Başlangıç fiyatı kadar teklif verebilirsiniz
+                              </p>
+                            )}
                           </div>
-                          <button
-                            type="submit"
-                            disabled={isAuctionLoading}
-                            className="premium-button premium-button-accent touch-target text-sm sm:text-base"
-                          >
-                            {isAuctionLoading ? "İşleniyor..." : "Teklif Ver"}
-                          </button>
                         </div>
-                      </form>
+
+                        <button
+                          onClick={() => {
+                            const nextBid = calculateNextBidAmount(auction!.currentPrice, auction!.startPrice);
+                            setPendingBidAmount(nextBid.toString());
+                            setShowBidModal(true);
+                          }}
+                          disabled={isAuctionLoading || isAuctionExpired}
+                          className="premium-button premium-button-accent w-full mt-3 touch-target text-sm sm:text-base"
+                        >
+                          {isAuctionLoading ? "İşleniyor..." : "Teklif Ver"}
+                        </button>
+                      </div>
 
                       <div className="text-xs text-[var(--muted-foreground)] space-y-1">
-                        <p>
-                          Minimum teklif: {new Intl.NumberFormat('tr-TR', {
-                            style: 'currency',
-                            currency: 'TRY'
-                          }).format(calculateMinimumBidAmount(auction!.currentPrice))}
-                        </p>
                         <p>
                           Minimum artış: {new Intl.NumberFormat('tr-TR', {
                             style: 'currency',

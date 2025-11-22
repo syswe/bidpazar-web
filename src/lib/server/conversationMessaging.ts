@@ -76,6 +76,7 @@ interface OrderConversationMessageParams {
   product: { id: string; title: string };
   price: number;
   context: 'buy-now' | 'auction';
+  skipBuyerNotification?: boolean;
 }
 
 export const createOrderConversationMessage = async ({
@@ -85,6 +86,7 @@ export const createOrderConversationMessage = async ({
   product,
   price,
   context,
+  skipBuyerNotification = false,
 }: OrderConversationMessageParams) => {
   const conversation = await ensureConversation(tx, buyer.id, seller.id);
 
@@ -129,14 +131,16 @@ export const createOrderConversationMessage = async ({
     },
   });
 
-  await tx.notification.create({
-    data: {
-      userId: buyer.id,
-      content: `"${product.title}" ürünü için satıcıyla sohbet başlatıldı. Detayları bu sohbet üzerinden konuşabilirsiniz.`,
-      type: 'MESSAGE',
-      relatedId: conversation.id,
-    },
-  });
+  if (!skipBuyerNotification) {
+    await tx.notification.create({
+      data: {
+        userId: buyer.id,
+        content: `"${product.title}" ürünü için satıcıyla sohbet başlatıldı. Detayları bu sohbet üzerinden konuşabilirsiniz.`,
+        type: 'MESSAGE',
+        relatedId: conversation.id,
+      },
+    });
+  }
 
   logger.info('Created order conversation message', {
     conversationId: conversation.id,

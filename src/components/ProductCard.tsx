@@ -2,12 +2,13 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
-import { Product } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { Product, ProductAuction, getProductAuctionByProductId } from '@/lib/api';
 import VerifiedSellerBadge from './VerifiedSellerBadge';
 import BidModal from './BidModal';
 import BuyNowModal from './BuyNowModal';
 import { Clock } from 'lucide-react';
+import { calculateMinimumBidAmount } from '@/lib/utils';
 
 interface ProductCardProps {
   product: Product;
@@ -16,6 +17,8 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const [showBidModal, setShowBidModal] = useState(false);
   const [showBuyNowModal, setShowBuyNowModal] = useState(false);
+  const [auction, setAuction] = useState<ProductAuction | null>(null);
+  const [isLoadingAuction, setIsLoadingAuction] = useState(true);
 
   // Ürün resmi varsa ilkini al, yoksa placeholder kullan
   const imageUrl = product.images && product.images.length > 0
@@ -25,8 +28,24 @@ export default function ProductCard({ product }: ProductCardProps) {
   // Fiyatı formatla (₺ sembolü olmadan)
   const formatPrice = (price: number) => new Intl.NumberFormat('tr-TR').format(price);
 
-  // Teklif fiyatı (şimdilik product.price - gelecekte bids'den gelecek)
-  const currentBidPrice = product.price;
+  // Fetch auction data on mount
+  useEffect(() => {
+    const fetchAuction = async () => {
+      try {
+        setIsLoadingAuction(true);
+        const auctionData = await getProductAuctionByProductId(product.id);
+        setAuction(auctionData);
+      } catch (error) {
+        console.error('Error fetching auction for product:', product.id, error);
+      } finally {
+        setIsLoadingAuction(false);
+      }
+    };
+    fetchAuction();
+  }, [product.id]);
+
+  // Calculate the display price (current bid or next bid amount)
+  const displayPrice = auction ? calculateMinimumBidAmount(auction.currentPrice) : product.price;
   const hasBuyNowPrice = !!product.buyNowPrice;
 
   const handleBidClick = (e: React.MouseEvent) => {
@@ -111,9 +130,13 @@ export default function ProductCard({ product }: ProductCardProps) {
                 <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1">
                   Teklif Ver
                 </span>
-                <span className="text-sm sm:text-base font-bold text-[var(--accent)]">
-                  {formatPrice(currentBidPrice)} ₺
-                </span>
+                {isLoadingAuction ? (
+                  <div className="h-5 w-16 bg-[var(--secondary)] animate-pulse rounded"></div>
+                ) : (
+                  <span className="text-sm sm:text-base font-bold text-[var(--accent)]">
+                    {formatPrice(displayPrice)} ₺
+                  </span>
+                )}
               </button>
 
               {/* Sağ: Hemen Al */}
@@ -138,9 +161,13 @@ export default function ProductCard({ product }: ProductCardProps) {
               <span className="text-xs font-medium text-[var(--foreground)] opacity-70 mb-1.5">
                 Teklif Ver
               </span>
-              <span className="text-lg font-bold text-[var(--accent)]">
-                {formatPrice(currentBidPrice)} ₺
-              </span>
+              {isLoadingAuction ? (
+                <div className="h-6 w-20 bg-[var(--secondary)] animate-pulse rounded"></div>
+              ) : (
+                <span className="text-lg font-bold text-[var(--accent)]">
+                  {formatPrice(displayPrice)} ₺
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -159,4 +186,5 @@ export default function ProductCard({ product }: ProductCardProps) {
       />
     </>
   );
-} 
+}
+

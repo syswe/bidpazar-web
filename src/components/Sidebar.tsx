@@ -105,19 +105,17 @@ const Sidebar = () => {
           bg-[var(--background)] border-r border-[var(--border)]
           transition-all duration-300 ease-in-out lg:flex flex-col
           overflow-hidden premium-shadow
-          ${
-            isExpanded
-              ? "lg:w-64"
-              : "lg:w-16"
+          ${isExpanded
+            ? "lg:w-64"
+            : "lg:w-16"
           }
         `}
       >
         {/* Header */}
         <div className="h-16 flex items-center px-4 border-b border-[var(--border)] relative">
           <div
-            className={`flex items-center ${
-              isExpanded ? "w-full" : "justify-center"
-            }`}
+            className={`flex items-center ${isExpanded ? "w-full" : "justify-center"
+              }`}
           >
             {isExpanded ? (
               <Link href="/" className="text-xl font-bold text-[var(--accent)]">
@@ -155,14 +153,12 @@ const Sidebar = () => {
             <li>
               <Link
                 href="/"
-                className={`flex items-center ${
-                  isExpanded ? "px-4" : "px-0 justify-center"
-                } py-2.5 rounded-lg transition-all
-                ${
-                  pathname === "/"
+                className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                  } py-2.5 rounded-lg transition-all
+                ${pathname === "/"
                     ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                }`}
+                  }`}
               >
                 {isExpanded ? (
                   <>
@@ -177,14 +173,12 @@ const Sidebar = () => {
             <li>
               <Link
                 href="/products"
-                className={`flex items-center ${
-                  isExpanded ? "px-4" : "px-0 justify-center"
-                } py-2.5 rounded-lg transition-all
-                ${
-                  pathname.startsWith("/products")
+                className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                  } py-2.5 rounded-lg transition-all
+                ${pathname.startsWith("/products")
                     ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                }`}
+                  }`}
               >
                 {isExpanded ? (
                   <>
@@ -199,14 +193,12 @@ const Sidebar = () => {
             <li>
               <Link
                 href="/live-streams"
-                className={`flex items-center ${
-                  isExpanded ? "px-4" : "px-0 justify-center"
-                } py-2.5 rounded-lg transition-all
-                ${
-                  pathname.startsWith("/live-streams")
+                className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                  } py-2.5 rounded-lg transition-all
+                ${pathname.startsWith("/live-streams")
                     ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                }`}
+                  }`}
               >
                 {isExpanded ? (
                   <>
@@ -218,43 +210,42 @@ const Sidebar = () => {
                 )}
               </Link>
             </li>
-            <li>
-              <Link
-                href="/packages"
-                className={`flex items-center ${
-                  isExpanded ? "px-4" : "px-0 justify-center"
-                } py-2.5 rounded-lg transition-all
-                ${
-                  pathname.startsWith("/packages")
-                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                    : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                }`}
-              >
-                {isExpanded ? (
-                  <>
-                    <Package className="h-5 w-5 mr-3" />
-                    <span>Paketler</span>
-                  </>
-                ) : (
-                  <Package className="h-5 w-5" />
-                )}
-              </Link>
-            </li>
+            {/* Packages - Only visible for SELLER users */}
+            {isAuthenticated && user?.userType === 'SELLER' && (
+              <li>
+                <Link
+                  href="/packages"
+                  className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                    } py-2.5 rounded-lg transition-all
+                  ${pathname.startsWith("/packages")
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
+                    }`}
+                >
+                  {isExpanded ? (
+                    <>
+                      <Package className="h-5 w-5 mr-3" />
+                      <span>Paketler</span>
+                    </>
+                  ) : (
+                    <Package className="h-5 w-5" />
+                  )}
+                </Link>
+              </li>
+            )}
             {isAuthenticated && (
               <>
                 <li>
                   <Link
                     href="/dashboard"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname.startsWith("/dashboard") &&
-                      !pathname.startsWith("/dashboard/messages") &&
-                      !pathname.startsWith("/dashboard/notifications")
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname.startsWith("/dashboard") &&
+                        !pathname.startsWith("/dashboard/messages") &&
+                        !pathname.startsWith("/dashboard/notifications")
                         ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -269,14 +260,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/dashboard/messages"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname.startsWith("/dashboard/messages")
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname.startsWith("/dashboard/messages")
                         ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -291,14 +280,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/dashboard/notifications"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all relative
-                    ${
-                      pathname.startsWith("/dashboard/notifications")
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all relative
+                    ${pathname.startsWith("/dashboard/notifications")
                         ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -342,14 +329,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/admin"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname === "/admin"
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname === "/admin"
                         ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -365,14 +350,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/admin/users"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname === "/admin/users"
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname === "/admin/users"
                         ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -388,14 +371,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/admin/products"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname === "/admin/products"
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname === "/admin/products"
                         ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -411,14 +392,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/admin/categories"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname === "/admin/categories"
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname === "/admin/categories"
                         ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -434,14 +413,12 @@ const Sidebar = () => {
                 <li>
                   <Link
                     href="/admin/streams"
-                    className={`flex items-center ${
-                      isExpanded ? "px-4" : "px-0 justify-center"
-                    } py-2.5 rounded-lg transition-all
-                    ${
-                      pathname === "/admin/streams"
+                    className={`flex items-center ${isExpanded ? "px-4" : "px-0 justify-center"
+                      } py-2.5 rounded-lg transition-all
+                    ${pathname === "/admin/streams"
                         ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "hover:bg-[var(--secondary)] hover:text-[var(--secondary-foreground)]"
-                    }`}
+                      }`}
                   >
                     {isExpanded ? (
                       <>
@@ -491,9 +468,8 @@ const Sidebar = () => {
 
           {isAuthenticated && user ? (
             <div
-              className={`${
-                isExpanded ? "p-3" : "p-2"
-              } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
+              className={`${isExpanded ? "p-3" : "p-2"
+                } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
             >
               <div className="flex items-center">
                 <div className="flex-shrink-0">
@@ -526,9 +502,8 @@ const Sidebar = () => {
             </div>
           ) : (
             <div
-              className={`${
-                isExpanded ? "p-3" : "p-2"
-              } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
+              className={`${isExpanded ? "p-3" : "p-2"
+                } rounded-lg bg-gradient-to-r from-[var(--accent)]/10 to-[var(--primary)]/10 border border-[var(--border)] shadow-sm`}
             >
               <div className="flex items-center">
                 <div className="flex-shrink-0">

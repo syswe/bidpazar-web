@@ -130,6 +130,19 @@ export async function POST(
       );
     }
 
+    // Check if product is sold
+    if (auction.product.isSold) {
+      logger.warn('Bid attempt on sold product', {
+        auctionId: id,
+        userId: user.id,
+        productId: auction.product.id
+      });
+      return NextResponse.json(
+        { error: 'Bu ürün satılmıştır, teklif verilemez' },
+        { status: 400 }
+      );
+    }
+
     if (auction.endTime && auction.endTime <= new Date()) {
       await finalizeProductAuctionIfExpired(auction.id);
       return NextResponse.json(
@@ -169,6 +182,20 @@ export async function POST(
       bidAmount: validatedData.amount,
       currentPrice: auction.currentPrice
     });
+    
+    // Check if user already has the winning bid
+    if (auction.bids.length > 0 && auction.bids[0].userId === user.id) {
+      logger.warn('User attempted to outbid their own winning bid', {
+        auctionId: id,
+        userId: user.id,
+        existingBidAmount: auction.bids[0].amount
+      });
+      
+      return NextResponse.json(
+        { error: 'Zaten en yüksek teklifi siz verdiniz. Başka bir kullanıcının teklif vermesini bekleyin.' },
+        { status: 400 }
+      );
+    }
     
     const validation = validateBidAmount(auction.currentPrice, validatedData.amount);
     
@@ -245,7 +272,7 @@ export async function POST(
           userId: auction.bids[0].userId,
           content: `Teklifiniz "${auction.product.title}" ürünü için geçildi. Yeni en yüksek teklif: ${validatedData.amount} TL`,
           type: 'BID_OUTBID',
-          relatedId: id,
+          relatedId: auction.productId,
         },
       });
     }
@@ -283,7 +310,7 @@ export async function POST(
         userId: auction.product.userId,
         content: `"${auction.product.title}" ürününüz için yeni bir teklif var: ${validatedData.amount} TL`,
         type: 'BID_OUTBID',
-        relatedId: id,
+        relatedId: auction.productId,
       },
     });
 

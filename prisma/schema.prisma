@@ -83,6 +83,9 @@ model Product {
   userId      String
   categoryId  String
   isFeatured  Boolean          @default(false)
+  isSold      Boolean          @default(false)
+  soldAt      DateTime?
+  soldTo      String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   buyNowPrice Float?

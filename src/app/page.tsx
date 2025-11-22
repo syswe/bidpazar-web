@@ -1058,7 +1058,7 @@ export default function Home() {
               <span className="border-b-4 border-[var(--accent)] pb-1">Öne Çıkan Açık Arttırmalar</span>
             </h2>
             <Link
-              href="/auctions"
+              href="/products"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />
@@ -1099,7 +1099,7 @@ export default function Home() {
               <span className="border-b-4 border-[var(--accent)] pb-1">Popüler Yayıncılar</span>
             </h2>
             <Link
-              href="/streamers"
+              href="/sellers"
               className="text-xs md:text-sm text-[var(--primary)] font-medium hover:underline flex items-center"
             >
               Tümünü Gör <ChevronRight className="h-3 w-3 md:h-4 md:w-4 ml-1" />

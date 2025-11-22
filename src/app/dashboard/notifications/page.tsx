@@ -5,7 +5,7 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { Bell, CheckCircle, AlertCircle, MessageCircle, RefreshCw, Check, Filter, ChevronRight, Info } from 'lucide-react';
+import { Bell, CheckCircle, AlertCircle, MessageCircle, RefreshCw, Check, Filter, ChevronRight, Info, ShoppingBag } from 'lucide-react';
 
 interface Notification {
   id: string;
@@ -24,17 +24,17 @@ export default function NotificationsPage() {
   const [error, setError] = useState('');
   const [filterType, setFilterType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications();
     }
   }, [isAuthenticated]);
-  
+
   const fetchNotifications = async () => {
     setLoading(true);
     setError('');
-    
+
     try {
       // Get token from localStorage with safer parsing
       let token = '';
@@ -53,11 +53,11 @@ export default function NotificationsPage() {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`Error fetching notifications: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
@@ -68,7 +68,7 @@ export default function NotificationsPage() {
       setLoading(false);
     }
   };
-  
+
   const markAsRead = async (ids?: string[]) => {
     try {
       // Get token from localStorage
@@ -89,40 +89,40 @@ export default function NotificationsPage() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
-          notificationIds: ids || [] 
+        body: JSON.stringify({
+          notificationIds: ids || []
         })
       });
-      
+
       if (!response.ok) {
         throw new Error(`Error marking notifications as read: ${response.status}`);
       }
-      
+
       // Update local state
       if (ids && ids.length > 0) {
         // Mark specific notifications as read
-        setNotifications(prev => 
-          prev.map(notification => 
-            ids.includes(notification.id) 
-              ? { ...notification, isRead: true } 
+        setNotifications(prev =>
+          prev.map(notification =>
+            ids.includes(notification.id)
+              ? { ...notification, isRead: true }
               : notification
           )
         );
       } else {
         // Mark all as read
-        setNotifications(prev => 
+        setNotifications(prev =>
           prev.map(notification => ({ ...notification, isRead: true }))
         );
       }
-      
+
       // Update unread count
       setUnreadCount(0);
-      
+
     } catch (error) {
       console.error('Failed to mark notifications as read:', error);
     }
   };
-  
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'MESSAGE':
@@ -133,33 +133,42 @@ export default function NotificationsPage() {
         return <CheckCircle className="h-6 w-6 text-green-500" />;
       case 'BID_OUTBID':
         return <AlertCircle className="h-6 w-6 text-red-500" />;
+      case 'PURCHASE':
+        return <ShoppingBag className="h-6 w-6 text-orange-500" />;
+      case 'STREAM_STARTED':
+        return <Bell className="h-6 w-6 text-purple-600" />;
+      case 'LIVE_STREAM_PURCHASE':
+        return <ShoppingBag className="h-6 w-6 text-green-500" />;
       default:
         return <Bell className="h-6 w-6 text-gray-500" />;
     }
   };
-  
+
   const formatDate = (dateString: string) => {
     try {
-      return formatDistanceToNow(new Date(dateString), { 
+      return formatDistanceToNow(new Date(dateString), {
         addSuffix: true,
-        locale: tr 
+        locale: tr
       });
     } catch (e) {
       return 'Invalid date';
     }
   };
-  
-  const filteredNotifications = filterType 
+
+  const filteredNotifications = filterType
     ? notifications.filter(n => n.type === filterType)
     : notifications;
-  
+
   const notificationTypes = [
     { id: 'MESSAGE', label: 'Mesajlar', icon: <MessageCircle className="h-4 w-4" /> },
     { id: 'BID_WON', label: 'Kazanılanlar', icon: <CheckCircle className="h-4 w-4" /> },
     { id: 'BID_OUTBID', label: 'Teklifler', icon: <AlertCircle className="h-4 w-4" /> },
+    { id: 'PURCHASE', label: 'Satın Alımlar', icon: <ShoppingBag className="h-4 w-4" /> },
+    { id: 'STREAM_STARTED', label: 'Canlı Yayınlar', icon: <Bell className="h-4 w-4" /> },
+    { id: 'LIVE_STREAM_PURCHASE', label: 'Canlı Yayın Satışları', icon: <ShoppingBag className="h-4 w-4" /> },
     { id: 'SYSTEM', label: 'Sistem', icon: <Info className="h-4 w-4" /> }
   ];
-  
+
   if (!isAuthenticated) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -178,7 +187,7 @@ export default function NotificationsPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
@@ -194,18 +203,18 @@ export default function NotificationsPage() {
           </h1>
           <p className="text-[var(--muted-foreground)] mt-1 ml-11">Tüm yeni aktiviteleri ve bildirimleri buradan takip edebilirsiniz</p>
         </div>
-        
+
         <div className="flex items-center gap-2 ml-11 md:ml-0">
-          <button 
+          <button
             onClick={() => fetchNotifications()}
             className="p-2.5 rounded-lg bg-[var(--secondary)]/30 text-[var(--foreground)] hover:bg-[var(--secondary)]/50 transition-colors"
             title="Yenile"
           >
             <RefreshCw className="h-5 w-5" />
           </button>
-          
+
           <div className="relative">
-            <button 
+            <button
               onClick={() => setShowFilters(!showFilters)}
               className={`p-2.5 rounded-lg ${filterType ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'bg-[var(--secondary)]/30 text-[var(--foreground)]'} hover:bg-[var(--secondary)]/50 transition-colors flex items-center gap-2`}
               title="Filtrele"
@@ -213,13 +222,13 @@ export default function NotificationsPage() {
               <Filter className="h-5 w-5" />
               {filterType && <span className="text-sm font-medium">{notificationTypes.find(t => t.id === filterType)?.label}</span>}
             </button>
-            
+
             {showFilters && (
               <div className="absolute right-0 mt-2 w-48 bg-[var(--background)] border border-[var(--border)] rounded-lg shadow-lg z-10 overflow-hidden">
                 <div className="p-2 border-b border-[var(--border)] text-sm font-medium text-[var(--muted-foreground)]">
                   Bildirim Türü
                 </div>
-                <button 
+                <button
                   onClick={() => {
                     setFilterType(null);
                     setShowFilters(false);
@@ -230,7 +239,7 @@ export default function NotificationsPage() {
                   {!filterType && <Check className="h-4 w-4" />}
                 </button>
                 {notificationTypes.map(type => (
-                  <button 
+                  <button
                     key={type.id}
                     onClick={() => {
                       setFilterType(type.id);
@@ -246,9 +255,9 @@ export default function NotificationsPage() {
               </div>
             )}
           </div>
-          
+
           {unreadCount > 0 && (
-            <button 
+            <button
               onClick={() => markAsRead()}
               className="px-4 py-2.5 bg-[var(--primary)] text-[var(--primary-foreground)] rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-2 text-sm font-medium"
             >
@@ -258,7 +267,7 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-      
+
       {loading ? (
         <div className="flex flex-col space-y-4 py-4">
           <div className="h-16 w-full bg-[var(--secondary)]/20 rounded-lg animate-pulse"></div>
@@ -283,7 +292,7 @@ export default function NotificationsPage() {
             <div>
               <h3 className="font-semibold text-lg mb-2">Bildirimler yüklenemedi</h3>
               <p>{error}</p>
-              <button 
+              <button
                 onClick={fetchNotifications}
                 className="mt-4 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded transition-colors text-sm"
               >
@@ -298,7 +307,7 @@ export default function NotificationsPage() {
             <div className="w-24 h-24 rounded-full bg-[var(--secondary)]/20 flex items-center justify-center text-[var(--muted-foreground)]">
               <Bell className="h-12 w-12 opacity-60" />
             </div>
-            
+
             {filterType ? (
               <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-[var(--accent)]/20 rounded-full flex items-center justify-center text-[var(--accent)]">
                 <Filter className="h-5 w-5" />
@@ -309,14 +318,14 @@ export default function NotificationsPage() {
               </div>
             )}
           </div>
-          
+
           {filterType ? (
             <>
               <h2 className="text-xl font-semibold mb-2 text-[var(--foreground)]">
                 Bu türde bildiriminiz bulunmuyor
               </h2>
               <p className="text-[var(--muted-foreground)] max-w-md mb-6">
-                Seçtiğiniz filtre ({notificationTypes.find(t => t.id === filterType)?.label}) ile 
+                Seçtiğiniz filtre ({notificationTypes.find(t => t.id === filterType)?.label}) ile
                 eşleşen bildirim bulunmuyor.
               </p>
               <button
@@ -331,7 +340,7 @@ export default function NotificationsPage() {
             <>
               <h2 className="text-xl font-semibold mb-2 text-[var(--foreground)]">Bildiriminiz Bulunmuyor</h2>
               <p className="text-[var(--muted-foreground)] max-w-md">
-                Yeni bildirimler geldiğinde burada gösterilecek. 
+                Yeni bildirimler geldiğinde burada gösterilecek.
                 Mesajlar, teklif güncellemeleri ve sistem bildirimleri için bu alanı kontrol edin.
               </p>
             </>
@@ -357,31 +366,31 @@ export default function NotificationsPage() {
               </button>
             </div>
           )}
-          
+
           <div className="space-y-4">
             {filteredNotifications.map((notification) => (
-              <div 
-                key={notification.id} 
-                className={`flex p-5 rounded-xl border ${
-                  notification.isRead 
-                    ? 'bg-[var(--background)] border-[var(--border)]' 
-                    : 'bg-[var(--primary)]/5 border-[var(--primary)]/20 premium-shadow-sm'
-                } transition-all hover:shadow-md`}
+              <div
+                key={notification.id}
+                className={`flex p-5 rounded-xl border ${notification.isRead
+                  ? 'bg-[var(--background)] border-[var(--border)]'
+                  : 'bg-[var(--primary)]/5 border-[var(--primary)]/20 premium-shadow-sm'
+                  } transition-all hover:shadow-md`}
               >
                 <div className="mr-4 flex-shrink-0">
-                  <div className={`rounded-full flex items-center justify-center w-12 h-12 ${
-                    notification.type === 'MESSAGE' 
-                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                      : notification.type === 'SYSTEM'
-                        ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
-                        : notification.type === 'BID_WON'
-                          ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                          : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                  } shadow-sm`}>
+                  <div className={`rounded-full flex items-center justify-center w-12 h-12 ${notification.type === 'MESSAGE'
+                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                    : notification.type === 'SYSTEM'
+                      ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+                      : notification.type === 'BID_WON'
+                        ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                        : notification.type === 'PURCHASE'
+                          ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400'
+                    } shadow-sm`}>
                     {getNotificationIcon(notification.type)}
                   </div>
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap justify-between items-start gap-2">
                     <h3 className={`text-base ${notification.isRead ? 'font-medium' : 'font-semibold'} text-[var(--foreground)]`}>
@@ -389,6 +398,9 @@ export default function NotificationsPage() {
                       {notification.type === 'SYSTEM' && 'Sistem Bildirimi'}
                       {notification.type === 'BID_WON' && 'Açık Artırma Kazanıldı'}
                       {notification.type === 'BID_OUTBID' && 'Teklifiniz Aşıldı'}
+                      {notification.type === 'PURCHASE' && 'Satın Alma Başarılı'}
+                      {notification.type === 'STREAM_STARTED' && 'Yayın Başladı'}
+                      {notification.type === 'LIVE_STREAM_PURCHASE' && 'Canlı Yayın Satışı'}
                     </h3>
                     <div className="flex items-center gap-2">
                       <time className="text-xs text-[var(--muted-foreground)] whitespace-nowrap px-2 py-1 rounded-full bg-[var(--secondary)]/10">
@@ -399,29 +411,33 @@ export default function NotificationsPage() {
                       )}
                     </div>
                   </div>
-                  
+
                   <p className={`mt-2 text-[var(--foreground)] ${notification.isRead ? '' : 'font-medium'}`}>
                     {notification.content}
                   </p>
-                  
+
                   <div className="mt-3 flex justify-between items-center">
-                    {notification.relatedId && (
-                      <Link 
-                        href={`/dashboard/${
-                          notification.type === 'MESSAGE' 
-                            ? 'messages/' 
-                            : notification.type === 'BID_WON' || notification.type === 'BID_OUTBID' 
-                              ? 'bids/' 
-                              : ''
-                        }${notification.relatedId}`}
+                    {notification.relatedId && notification.type !== 'AUCTION_ENDED' && (
+                      <Link
+                        href={
+                          notification.type === 'MESSAGE' || notification.type === 'PURCHASE' || notification.type === 'LIVE_STREAM_PURCHASE'
+                            ? `/dashboard/messages/${notification.relatedId}`
+                            : notification.type === 'BID_WON'
+                              ? '/dashboard/won-auctions'
+                              : notification.type === 'BID_OUTBID'
+                                ? `/products/${notification.relatedId}`
+                                : notification.type === 'STREAM_STARTED'
+                                  ? `/live-streams/${notification.relatedId}`
+                                  : '#'
+                        }
                         className="text-sm text-[var(--primary)] hover:underline flex items-center"
                       >
                         Detayları Gör <ChevronRight className="h-4 w-4" />
                       </Link>
                     )}
-                    
+
                     {!notification.isRead && (
-                      <button 
+                      <button
                         onClick={() => markAsRead([notification.id])}
                         className="ml-auto text-xs text-[var(--primary)] hover:bg-[var(--primary)]/5 flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
                       >

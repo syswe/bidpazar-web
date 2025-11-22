@@ -158,7 +158,10 @@ export const fetcher = async <T>(
     // Handle error responses
     if (!response.ok) {
       const errorMessage =
-        isJson && data.message ? data.message : `API error: ${response.status}`;
+        isJson && data.error ? data.error :
+        isJson && data.message ? data.message : 
+        `API error: ${response.status}`;
+      
       console.error(`API Error: ${errorMessage}`, {
         status: response.status,
         data,
@@ -198,7 +201,11 @@ export const fetcher = async <T>(
         }
       }
 
-      throw new Error(errorMessage);
+      // Throw error with detailed message and response data
+      const error: any = new Error(errorMessage);
+      error.status = response.status;
+      error.response = data; // Include the full response data
+      throw error;
     }
 
     return data as T;

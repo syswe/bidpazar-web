@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { Product } from '@/lib/api';
+import { Product, ProductAuction, addBidToProductAuction, getProductAuctionByProductId } from '@/lib/api';
 import { useAuth } from './AuthProvider';
 import { getToken } from '@/lib/frontend-auth';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { calculateMinimumBidAmount, calculateMinimumBidIncrement } from '@/lib/utils';
 
 interface BidModalProps {
   isOpen: boolean;
@@ -18,15 +19,34 @@ interface BidModalProps {
 export default function BidModal({ isOpen, onClose, product }: BidModalProps) {
   const { user } = useAuth();
   const router = useRouter();
-  const [bidAmount, setBidAmount] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [auction, setAuction] = useState<ProductAuction | null>(null);
+  const [isLoadingAuction, setIsLoadingAuction] = useState(true);
 
   const formatPrice = (price: number) => new Intl.NumberFormat('tr-TR').format(price);
-  const minBidAmount = product.price + 1;
 
   const imageUrl = product.images && product.images.length > 0
     ? product.images[0].url
     : '/images/product-placeholder.jpg';
+
+  // Fetch auction data when modal opens
+  useEffect(() => {
+    if (isOpen && product.id) {
+      const fetchAuction = async () => {
+        try {
+          setIsLoadingAuction(true);
+          const auctionData = await getProductAuctionByProductId(product.id);
+          setAuction(auctionData);
+        } catch (error) {
+          console.error('Error fetching auction:', error);
+          toast.error('Açık artırma bilgileri yüklenemedi');
+        } finally {
+          setIsLoadingAuction(false);
+        }
+      };
+      fetchAuction();
+    }
+  }, [isOpen, product.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,12 +62,13 @@ export default function BidModal({ isOpen, onClose, product }: BidModalProps) {
       return;
     }
 
-    const amount = parseFloat(bidAmount.replace(/\./g, '').replace(',', '.'));
-
-    if (isNaN(amount) || amount < minBidAmount) {
-      toast.error(`Minimum teklif tutarı ${formatPrice(minBidAmount)} ₺ olmalıdır`);
+    if (!auction) {
+      toast.error('Bu ürün için aktif bir açık artırma bulunmuyor');
       return;
     }
+
+    // Calculate auto-increment amount
+    const nextBidAmount = calculateMinimumBidAmount(auction.currentPrice);
 
     try {
       setIsSubmitting(true);
@@ -59,16 +80,15 @@ export default function BidModal({ isOpen, onClose, product }: BidModalProps) {
         return;
       }
 
-      // TODO: API endpoint'i ile entegre edilecek
-      // Şimdilik başarılı gibi davran
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Place bid using real API
+      await addBidToProductAuction(auction.id, nextBidAmount);
 
       toast.success('Teklifiniz başarıyla verildi!');
       onClose();
 
-      // Sayfayı yenile veya ürün detayına git
+      // Refresh the page to show updated data
       setTimeout(() => {
-        router.push(`/products/${product.id}`);
+        window.location.reload();
       }, 500);
     } catch (error: any) {
       console.error('Bid error:', error);
@@ -126,70 +146,79 @@ export default function BidModal({ isOpen, onClose, product }: BidModalProps) {
             </div>
           </div>
 
-          {/* Mevcut Fiyat */}
-          <div className="bg-[var(--secondary)] rounded-lg p-3 mb-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--foreground)] opacity-70">
-                Mevcut Teklif
-              </span>
-              <span className="text-lg font-bold text-[var(--accent)]">
-                {formatPrice(product.price)} ₺
-              </span>
+          {isLoadingAuction ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent)] mx-auto"></div>
+              <p className="text-sm text-[var(--foreground)] mt-2">Yükleniyor...</p>
             </div>
-          </div>
-
-          {/* Teklif Formu */}
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
-                Teklifiniz (Minimum: {formatPrice(minBidAmount)} ₺)
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={bidAmount}
-                  onChange={(e) => {
-                    // Sadece sayı ve virgül/nokta kabul et
-                    const value = e.target.value.replace(/[^\d.,]/g, '');
-                    setBidAmount(value);
-                  }}
-                  placeholder={formatPrice(minBidAmount)}
-                  className="w-full px-4 py-3 bg-[var(--input)] border border-[var(--border)] rounded-lg text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
-                  disabled={isSubmitting}
-                  required
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--foreground)] opacity-70 font-medium">
-                  ₺
-                </span>
+          ) : !auction ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-600">Bu ürün için aktif bir açık artırma bulunmuyor.</p>
+            </div>
+          ) : (
+            <>
+              {/* Mevcut Fiyat */}
+              <div className="bg-[var(--secondary)] rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--foreground)] opacity-70">
+                    Mevcut Teklif
+                  </span>
+                  <span className="text-lg font-bold text-[var(--accent)]">
+                    {formatPrice(auction.currentPrice)} ₺
+                  </span>
+                </div>
               </div>
-            </div>
 
-            {/* Bilgilendirme */}
-            <div className="bg-[var(--muted)] border border-[var(--border)] rounded-lg p-3 mb-4">
-              <p className="text-xs text-[var(--foreground)]">
-                <strong className="font-semibold">Not:</strong> Teklifiniz onaylandığında ürünü satın alma yükümlülüğünüz olacaktır.
-              </p>
-            </div>
+              {/* Auto-calculated Next Bid */}
+              <div className="bg-[var(--primary)]/10 rounded-lg p-4 border border-[var(--primary)]/20 mb-4">
+                <div className="text-center">
+                  <p className="text-sm text-[var(--foreground)] opacity-70 mb-2">
+                    Sonraki Teklif Tutarınız
+                  </p>
+                  <p className="text-2xl font-bold text-[var(--accent)]">
+                    {formatPrice(calculateMinimumBidAmount(auction.currentPrice))} ₺
+                  </p>
+                  {auction.currentPrice === auction.startPrice && (
+                    <p className="text-xs text-green-600 mt-2">
+                      İlk teklif: Başlangıç fiyatı kadar teklif verebilirsiniz
+                    </p>
+                  )}
+                  <p className="text-xs text-[var(--foreground)] opacity-70 mt-2">
+                    Artış: {formatPrice(calculateMinimumBidIncrement(auction.currentPrice))} ₺
+                  </p>
+                </div>
+              </div>
 
-            {/* Butonlar */}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 border border-[var(--border)] text-[var(--foreground)] rounded-lg font-medium hover:bg-[var(--muted)] transition-colors"
-                disabled={isSubmitting}
-              >
-                İptal
-              </button>
-              <button
-                type="submit"
-                className="flex-1 py-3 bg-[var(--accent)] text-white rounded-lg font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Gönderiliyor...' : 'Teklif Ver'}
-              </button>
-            </div>
-          </form>
+              {/* Teklif Formu */}
+              <form onSubmit={handleSubmit}>
+                {/* Bilgilendirme */}
+                <div className="bg-[var(--muted)] border border-[var(--border)] rounded-lg p-3 mb-4">
+                  <p className="text-xs text-[var(--foreground)]">
+                    <strong className="font-semibold">Not:</strong> Teklifiniz otomatik olarak hesaplanmıştır ve onaylandığında ürünü satın alma yükümlülüğünüz olacaktır.
+                  </p>
+                </div>
+
+                {/* Butonlar */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-3 border border-[var(--border)] text-[var(--foreground)] rounded-lg font-medium hover:bg-[var(--muted)] transition-colors"
+                    disabled={isSubmitting}
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-[var(--accent)] text-white rounded-lg font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Gönderiliyor...' : 'Teklif Ver'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>

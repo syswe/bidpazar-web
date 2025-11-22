@@ -48,7 +48,7 @@ export async function POST(
       where: { id: listingId },
       include: {
         liveStream: {
-          select: { userId: true },
+          select: { userId: true, title: true },
         },
         bids: {
           orderBy: { amount: "desc" },
@@ -99,9 +99,9 @@ export async function POST(
       await prisma.notification.create({
         data: {
           userId: winner.id,
-          content: `Tebrikler! ${auction.product.title} ürünü için açık arttırmayı ${auction.bids[0].amount} ₺ ile kazandınız.`,
-          type: "BID_WON",
-          relatedId: auction.id,
+          content: `"${auction.liveStream.title}" canlı yayınında "${auction.product.title}" ürünü için açık arttırmayı ${auction.bids[0].amount} TL ile kazandınız.`,
+          type: "LIVE_STREAM_PURCHASE",
+          relatedId: auction.liveStream.userId, // Seller ID for winner to message
           isRead: false,
         },
       });
@@ -113,10 +113,10 @@ export async function POST(
       data: {
         userId: auction.liveStream.userId,
         content: winner
-          ? `${auction.product.title} ürünü için açık arttırma sona erdi. ${winner.username} ürünü ${auction.bids[0].amount} ₺ ile kazandı.`
-          : `${auction.product.title} ürünü için açık arttırma sona erdi. Hiç teklif gelmedi.`,
-        type: "AUCTION_ENDED",
-        relatedId: auction.id,
+          ? `"${auction.liveStream.title}" canlı yayınınızda eklediğiniz "${auction.product.title}" ürünü ${winner.username} tarafından ${auction.bids[0].amount} TL bedelle satın alındı.`
+          : `"${auction.liveStream.title}" canlı yayınınızda "${auction.product.title}" ürünü için açık arttırma sona erdi. Hiç teklif gelmedi.`,
+        type: "LIVE_STREAM_PURCHASE",
+        relatedId: winner?.id || null, // Winner ID for seller to message (null if no winner)
         isRead: false,
       },
     });
