@@ -68,7 +68,7 @@ export default function ConversationPage() {
   const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | number | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | number | null>(null);
   const failedMessagesRef = useRef<Message[]>([]);
-  
+
   // Product-related states for message suggestions
   const [productInfo, setProductInfo] = useState<{
     id: string;
@@ -87,7 +87,7 @@ export default function ConversationPage() {
         const decoded = JSON.parse(decodeURIComponent(productParam));
         setProductInfo(decoded);
         setShowSuggestions(true);
-        
+
         // Set initial message with product context
         const initialMessage = `Merhaba, "${decoded.title}" ilanınızla ilgili bilgi almak istiyorum. `;
         setMessageContent(initialMessage);
@@ -213,10 +213,10 @@ export default function ConversationPage() {
       try {
         // First, try to fetch as a conversation ID
         console.log(`Attempting to fetch conversation: ${idParam}`);
-        
+
         try {
           const details = await getConversationDetails(idParam);
-          
+
           // If successful, it's a valid conversation ID
           if (details && details.participants) {
             console.log(`Found existing conversation: ${idParam}`);
@@ -236,7 +236,7 @@ export default function ConversationPage() {
 
             setInitializationStatus("success");
           } else {
-            throw new Error("Conversation details not found or incomplete.");
+            throw new Error("Sohbet detayları bulunamadı veya eksik.");
           }
         } catch (conversationError: any) {
           // If conversation not found (404), treat idParam as user ID
@@ -268,7 +268,7 @@ export default function ConversationPage() {
             // Update URL to use the actual conversation ID
             if (createdOrFoundConv.id !== idParam) {
               const productParam = searchParams.get('product');
-              const newUrl = productParam 
+              const newUrl = productParam
                 ? `/dashboard/messages/${createdOrFoundConv.id}?product=${productParam}`
                 : `/dashboard/messages/${createdOrFoundConv.id}`;
               router.replace(newUrl);
@@ -459,13 +459,13 @@ export default function ConversationPage() {
       }, 500);
     } catch (err: any) {
       console.error("Error sending message:", err);
-      setError(err.message || "Failed to send message");
+      setError(err.message || "Mesaj gönderilemedi");
 
       // Mark the message as failed
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === tempId
-            ? { ...msg, failed: true, content: `${content} (Failed to send)` }
+            ? { ...msg, failed: true, content: `${content} (Gönderilemedi)` }
             : msg
         )
       );
@@ -595,8 +595,8 @@ export default function ConversationPage() {
             <div className="flex items-start gap-3 mb-4">
               {productInfo.imageUrl && (
                 <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 border-[var(--accent)] premium-shadow">
-                  <img 
-                    src={productInfo.imageUrl} 
+                  <img
+                    src={productInfo.imageUrl}
                     alt={productInfo.title}
                     className="w-full h-full object-cover"
                   />
@@ -627,7 +627,7 @@ export default function ConversationPage() {
                 Mesaj Önerileri
               </span>
             </div>
-            
+
             <div className="flex flex-wrap gap-2">
               {getMessageSuggestions().map((suggestion, index) => (
                 <button

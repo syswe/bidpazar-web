@@ -156,7 +156,7 @@ export function useMessageSocket(
           (apiMsg: ApiMessage): Message => ({
             id: apiMsg.id,
             senderId: apiMsg.senderId,
-            senderUsername: apiMsg.sender?.username || "Unknown",
+            senderUsername: apiMsg.sender?.username || "Bilinmeyen",
             receiverId: apiMsg.receiverId,
             content: apiMsg.content,
             conversationId: apiMsg.conversationId,

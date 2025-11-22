@@ -26,7 +26,7 @@ interface MessageProps {
 const MessageComponent = ({ message, isFromCurrentUser }: MessageProps) => {
   // Use sender from message object or fall back to senderUsername
   const username =
-    message.sender?.username || message.senderUsername || "Unknown";
+    message.sender?.username || message.senderUsername || "Bilinmeyen";
 
   // Check if message is temporary or failed
   const isPending = message.id.startsWith("temp-") && !message.failed;
@@ -44,18 +44,15 @@ const MessageComponent = ({ message, isFromCurrentUser }: MessageProps) => {
 
   return (
     <div
-      className={`flex ${
-        isFromCurrentUser ? "justify-end" : "justify-start"
-      } animate-in fade-in duration-150 mb-2`}
+      className={`flex ${isFromCurrentUser ? "justify-end" : "justify-start"
+        } animate-in fade-in duration-150 mb-2`}
     >
       <div
-        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
-          isFromCurrentUser
-            ? `bg-accent text-accent-foreground rounded-br-none ${
-                isPending ? "opacity-70" : ""
-              } ${isFailed ? "bg-red-100 border border-red-300" : ""}`
+        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${isFromCurrentUser
+            ? `bg-accent text-accent-foreground rounded-br-none ${isPending ? "opacity-70" : ""
+            } ${isFailed ? "bg-red-100 border border-red-300" : ""}`
             : "bg-muted text-foreground rounded-bl-none"
-        }`}
+          }`}
       >
         {!isFromCurrentUser && (
           <div className="font-semibold text-xs mb-0.5">{username}</div>
@@ -67,8 +64,8 @@ const MessageComponent = ({ message, isFromCurrentUser }: MessageProps) => {
           )}
         </div>
         <div className="text-[10px] mt-1 opacity-70 text-right flex justify-end items-center">
-          {isPending && <span className="mr-1">Sending...</span>}
-          {isFailed && <span className="mr-1 text-red-500">Failed</span>}
+          {isPending && <span className="mr-1">Gönderiliyor...</span>}
+          {isFailed && <span className="mr-1 text-red-500">Başarısız</span>}
           {new Date(message.createdAt).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
