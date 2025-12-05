@@ -601,6 +601,7 @@ export default function Home() {
               currency: "TRY",
               userId: "user1",
               categoryId: "cat1",
+              isSold: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               category: { id: "cat1", name: "Antika" },

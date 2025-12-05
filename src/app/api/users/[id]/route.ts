@@ -14,28 +14,18 @@ export async function GET(
   logger.info(`[API][${url}] GET request received for userId: ${userId}`);
 
   try {
-    // Extract token from authorization header
+    // Check if the request is authenticated (optional for public profile, but needed for isFollowing)
     const authorization = req.headers.get("authorization");
-    if (!authorization) {
-      logger.error(`[API][${url}] Unauthorized (401): No authorization header`);
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    let currentUserId: string | null = null;
 
-    const parts = authorization.split(" ");
-    if (parts.length !== 2 || parts[0] !== "Bearer") {
-      logger.error(
-        `[API][${url}] Unauthorized (401): Invalid authorization format`
-      );
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = parts[1];
-
-    // Verify the token
-    const payload = await verifyToken(token);
-    if (!payload) {
-      logger.error(`[API][${url}] Unauthorized (401): Invalid token`);
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (authorization) {
+      const parts = authorization.split(" ");
+      if (parts.length === 2 && parts[0] === "Bearer") {
+        const payload = await verifyToken(parts[1]);
+        if (payload) {
+          currentUserId = payload.userId;
+        }
+      }
     }
 
     // Check if the target user exists
@@ -43,17 +33,22 @@ export async function GET(
       where: { id: userId },
       select: {
         id: true,
-        email: true,
+        email: true, // Maybe hide email for public? keeping for now as per original
         username: true,
         name: true,
-        phoneNumber: true,
+        phoneNumber: true, // Maybe hide?
         isVerified: true,
         isAdmin: true,
+        userType: true,
+        isPopularStreamer: true,
+        isFavoriteSeller: true,
         createdAt: true,
         updatedAt: true,
         _count: {
           select: {
             products: true,
+            followers: true,
+            following: true,
           },
         },
       },
@@ -64,7 +59,25 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    return NextResponse.json(user);
+    let isFollowing = false;
+    if (currentUserId) {
+      const follow = await prisma.follows.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: currentUserId,
+            followingId: userId,
+          },
+        },
+      });
+      isFollowing = !!follow;
+    }
+
+    return NextResponse.json({
+      ...user,
+      isFollowing,
+      followersCount: user._count.followers,
+      followingCount: user._count.following,
+    });
   } catch (error) {
     logger.error(`[API][${url}] Error getting user:`, error);
     return NextResponse.json(

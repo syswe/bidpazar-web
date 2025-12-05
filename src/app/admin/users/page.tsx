@@ -45,6 +45,12 @@ export default function AdminUsersPage() {
   );
   const [newPassword, setNewPassword] = useState("");
 
+  // Quota management state
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+  const [quotaUserId, setQuotaUserId] = useState<string | null>(null);
+  const [quotaType, setQuotaType] = useState<'products' | 'streaming'>('products');
+  const [quotaAmount, setQuotaAmount] = useState<number>(0);
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -197,6 +203,57 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleOpenQuotaModal = (userId: string) => {
+    setQuotaUserId(userId);
+    setQuotaType('products');
+    setQuotaAmount(0);
+    setIsQuotaModalOpen(true);
+  };
+
+  const handleGrantQuota = async () => {
+    if (!quotaUserId || quotaAmount <= 0) {
+      alert('Lütfen geçerli bir miktar girin');
+      return;
+    }
+
+    try {
+      setActionInProgress(quotaUserId);
+
+      const authData = localStorage.getItem('auth');
+      const token = authData ? JSON.parse(authData).token : null;
+
+      if (!token) {
+        alert('Oturumunuz sona ermiş. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      const response = await fetch(`/api/admin/users/${quotaUserId}/quotas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ type: quotaType, amount: quotaAmount })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Kontör yükleme başarısız');
+      }
+
+      const result = await response.json();
+      alert(result.message || 'Kontör başarıyla yüklendi!');
+
+      setIsQuotaModalOpen(false);
+      fetchUsers(); // Refresh user list
+    } catch (err: any) {
+      console.error('Kontör yükleme hatası:', err);
+      alert(err.message || 'Kontör yükleme işlemi başarısız oldu.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (
       !newUser.username.trim() ||
@@ -291,6 +348,9 @@ export default function AdminUsersPage() {
                       Badges
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Kontörler
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Ürün Sayısı
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -369,6 +429,36 @@ export default function AdminUsersPage() {
                             {(user as any).isFavoriteSeller ? '⭐ Favori Satıcı' : 'Favori Yayıncı Yap'}
                           </button>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {(user as any).userType === 'SELLER' ? (
+                          <div className="space-y-2">
+                            <div className="text-xs">
+                              <div className="flex items-center justify-between mb-1">
+                                <span>Ürün:</span>
+                                <span className="font-medium">
+                                  {(user as any).productsUsedThisMonth || 0}/{(user as any).monthlyProductLimit || 0}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span>Yayın:</span>
+                                <span className="font-medium">
+                                  {(user as any).streamMinutesUsedMonth || 0}/{(user as any).monthlyStreamMinutes || 0}dk
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleOpenQuotaModal(user.id)}
+                              disabled={actionInProgress === user.id}
+                              className={`w-full px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors ${actionInProgress === user.id ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                              Kontör Yükle
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {user._count?.products || 0}
@@ -590,6 +680,80 @@ export default function AdminUsersPage() {
                 {actionInProgress === resetPasswordUserId
                   ? "Sıfırlanıyor..."
                   : "Şifreyi Sıfırla"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quota Grant Modal */}
+      {isQuotaModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-auto">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+              Kontör Yükle
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Kontör Tipi
+                </label>
+                <select
+                  value={quotaType}
+                  onChange={(e) => setQuotaType(e.target.value as 'products' | 'streaming')}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="products">Ürün Ekleme</option>
+                  <option value="streaming">Yayın Dakikası</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Miktar
+                </label>
+                <select
+                  value={quotaAmount}
+                  onChange={(e) => setQuotaAmount(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-700 dark:text-white"
+                >
+                  <option value={0}>Seçiniz...</option>
+                  {quotaType === 'products' ? (
+                    <>
+                      <option value={3}>+3 Ürün</option>
+                      <option value={5}>+5 Ürün</option>
+                      <option value={10}>+10 Ürün</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value={180}>+3 Saat (180 dakika)</option>
+                      <option value={600}>+10 Saat (600 dakika)</option>
+                      <option value={1500}>+25 Saat (1500 dakika)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  ℹ️ Yeni kontörler mevcut kotaya eklenir (kümülatif)
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end mt-6 space-x-3">
+              <button
+                onClick={() => setIsQuotaModalOpen(false)}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleGrantQuota}
+                disabled={quotaAmount <= 0 || actionInProgress === quotaUserId}
+                className={`px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 ${quotaAmount <= 0 || actionInProgress === quotaUserId
+                    ? "opacity-50 cursor-not-allowed"
+                    : ""
+                  }`}
+              >
+                {actionInProgress === quotaUserId ? "Yükleniyor..." : "Yükle"}
               </button>
             </div>
           </div>

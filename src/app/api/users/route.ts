@@ -138,8 +138,17 @@ export async function GET(req: NextRequest) {
         email: isAdmin, // Only include email for admins
         isVerified: isAdmin, // Only include verification status for admins
         isAdmin: isAdmin, // Only include admin status for admins
+        userType: isAdmin, // Only include user type for admins
+        isPopularStreamer: isAdmin,
+        isFavoriteSeller: isAdmin,
         createdAt: true,
         updatedAt: true,
+        // Quota fields - only for admins
+        monthlyProductLimit: isAdmin,
+        monthlyStreamMinutes: isAdmin,
+        productsUsedThisMonth: isAdmin,
+        streamMinutesUsedMonth: isAdmin,
+        quotaResetDate: isAdmin,
         _count: {
           select: {
             products: true,

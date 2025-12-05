@@ -36,6 +36,9 @@ export interface Product {
     name?: string;
     userType?: string;
   };
+  isSold: boolean;
+  soldTo?: string | null;
+  soldAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

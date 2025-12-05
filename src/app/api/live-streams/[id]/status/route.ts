@@ -156,23 +156,21 @@ export async function POST(
         });
 
         if (streamWithUser) {
-          // Get all users except the streamer (future: filter by followers)
-          const users = await prisma.user.findMany({
+          // Get followers of the streamer (not all users)
+          const followers = await prisma.follows.findMany({
             where: {
-              id: {
-                not: streamWithUser.userId
-              }
+              followingId: streamWithUser.userId
             },
             select: {
-              id: true
+              followerId: true
             }
           });
 
-          // Create notifications for all users
-          if (users.length > 0) {
+          // Create notifications for followers only
+          if (followers.length > 0) {
             const streamerName = streamWithUser.user.name || streamWithUser.user.username;
-            const notifications = users.map(user => ({
-              userId: user.id,
+            const notifications = followers.map(follower => ({
+              userId: follower.followerId,
               content: `${streamerName} "${streamWithUser.title}" başlıklı yayını başlattı!`,
               type: 'STREAM_STARTED',
               relatedId: id
@@ -183,8 +181,10 @@ export async function POST(
             });
 
             logger.info(
-              `Created ${notifications.length} STREAM_STARTED notifications for stream ${id}`
+              `Created ${notifications.length} STREAM_STARTED notifications for ${followers.length} followers of stream ${id}`
             );
+          } else {
+            logger.info(`No followers to notify for stream ${id}`);
           }
         }
       } catch (notificationError) {

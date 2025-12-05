@@ -26,6 +26,14 @@ model User {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   userType           UserType           @default(MEMBER)
+  
+  // Seller Quota System
+  monthlyProductLimit    Int            @default(0)  // Total products allowed per month
+  monthlyStreamMinutes   Int            @default(0)  // Total streaming minutes per month
+  productsUsedThisMonth  Int            @default(0)  // Products posted this month
+  streamMinutesUsedMonth Int            @default(0)  // Minutes streamed this month
+  quotaResetDate         DateTime       @default(now()) // Last reset date
+  
   bids             Bid[]
   chatMessages     ChatMessage[]
   liveStreams      LiveStream[]       @relation("HostedStreams")
@@ -42,6 +50,22 @@ model User {
   viewedStreams    LiveStream[]       @relation("StreamViewers")
   conversations    Conversation[]     @relation("UserConversations")
   liveStreamBids   LiveStreamBid[]    @relation("LiveStreamBids")
+  
+  // Follow system
+  followers        Follows[]          @relation("following")
+  following        Follows[]          @relation("follower")
+}
+
+model Follows {
+  follower    User     @relation("follower", fields: [followerId], references: [id])
+  followerId  String
+  following   User     @relation("following", fields: [followingId], references: [id])
+  followingId String
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }
 
 model Story {

@@ -31,15 +31,26 @@ export async function GET(request: Request) {
 
   try {
     await finalizeExpiredProductAuctions();
-    logger.debug("Fetching all products from database");
-    const products = await prisma.product.findMany({
-      where: {
-        auctions: {
-          some: {
-            status: "ACTIVE",
-          },
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+
+    const where: any = {
+      isSold: false, // Only show unsold products by default
+      // Always filter by active auctions
+      auctions: {
+        some: {
+          status: "ACTIVE",
         },
       },
+    };
+
+    if (userId) {
+      where.userId = userId;
+    }
+
+    logger.debug("Fetching products from database", { where });
+    const products = await prisma.product.findMany({
+      where,
       include: {
         category: true,
         media: true,
@@ -52,6 +63,9 @@ export async function GET(request: Request) {
           },
         },
       },
+      orderBy: {
+        createdAt: 'desc'
+      }
     });
 
     // Add images property to each product by filtering media items of type 'image'
@@ -156,6 +170,58 @@ export async function POST(request: Request) {
       price: Number(body.price),
     });
 
+    // Check and reset monthly quotas if needed (for SELLER users)
+    if (user.userType === 'SELLER') {
+      const userData = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          monthlyProductLimit: true,
+          productsUsedThisMonth: true,
+          quotaResetDate: true
+        }
+      });
+
+      if (userData) {
+        // Check if a month has passed since last reset
+        const now = new Date();
+        const resetDate = new Date(userData.quotaResetDate);
+        const daysSinceReset = (now.getTime() - resetDate.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (daysSinceReset >= 30) {
+          // Reset monthly usage
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              productsUsedThisMonth: 0,
+              streamMinutesUsedMonth: 0,
+              quotaResetDate: now
+            }
+          });
+          logger.info('Monthly quotas reset', { userId: user.id });
+        } else {
+          // Check if user has remaining quota
+          if (userData.productsUsedThisMonth >= userData.monthlyProductLimit) {
+            logger.warn('Product creation blocked - quota exceeded', {
+              userId: user.id,
+              used: userData.productsUsedThisMonth,
+              limit: userData.monthlyProductLimit
+            });
+            return NextResponse.json(
+              { 
+                error: 'Aylık ürün ekleme limitiniz doldu',
+                details: {
+                  used: userData.productsUsedThisMonth,
+                  limit: userData.monthlyProductLimit,
+                  resetDate: userData.quotaResetDate
+                }
+              },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
+
     logger.debug("Creating product in database", {
       userId: user.id,
       categoryId: validatedData.categoryId,
@@ -171,11 +237,51 @@ export async function POST(request: Request) {
       },
     });
 
+    // Increment products used this month for SELLER users
+    if (user.userType === 'SELLER') {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          productsUsedThisMonth: {
+            increment: 1
+          }
+        }
+      });
+      logger.debug('Incremented productsUsedThisMonth', { userId: user.id });
+    }
+
     logger.info("Product created successfully", {
       productId: product.id,
       userId: user.id,
       title: product.title,
     });
+
+    // Notify followers about new product
+    try {
+      const followers = await prisma.follows.findMany({
+        where: { followingId: user.id },
+        select: { followerId: true }
+      });
+
+      if (followers.length > 0) {
+        await prisma.notification.createMany({
+          data: followers.map(follower => ({
+            userId: follower.followerId,
+            type: 'NEW_PRODUCT',
+            content: `${user.username} "${product.title}" adlı yeni bir ürün ekledi.`,
+            relatedId: product.id
+          }))
+        });
+
+        logger.info(`Notified ${followers.length} followers about new product`, {
+          productId: product.id,
+          sellerId: user.id
+        });
+      }
+    } catch (notificationError) {
+      // Log error but don't fail the product creation
+      logger.error('Error creating product notifications for followers:', notificationError);
+    }
 
     return NextResponse.json(product, { status: 201 });
   } catch (error: any) {
