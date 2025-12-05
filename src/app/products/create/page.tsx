@@ -2,7 +2,7 @@
 
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Category, getCategories, createProduct, uploadProductImages, uploadProductVideos } from '@/lib/api';
+import { Category, getCategories, createProduct, uploadProductImages, uploadProductVideos, createProductAuction } from '@/lib/api';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import SellerAccessGuard from '@/components/SellerAccessGuard';
 import { logger } from '@/lib/logger';
@@ -15,6 +15,7 @@ export default function CreateProductPage() {
   const [price, setPrice] = useState('');
   const [buyNowPrice, setBuyNowPrice] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [auctionDuration, setAuctionDuration] = useState<3 | 5 | 7>(7);
 
   // File upload states
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -157,6 +158,13 @@ export default function CreateProductPage() {
       return;
     }
 
+    // Validate at least one image is uploaded
+    if (imageFiles.length === 0) {
+      logger.warn('Product form validation failed - no images uploaded');
+      setError('Lütfen en az 1 ürün görseli ekleyin.');
+      return;
+    }
+
     // Validate buyNowPrice if provided
     if (buyNowPrice && parseFloat(buyNowPrice) <= parseFloat(price)) {
       setError('Hemen al fiyatı, başlangıç fiyatından yüksek olmalıdır.');
@@ -212,8 +220,36 @@ export default function CreateProductPage() {
         logger.info('Videos uploaded successfully', { productId: product.id });
       }
 
+      // Create auction automatically
+      logger.debug('Creating auction for product', {
+        productId: product.id,
+        startPrice: parseFloat(price),
+        duration: auctionDuration
+      });
+
+      try {
+        const auction = await createProductAuction({
+          productId: product.id,
+          startPrice: parseFloat(price),
+          duration: auctionDuration
+        });
+        logger.info('Auction created successfully', {
+          productId: product.id,
+          auctionId: auction.id,
+          duration: auctionDuration,
+          endTime: auction.endTime
+        });
+      } catch (auctionError: any) {
+        logger.error('Failed to create auction', {
+          productId: product.id,
+          error: auctionError.message
+        });
+        // Don't fail the whole operation, product is already created
+        setError('Ürün oluşturuldu ancak açık artırma başlatılamadı. Ürün sayfasından manuel olarak başlatabilirsiniz.');
+      }
+
       logger.info('Product creation complete', { productId: product.id });
-      setSuccess('Ürün başarıyla oluşturuldu!');
+      setSuccess('Ürün ve açık artırma başarıyla oluşturuldu!');
 
       // Redirect to product detail page after a short delay
       logger.debug('Redirecting to product detail page', { productId: product.id });
@@ -388,6 +424,39 @@ export default function CreateProductPage() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Auction Duration Selection */}
+                    <div className="mt-6 p-4 bg-gradient-to-r from-[var(--accent)]/5 to-[var(--accent)]/10 rounded-xl border border-[var(--accent)]/20">
+                      <label className="block text-[var(--foreground)] font-medium mb-3">
+                        <span className="flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Açık Artırma Süresi <span className="text-red-500">*</span>
+                        </span>
+                      </label>
+                      <p className="text-sm text-[var(--foreground)] opacity-70 mb-4">
+                        Ürün oluşturulduğunda açık artırma otomatik olarak başlatılacaktır
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        {[3, 5, 7].map((days) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setAuctionDuration(days as 3 | 5 | 7)}
+                            className={`py-3 px-4 rounded-lg border-2 font-medium transition-all ${auctionDuration === days
+                              ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-md'
+                              : 'border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+                              }`}
+                          >
+                            {days} Gün
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-[var(--foreground)] opacity-60 mt-3">
+                        Seçilen süre sonunda açık artırma otomatik olarak sonlanacaktır
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -399,7 +468,7 @@ export default function CreateProductPage() {
 
                   <div className="mb-6">
                     <label className="block text-[var(--foreground)] font-medium mb-2">
-                      Ürün Resimleri <span className="text-[var(--foreground)] opacity-70 text-sm font-normal">(en fazla 5 resim)</span>
+                      Ürün Resimleri <span className="text-red-500">*</span> <span className="text-[var(--foreground)] opacity-70 text-sm font-normal">(en az 1, en fazla 5 resim)</span>
                     </label>
 
                     <div className="flex flex-wrap gap-3 mb-3">

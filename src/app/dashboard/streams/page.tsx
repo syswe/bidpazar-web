@@ -25,7 +25,8 @@ import {
   AlertCircle,
   X,
   Loader2,
-  StopCircle
+  StopCircle,
+  TrendingUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -324,9 +325,11 @@ export default function MyStreamsPage() {
                   <div className="p-6 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-4 relative">
                       <div>
-                        <h2 className="text-xl font-bold text-[var(--foreground)] mb-2 line-clamp-1">
-                          {stream.title}
-                        </h2>
+                        <Link href={`/dashboard/streams/${stream.id}`}>
+                          <h2 className="text-xl font-bold text-[var(--foreground)] mb-2 line-clamp-1 hover:text-[var(--accent)] cursor-pointer">
+                            {stream.title}
+                          </h2>
+                        </Link>
                         <p className="text-[var(--muted-foreground)] text-sm line-clamp-2 mb-4">
                           {stream.description || "Açıklama yok"}
                         </p>
@@ -387,6 +390,12 @@ export default function MyStreamsPage() {
                               Yayına Git
                             </Button>
                           </Link>
+                          <Link href={`/dashboard/streams/${stream.id}`}>
+                            <Button variant="outline">
+                              <TrendingUp className="w-4 h-4 mr-2" />
+                              Satış Raporu
+                            </Button>
+                          </Link>
                         </>
                       )}
 
@@ -396,6 +405,12 @@ export default function MyStreamsPage() {
                             <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
                               <Video className="w-4 h-4 mr-2" />
                               Yayına Git
+                            </Button>
+                          </Link>
+                          <Link href={`/dashboard/streams/${stream.id}`}>
+                            <Button variant="outline">
+                              <TrendingUp className="w-4 h-4 mr-2" />
+                              Satış Raporu
                             </Button>
                           </Link>
                           <Button
@@ -414,9 +429,12 @@ export default function MyStreamsPage() {
                       )}
 
                       {stream.status === "ENDED" && (
-                        <Button variant="secondary" disabled>
-                          Yayın Sona Erdi
-                        </Button>
+                        <Link href={`/dashboard/streams/${stream.id}`}>
+                          <Button variant="outline">
+                            <TrendingUp className="w-4 h-4 mr-2" />
+                            Satış Raporu
+                          </Button>
+                        </Link>
                       )}
                     </div>
                   </div>

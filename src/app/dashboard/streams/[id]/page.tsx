@@ -1,526 +1,475 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  getLiveStreamById,
-  LiveStream,
-  AuctionListing,
-  startLiveStream,
-  endLiveStream,
-  addListingToLiveStream,
-  Product,
-  getUserProducts
-} from "@/lib/api";
-import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { getToken } from "@/lib/frontend-auth";
+import { formatDateTime } from "@/lib/utils";
+import {
+  ArrowLeft,
+  Package,
+  Users,
+  Banknote,
+  Clock,
+  ShoppingCart,
+  Gavel,
+  Tag,
+  User,
+  Calendar,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  RefreshCcw,
+  Eye,
+  Video,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export default function StreamDetailsPage() {
-  // Use the useParams hook to get the id parameter
-  const params = useParams();
-  const id = params.id as string;
-  const router = useRouter();
-
-  const [stream, setStream] = useState<LiveStream | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [showAddListing, setShowAddListing] = useState(false);
-  const [userProducts, setUserProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-
-  const [selectedProduct, setSelectedProduct] = useState<string>("");
-  const [startPrice, setStartPrice] = useState<string>("");
-  const [countdownTime, setCountdownTime] = useState<string>("30");
-
-  // Fetch stream details - use useCallback to memoize the function
-  const fetchStreamDetails = useCallback(async () => {
-    try {
-      setLoading(true);
-      const streamData = await getLiveStreamById(id);
-      setStream(streamData);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching stream:", err);
-      setError("Failed to load stream details. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  // Fetch user products
-  const fetchUserProducts = useCallback(async () => {
-    try {
-      setLoadingProducts(true);
-      // Assuming there's an API to get the current user's products
-      const products = await getUserProducts();
-      setUserProducts(products);
-    } catch (err) {
-      console.error("Error fetching products:", err);
-      setError("Failed to load your products. Please try again.");
-    } finally {
-      setLoadingProducts(false);
-    }
-  }, []);
-
-  // Use effect to fetch data
-  useEffect(() => {
-    if (id) {
-      fetchStreamDetails();
-    }
-  }, [id, fetchStreamDetails]);
-
-  // Start stream handler
-  const handleStartStream = async () => {
-    try {
-      // Get token using helper function
-      const token = getToken();
-      if (!token) {
-        throw new Error("Authentication required to start a stream");
-      }
-
-      await startLiveStream(id, token);
-      // Redirect to the stream page
-      router.push(`/live-streams/${id}`);
-    } catch (err) {
-      console.error("Error starting stream:", err);
-      setError("Failed to start stream. Please try again.");
-      // Refresh the stream details
-      fetchStreamDetails();
-    }
+interface StreamSalesData {
+  stream: {
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+    startTime: string | null;
+    endTime: string | null;
+    viewerCount: number;
+    host: {
+      id: string;
+      username: string;
+      name: string | null;
+    };
   };
-
-  // End stream handler
-  const handleEndStream = async () => {
-    try {
-      if (confirm("Are you sure you want to end this stream?")) {
-        // Get token using helper function
-        const token = getToken();
-        if (!token) {
-          throw new Error("Authentication required to end a stream");
-        }
-
-        await endLiveStream(id, token);
-        // Refresh the stream details
-        fetchStreamDetails();
-      }
-    } catch (err) {
-      console.error("Error ending stream:", err);
-      setError("Failed to end stream. Please try again.");
-      // Refresh the stream details
-      fetchStreamDetails();
-    }
+  summary: {
+    totalProducts: number;
+    totalSold: number;
+    totalRevenue: number;
+    auctionSalesCount: number;
+    fixedPriceSalesCount: number;
+    auctionRevenue: number;
+    fixedPriceRevenue: number;
+    unsoldCount: number;
+    activeCount: number;
   };
+  soldProducts: SoldProduct[];
+  unsoldProducts: SoldProduct[];
+  activeProducts: SoldProduct[];
+}
 
-  // Toggle Add Listing modal
-  const toggleAddListing = useCallback(() => {
-    setShowAddListing((prev) => {
-      const newState = !prev;
-      // Only fetch products when opening the modal and no products loaded yet
-      if (newState && userProducts.length === 0) {
-        fetchUserProducts();
-      }
-      return newState;
-    });
-  }, [userProducts.length, fetchUserProducts]);
+interface SoldProduct {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  basePrice: number;
+  currentPrice: number;
+  soldPrice: number | null;
+  stock: number;
+  isAuctionMode: boolean;
+  isSold: boolean;
+  isActive: boolean;
+  soldAt: string | null;
+  createdAt: string;
+  endTime: string | null;
+  bidCount: number;
+  buyer: {
+    id: string;
+    username: string;
+    name: string | null;
+  } | null;
+  winningBid: {
+    id: string;
+    amount: number;
+    createdAt: string;
+  } | null;
+}
 
-  // Handle add listing form submission
-  const handleAddListing = async (e: React.FormEvent) => {
-    e.preventDefault();
+const formatPrice = (price: number) => {
+  return new Intl.NumberFormat("tr-TR", {
+    style: "currency",
+    currency: "TRY",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(price);
+};
 
-    try {
-      if (!selectedProduct) {
-        setError("Please select a product.");
-        return;
-      }
+const StatusBadge = ({ status }: { status: string }) => {
+  let bgColor = "bg-gray-100";
+  let textColor = "text-gray-600";
+  let label = status;
+  let dotColor = "bg-gray-400";
 
-      if (!startPrice || isNaN(parseFloat(startPrice)) || parseFloat(startPrice) <= 0) {
-        setError("Please enter a valid starting price.");
-        return;
-      }
-
-      // Get token using helper function
-      const token = getToken();
-      if (!token) {
-        throw new Error("Authentication required to add a product to stream");
-      }
-
-      const startPriceValue = parseFloat(startPrice);
-      const countdownTimeValue = parseInt(countdownTime) || 30;
-
-      await addListingToLiveStream(
-        id,
-        {
-          productId: selectedProduct,
-          startPrice: startPriceValue,
-          countdownTime: countdownTimeValue
-        },
-        token
-      );
-
-      // Reset form
-      setSelectedProduct("");
-      setStartPrice("");
-      setCountdownTime("30");
-
-      // Hide modal
-      setShowAddListing(false);
-
-      // Refresh stream details
-      fetchStreamDetails();
-    } catch (err) {
-      console.error("Error adding listing:", err);
-      setError("Failed to add listing. Please try again.");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-center items-center h-64">
-          <p className="text-gray-500">Loading stream details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-        <button
-          onClick={() => router.push("/dashboard/streams")}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          Back to My Streams
-        </button>
-      </div>
-    );
-  }
-
-  if (!stream) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
-          Stream not found or you don&apos;t have permission to view it.
-        </div>
-        <button
-          onClick={() => router.push("/dashboard/streams")}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          Back to My Streams
-        </button>
-      </div>
-    );
+  if (status === "LIVE") {
+    bgColor = "bg-red-100";
+    textColor = "text-red-600";
+    label = "CANLI";
+    dotColor = "bg-red-600";
+  } else if (status === "SCHEDULED") {
+    bgColor = "bg-blue-100";
+    textColor = "text-blue-600";
+    label = "PLANLANDI";
+    dotColor = "bg-blue-600";
+  } else if (status === "ENDED") {
+    bgColor = "bg-gray-100";
+    textColor = "text-gray-600";
+    label = "SONA ERDİ";
+    dotColor = "bg-gray-500";
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header with navigation */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <div>
-          <Link
-            href="/dashboard/streams"
-            className="text-blue-600 hover:underline mb-2 inline-block"
-          >
-            ← Back to My Streams
-          </Link>
-          <h1 className="text-2xl font-bold">{stream.title}</h1>
-        </div>
+    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${bgColor} ${textColor}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${status === "LIVE" ? "animate-pulse" : ""}`}></span>
+      {label}
+    </span>
+  );
+};
 
-        <div className="flex flex-wrap gap-2">
-          {stream.status === "SCHEDULED" && (
-            <>
-              <button
-                onClick={handleStartStream}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
-              >
-                Go Live Now
-              </button>
-            </>
-          )}
+export default function DashboardStreamDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const streamId = params.id as string;
 
-          {stream.status === "LIVE" && (
-            <>
-              <button
-                onClick={() => router.push(`/live-streams/${id}`)}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-              >
-                View Live Stream
-              </button>
-              <button
-                onClick={handleEndStream}
-                className="px-4 py-2 bg-red-100 text-red-800 rounded hover:bg-red-200 transition"
-              >
-                End Stream
-              </button>
-            </>
-          )}
+  const [data, setData] = useState<StreamSalesData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"sold" | "unsold" | "active">("sold");
+
+  const fetchSalesData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const token = getToken();
+      if (!token) {
+        throw new Error("Oturum açmanız gerekiyor");
+      }
+
+      const response = await fetch(`/api/live-streams/${streamId}/sales`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Veri yüklenemedi");
+      }
+
+      const result = await response.json();
+      setData(result);
+    } catch (err: any) {
+      console.error("Error fetching sales data:", err);
+      setError(err.message || "Bir hata oluştu");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (streamId) {
+      fetchSalesData();
+    }
+  }, [streamId]);
+
+  const getProductsForTab = () => {
+    if (!data) return [];
+    switch (activeTab) {
+      case "sold":
+        return data.soldProducts;
+      case "unsold":
+        return data.unsoldProducts;
+      case "active":
+        return data.activeProducts;
+      default:
+        return [];
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[var(--background)]">
+      {/* Header */}
+      <div className="bg-[var(--card)] border-b border-[var(--border)]">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard/streams"
+              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">Yayın Detayı</h1>
+              <p className="text-[var(--muted-foreground)] text-sm mt-1">
+                Satış raporları ve ürün detayları
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Stream details */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-8">
-        <div className="p-6">
-          <div className="flex flex-col md:flex-row gap-6 mb-6">
-            {/* Left column - Stream info */}
-            <div className="w-full md:w-1/3">
-              <div className="aspect-video bg-gray-100 mb-4 rounded overflow-hidden">
-                {stream.thumbnailUrl ? (
-                  <img
-                    src={stream.thumbnailUrl}
-                    alt={stream.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                    <span className="text-gray-400">No thumbnail</span>
+      <div className="container mx-auto px-4 py-8">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mb-4" />
+            <p className="text-[var(--muted-foreground)]">Veriler yükleniyor...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-8 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-red-700 dark:text-red-400 mb-4">{error}</p>
+            <Button onClick={fetchSalesData} variant="outline">
+              <RefreshCcw className="w-4 h-4 mr-2" />
+              Tekrar Dene
+            </Button>
+          </div>
+        ) : data ? (
+          <>
+            {/* Stream Info Card */}
+            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-xl font-bold text-[var(--foreground)]">
+                      {data.stream.title}
+                    </h2>
+                    <StatusBadge status={data.stream.status} />
                   </div>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800 mr-2">
-                  Status: {stream.status}
-                </span>
-                {stream._count && (
-                  <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-800">
-                    {stream._count.viewers} viewers
-                  </span>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-500 mb-1">Description</h3>
-                <p className="text-gray-700">{stream.description || "No description"}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">Start Time</h3>
-                  <p className="text-gray-700">
-                    {stream.startTime ? formatDateTime(stream.startTime) : "Not started"}
+                  <p className="text-[var(--muted-foreground)] text-sm mb-3">
+                    {data.stream.description || "Açıklama yok"}
                   </p>
+                  <div className="flex flex-wrap gap-4 text-sm text-[var(--muted-foreground)]">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      {data.stream.viewerCount} İzleyici
+                    </span>
+                    {data.stream.startTime && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {formatDateTime(data.stream.startTime)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">End Time</h3>
-                  <p className="text-gray-700">
-                    {stream.endTime ? formatDateTime(stream.endTime) : "Not ended"}
-                  </p>
+                <div className="flex gap-2">
+                  <Button onClick={fetchSalesData} variant="outline">
+                    <RefreshCcw className="w-4 h-4 mr-2" />
+                    Yenile
+                  </Button>
+                  <Link href={`/live-streams/${streamId}`}>
+                    <Button className="bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white">
+                      <Video className="w-4 h-4 mr-2" />
+                      Yayına Git
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>
 
-            {/* Right column - Listings */}
-            <div className="w-full md:w-2/3">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Products</h2>
-                {(stream.status === "SCHEDULED" || stream.status === "LIVE") && (
-                  <button
-                    onClick={toggleAddListing}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                  >
-                    Add Product
-                  </button>
-                )}
+            {/* Summary Stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                    <Banknote className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--muted-foreground)]">Toplam Gelir</p>
+                    <p className="text-xl font-bold text-[var(--foreground)]">
+                      {formatPrice(data.summary.totalRevenue)}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {stream.listings && stream.listings.length > 0 ? (
-                <div className="space-y-4">
-                  {stream.listings.map((listing: AuctionListing) => (
-                    <div key={listing.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex flex-col md:flex-row gap-4">
-                        {/* Product image */}
-                        <div className="w-full md:w-1/4">
-                          {listing.product?.images && listing.product.images.length > 0 ? (
-                            <img
-                              src={listing.product.images[0].url}
-                              alt={listing.product.title}
-                              className="w-full aspect-square object-cover rounded"
-                            />
-                          ) : (
-                            <div className="w-full aspect-square flex items-center justify-center bg-gray-200 rounded">
-                              <span className="text-gray-400">No image</span>
-                            </div>
-                          )}
-                        </div>
+              <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                    <ShoppingCart className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--muted-foreground)]">Satılan Ürün</p>
+                    <p className="text-xl font-bold text-[var(--foreground)]">
+                      {data.summary.totalSold} / {data.summary.totalProducts}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-                        {/* Product info */}
-                        <div className="flex-1">
-                          <div className="flex justify-between mb-2">
-                            <h3 className="text-lg font-medium">{listing.product?.title}</h3>
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                              {listing.status}
+              <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                    <Gavel className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--muted-foreground)]">Açık Arttırma</p>
+                    <p className="text-lg font-bold text-[var(--foreground)]">
+                      {data.summary.auctionSalesCount} adet
+                    </p>
+                    <p className="text-xs text-green-600">{formatPrice(data.summary.auctionRevenue)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                    <Tag className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[var(--muted-foreground)]">Sabit Fiyat</p>
+                    <p className="text-lg font-bold text-[var(--foreground)]">
+                      {data.summary.fixedPriceSalesCount} adet
+                    </p>
+                    <p className="text-xs text-green-600">{formatPrice(data.summary.fixedPriceRevenue)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Products Section */}
+            <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+              {/* Tab Headers */}
+              <div className="flex border-b border-[var(--border)]">
+                <button
+                  onClick={() => setActiveTab("sold")}
+                  className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === "sold"
+                    ? "text-green-600 border-b-2 border-green-600 bg-green-50 dark:bg-green-900/10"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    }`}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Satılan ({data.summary.totalSold})
+                </button>
+                <button
+                  onClick={() => setActiveTab("unsold")}
+                  className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === "unsold"
+                    ? "text-gray-600 border-b-2 border-gray-600 bg-gray-50 dark:bg-gray-900/10"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    }`}
+                >
+                  <XCircle className="w-4 h-4" />
+                  Satılmayan ({data.summary.unsoldCount})
+                </button>
+                <button
+                  onClick={() => setActiveTab("active")}
+                  className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === "active"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50 dark:bg-blue-900/10"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    }`}
+                >
+                  <Clock className="w-4 h-4" />
+                  Aktif ({data.summary.activeCount})
+                </button>
+              </div>
+
+              {/* Products List */}
+              <div className="p-4">
+                {getProductsForTab().length === 0 ? (
+                  <div className="text-center py-12">
+                    <Package className="w-12 h-12 mx-auto mb-4 text-[var(--muted-foreground)] opacity-50" />
+                    <p className="text-[var(--muted-foreground)]">Bu kategoride ürün bulunmuyor</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {getProductsForTab().map((product) => (
+                      <div
+                        key={product.id}
+                        className="flex items-center gap-4 p-4 bg-[var(--secondary)]/30 rounded-lg border border-[var(--border)]"
+                      >
+                        {/* Product Image */}
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.title}
+                            className="w-16 h-16 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-[var(--secondary)] rounded-lg flex items-center justify-center">
+                            <Package className="w-6 h-6 text-[var(--muted-foreground)]" />
+                          </div>
+                        )}
+
+                        {/* Product Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-medium text-[var(--foreground)] truncate">
+                              {product.title}
+                            </h3>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${product.isAuctionMode
+                                ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                                : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                }`}
+                            >
+                              {product.isAuctionMode ? (
+                                <>
+                                  <Gavel className="w-3 h-3" />
+                                  Açık Arttırma
+                                </>
+                              ) : (
+                                <>
+                                  <Tag className="w-3 h-3" />
+                                  Sabit Fiyat
+                                </>
+                              )}
                             </span>
                           </div>
-
-                          <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                            {listing.product?.description}
+                          <p className="text-sm text-[var(--muted-foreground)] truncate mb-2">
+                            {product.description || "Açıklama yok"}
                           </p>
-
-                          <div className="grid grid-cols-2 gap-4 mb-3">
-                            <div>
-                              <p className="text-xs text-gray-500">Starting Price</p>
-                              <p className="font-medium">{formatCurrency(listing.startPrice)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500">Current Highest Bid</p>
-                              <p className="font-medium">
-                                {listing.winningBid
-                                  ? formatCurrency(listing.winningBid.amount)
-                                  : "No bids yet"}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Bids section - Ensure all bids are displayed clearly */}
-                          <div>
-                            <h4 className="text-sm font-medium text-gray-700 mb-2">Bids History</h4>
-                            {listing.bids && listing.bids.length > 0 ? (
-                              <div className="space-y-1 max-h-40 overflow-y-auto">
-                                {listing.bids.map((bid) => (
-                                  <div
-                                    key={bid.id}
-                                    className={`flex justify-between items-center text-sm p-1 rounded ${bid.isWinning ? 'bg-green-50 font-medium' : ''
-                                      }`}
-                                  >
-                                    <span>{bid.user?.username}</span>
-                                    <div className="flex items-center">
-                                      <span className={bid.isWinning ? 'font-bold' : ''}>{formatCurrency(bid.amount)}</span>
-                                      {bid.isWinning && (
-                                        <span className="ml-2 text-xs text-green-600">Current Winner</span>
-                                      )}
-                                      {bid.isBackup && (
-                                        <span className="ml-2 text-xs text-orange-600">Backup</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-gray-500">No bids placed yet</p>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span className="text-[var(--muted-foreground)]">
+                              Başlangıç: {formatPrice(product.basePrice)}
+                            </span>
+                            {product.bidCount > 0 && (
+                              <span className="text-[var(--muted-foreground)]">
+                                {product.bidCount} teklif
+                              </span>
                             )}
                           </div>
                         </div>
+
+                        {/* Sale Info */}
+                        <div className="text-right">
+                          {product.isSold ? (
+                            <>
+                              <p className="text-lg font-bold text-green-600">
+                                {formatPrice(product.soldPrice || product.currentPrice)}
+                              </p>
+                              {product.buyer && (
+                                <p className="text-sm text-[var(--muted-foreground)]">
+                                  @{product.buyer.username}
+                                </p>
+                              )}
+                              {product.soldAt && (
+                                <p className="text-xs text-[var(--muted-foreground)]">
+                                  {formatDateTime(product.soldAt)}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-lg font-bold text-[var(--foreground)]">
+                                {formatPrice(product.currentPrice)}
+                              </p>
+                              <p className="text-xs text-[var(--muted-foreground)]">
+                                {product.isActive ? "Aktif" : "Sona erdi"}
+                              </p>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                  <p className="text-gray-600 mb-4">No products added to this stream yet.</p>
-                  {(stream.status === "SCHEDULED" || stream.status === "LIVE") && (
-                    <button
-                      onClick={toggleAddListing}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                    >
-                      Add Your First Product
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Add Listing Modal */}
-      {showAddListing && (
-        <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-xl font-semibold">Add Product to Stream</h3>
-            </div>
-
-            <form onSubmit={handleAddListing} className="p-6">
-              {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Select Product
-                </label>
-                {loadingProducts ? (
-                  <p className="text-gray-500">Loading your products...</p>
-                ) : userProducts.length === 0 ? (
-                  <p className="text-red-500">
-                    You don&apos;t have any products. Please create a product first.
-                  </p>
-                ) : (
-                  <select
-                    value={selectedProduct}
-                    onChange={(e) => setSelectedProduct(e.target.value)}
-                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    <option value="">Select a product</option>
-                    {userProducts.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.title} - {formatCurrency(product.price)}
-                      </option>
                     ))}
-                  </select>
+                  </div>
                 )}
               </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Starting Price
-                </label>
-                <input
-                  type="number"
-                  value={startPrice}
-                  onChange={(e) => setStartPrice(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  required
-                />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Countdown Time (seconds)
-                </label>
-                <input
-                  type="number"
-                  value={countdownTime}
-                  onChange={(e) => setCountdownTime(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="30"
-                  min="10"
-                  max="300"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 mt-6">
-                <button
-                  type="button"
-                  onClick={toggleAddListing}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                  disabled={loadingProducts || userProducts.length === 0}
-                >
-                  Add Product
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
   );
-} 
+}
+

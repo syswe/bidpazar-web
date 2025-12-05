@@ -98,12 +98,16 @@ export function useActiveBid({
                 : activeProduct.currentPrice;
 
             // Calculate auction status based on database fields
-            let auctionStatus: "PENDING" | "ACTIVE" | "PAUSED" | "ENDED" = "PENDING";
-            
+            let auctionStatus: "PENDING" | "ACTIVE" | "PAUSED" | "ENDED" =
+              "PENDING";
+
             if (activeProduct.isAuctionMode) {
               if (!activeProduct.isActive) {
                 auctionStatus = "ENDED";
-              } else if (activeProduct.endTime && new Date() > activeProduct.endTime) {
+              } else if (
+                activeProduct.endTime &&
+                new Date() > activeProduct.endTime
+              ) {
                 auctionStatus = "ENDED";
               } else if (activeProduct.endTime && activeProduct.startTime) {
                 auctionStatus = "ACTIVE";
@@ -129,7 +133,9 @@ export function useActiveBid({
                   ? activeProduct.bids[0].user?.username || null
                   : null,
               countdownEnd: activeProduct.endTime,
-              productType: activeProduct.isAuctionMode ? "AUCTION" : "FIXED_PRICE",
+              productType: activeProduct.isAuctionMode
+                ? "AUCTION"
+                : "FIXED_PRICE",
               auctionStatus: auctionStatus,
               countdownDuration: activeProduct.auctionDuration || 60,
               countdownStartTime: activeProduct.startTime,
@@ -277,6 +283,13 @@ export function useActiveBid({
       }
     };
 
+    const handleAuctionCancelled = (data: any) => {
+      if (data.streamId === streamId) {
+        debugLog("Auction cancelled via socket", data);
+        fetchActiveBid();
+      }
+    };
+
     // Register listeners
     socket.on("new-bid", handleNewBid);
     socket.on("new-live-product", handleNewLiveProduct);
@@ -290,6 +303,7 @@ export function useActiveBid({
     socket.on("auction-ended", handleAuctionEnded);
     socket.on("stock-purchased", handleStockPurchased);
     socket.on("stock-sale-removed", handleStockSaleRemoved);
+    socket.on("auction-cancelled", handleAuctionCancelled);
 
     // Cleanup
     return () => {
@@ -305,6 +319,7 @@ export function useActiveBid({
       socket.off("auction-ended", handleAuctionEnded);
       socket.off("stock-purchased", handleStockPurchased);
       socket.off("stock-sale-removed", handleStockSaleRemoved);
+      socket.off("auction-cancelled", handleAuctionCancelled);
     };
   }, [socket, streamId, fetchActiveBid, activeProductBid?.id]);
 
@@ -501,6 +516,52 @@ export function useActiveBid({
     }
   }, [activeProductBid, token, isStreamer, streamId, socket, fetchActiveBid]);
 
+  // Helper function to cancel auction before countdown starts (streamer only)
+  const cancelAuction = useCallback(async () => {
+    if (!activeProductBid || !token || !isStreamer) {
+      throw new Error("Unauthorized or no active product");
+    }
+
+    try {
+      const response = await fetch(`/api/live-streams/${streamId}/product`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          productId: activeProductBid.id,
+          action: "cancel_auction",
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to cancel auction");
+      }
+
+      const result = await response.json();
+
+      // Emit socket event for real-time synchronization
+      if (socket) {
+        socket.emit("auction-cancelled", {
+          streamId,
+          productId: activeProductBid.id,
+          productName: activeProductBid.product.name,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Refresh the active bid data (will clear the active product)
+      fetchActiveBid();
+
+      return result;
+    } catch (error) {
+      debugLog("Error cancelling auction", error);
+      throw error;
+    }
+  }, [activeProductBid, token, isStreamer, streamId, socket, fetchActiveBid]);
+
   return {
     activeProductBid,
     isLoading,
@@ -510,5 +571,6 @@ export function useActiveBid({
     startCountdown,
     pauseCountdown,
     endAuction,
+    cancelAuction,
   };
 }

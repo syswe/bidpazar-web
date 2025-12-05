@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import AdminLayout from "@/components/AdminLayout";
 import {
   LiveStream,
@@ -421,7 +422,12 @@ export default function AdminStreamsPage() {
                         className="hover:bg-gray-50 dark:hover:bg-gray-700"
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                          {stream.title}
+                          <Link
+                            href={`/admin/streams/${stream.id}`}
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                          >
+                            {stream.title}
+                          </Link>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                             {stream.description
                               ? stream.description.length > 50

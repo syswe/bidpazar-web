@@ -80,7 +80,7 @@ const AddProductAuction: React.FC<AddProductAuctionProps> = ({
         });
       }
 
-      toast.success("Ürün açık arttırmaya eklendi! 60 saniye sayacı başladı.");
+      toast.success("Ürün eklendi! İzleyiciler şimdi ön teklif verebilir. Geri sayımı manuel olarak başlatabilirsiniz.");
       resetForm();
       onSuccess();
     } catch (error) {
@@ -126,6 +126,11 @@ const AddProductAuction: React.FC<AddProductAuctionProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Info text about auction flow */}
+        <div className="text-white/60 text-xs bg-white/5 p-2 rounded border border-white/10">
+          💡 Ürün eklendiğinde izleyiciler ön teklif verebilir. Geri sayımı istediğiniz zaman başlatabilir veya iptal edebilirsiniz.
+        </div>
+
         <div>
           <label
             htmlFor="productName"
@@ -206,7 +211,7 @@ const AddProductAuction: React.FC<AddProductAuctionProps> = ({
             {isSubmitting ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
-              "60s Açık Arttırma Başlat"
+              "Ürün Ekle (Ön Teklif Aç)"
             )}
           </button>
         </div>

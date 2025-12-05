@@ -1,5 +1,5 @@
-declare module 'lucide-react' {
-  import * as React from 'react';
+declare module "lucide-react" {
+  import * as React from "react";
 
   export type LucideProps = React.SVGProps<SVGSVGElement> & {
     size?: number | string;
@@ -10,9 +10,11 @@ declare module 'lucide-react' {
   export type LucideIcon = React.ComponentType<LucideProps>;
 
   export const AlertCircle: LucideIcon;
+  export const AlertOctagon: LucideIcon;
   export const AlertTriangle: LucideIcon;
   export const ArrowLeft: LucideIcon;
   export const Award: LucideIcon;
+  export const Banknote: LucideIcon;
   export const Bell: LucideIcon;
   export const Bookmark: LucideIcon;
   export const Calendar: LucideIcon;
@@ -28,6 +30,7 @@ declare module 'lucide-react' {
   export const Edit: LucideIcon;
   export const Eye: LucideIcon;
   export const Filter: LucideIcon;
+  export const Gavel: LucideIcon;
   export const Heart: LucideIcon;
   export const Home: LucideIcon;
   export const ImageIcon: LucideIcon;
@@ -54,6 +57,7 @@ declare module 'lucide-react' {
   export const Send: LucideIcon;
   export const Settings: LucideIcon;
   export const Share2: LucideIcon;
+  export const Shield: LucideIcon;
   export const ShieldAlert: LucideIcon;
   export const ShieldCheck: LucideIcon;
   export const ShoppingBag: LucideIcon;
@@ -62,6 +66,7 @@ declare module 'lucide-react' {
   export const StopCircle: LucideIcon;
   export const Store: LucideIcon;
   export const Sun: LucideIcon;
+  export const Tag: LucideIcon;
   export const Timer: LucideIcon;
   export const Trash2: LucideIcon;
   export const TrendingUp: LucideIcon;

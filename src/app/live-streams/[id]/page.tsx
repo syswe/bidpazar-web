@@ -527,6 +527,7 @@ function CustomLiveStreamUI({
     startCountdown,
     pauseCountdown,
     endAuction,
+    cancelAuction,
   } = useActiveBid({
     streamId: streamDetails.id,
     token: authToken,
@@ -648,6 +649,7 @@ function CustomLiveStreamUI({
           startCountdown={startCountdown}
           pauseCountdown={pauseCountdown}
           endAuction={endAuction}
+          cancelAuction={cancelAuction}
         />
 
         {/* Chat - Show for all users */}

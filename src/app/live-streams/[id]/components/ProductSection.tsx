@@ -18,6 +18,7 @@ interface ProductSectionProps {
   startCountdown?: (duration?: number) => Promise<any>;
   pauseCountdown?: () => Promise<any>;
   endAuction?: () => Promise<any>;
+  cancelAuction?: () => Promise<any>;
 }
 
 const ProductSection: React.FC<ProductSectionProps> = ({
@@ -30,6 +31,7 @@ const ProductSection: React.FC<ProductSectionProps> = ({
   startCountdown: hookStartCountdown,
   pauseCountdown: hookPauseCountdown,
   endAuction: hookEndAuction,
+  cancelAuction: hookCancelAuction,
 }) => {
   const router = useRouter();
   const { token } = getAuth();
@@ -39,6 +41,7 @@ const ProductSection: React.FC<ProductSectionProps> = ({
   const [isEndingAuction, setIsEndingAuction] = useState(false);
   const [isStartingCountdown, setIsStartingCountdown] = useState(false);
   const [isPausingCountdown, setIsPausingCountdown] = useState(false);
+  const [isCancellingAuction, setIsCancellingAuction] = useState(false);
 
   // Format price with Turkish Lira
   const formatPrice = (price: number) => {
@@ -272,6 +275,65 @@ const ProductSection: React.FC<ProductSectionProps> = ({
     }
   };
 
+  // Handle cancelling auction (before countdown starts) - Use hook function or fallback to local implementation
+  const handleCancelAuction = async () => {
+    if (hookCancelAuction) {
+      setIsCancellingAuction(true);
+      try {
+        const result = await hookCancelAuction();
+        toast.success(result.message || "Açık arttırma iptal edildi");
+      } catch (error: any) {
+        toast.error(error.message || "Açık arttırma iptal edilemedi");
+      } finally {
+        setIsCancellingAuction(false);
+      }
+      return;
+    }
+
+    // Fallback to local implementation
+    if (!activeProductBid || !user) return;
+
+    setIsCancellingAuction(true);
+    try {
+      const response = await fetch(`/api/live-streams/${streamId}/product`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          productId: activeProductBid.id,
+          action: "cancel_auction",
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(result.message || "Açık arttırma iptal edildi");
+
+        // Emit socket event for real-time synchronization
+        if (socket) {
+          socket.emit("auction-cancelled", {
+            streamId,
+            productId: activeProductBid.id,
+            productName: activeProductBid.product.name,
+          });
+        }
+
+        // Refresh the active bid data
+        fetchActiveBid();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Açık arttırma iptal edilemedi");
+      }
+    } catch (error) {
+      console.error("Error cancelling auction:", error);
+      toast.error("Açık arttırma iptal edilirken hata oluştu");
+    } finally {
+      setIsCancellingAuction(false);
+    }
+  };
+
   // RENDERING LOGIC
 
   // If streamer with no active product, show the add product selector
@@ -298,11 +360,10 @@ const ProductSection: React.FC<ProductSectionProps> = ({
           {/* Product type indicator */}
           <div className="flex items-center justify-between mb-1">
             <span
-              className={`text-xs px-2 py-1 rounded-full ${
-                activeProductBid.productType === "FIXED_PRICE"
+              className={`text-xs px-2 py-1 rounded-full ${activeProductBid.productType === "FIXED_PRICE"
                   ? "bg-blue-500/20 text-blue-300"
                   : "bg-green-500/20 text-green-300"
-              }`}
+                }`}
             >
               {activeProductBid.productType === "FIXED_PRICE"
                 ? "Sabit Fiyat"
@@ -310,31 +371,29 @@ const ProductSection: React.FC<ProductSectionProps> = ({
             </span>
             {activeProductBid.productType === "AUCTION" ? (
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  activeProductBid.auctionStatus === "ACTIVE"
+                className={`text-xs px-2 py-1 rounded-full ${activeProductBid.auctionStatus === "ACTIVE"
                     ? "bg-red-500/20 text-red-300"
                     : activeProductBid.auctionStatus === "PENDING"
-                    ? "bg-yellow-500/20 text-yellow-300"
-                    : activeProductBid.auctionStatus === "PAUSED"
-                    ? "bg-orange-500/20 text-orange-300"
-                    : "bg-gray-500/20 text-gray-300"
-                }`}
+                      ? "bg-yellow-500/20 text-yellow-300"
+                      : activeProductBid.auctionStatus === "PAUSED"
+                        ? "bg-orange-500/20 text-orange-300"
+                        : "bg-gray-500/20 text-gray-300"
+                  }`}
               >
                 {activeProductBid.auctionStatus === "ACTIVE"
                   ? "Aktif"
                   : activeProductBid.auctionStatus === "PENDING"
-                  ? "Bekliyor"
-                  : activeProductBid.auctionStatus === "PAUSED"
-                  ? "Durdu"
-                  : "Bitti"}
+                    ? "Bekliyor"
+                    : activeProductBid.auctionStatus === "PAUSED"
+                      ? "Durdu"
+                      : "Bitti"}
               </span>
             ) : (
               <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  activeProductBid.product.stock > 0
+                className={`text-xs px-2 py-1 rounded-full ${activeProductBid.product.stock > 0
                     ? "bg-green-500/20 text-green-300"
                     : "bg-red-500/20 text-red-300"
-                }`}
+                  }`}
               >
                 {activeProductBid.product.stock > 0 ? "Stokta" : "Tükendi"}
               </span>
@@ -348,14 +407,12 @@ const ProductSection: React.FC<ProductSectionProps> = ({
               <div className="flex justify-between items-center mb-1">
                 <span className="text-white/80 text-xs">Kalan süre:</span>
                 <span
-                  className={`flex items-center font-mono text-sm ${
-                    timeLeft < 10 ? "text-red-400 animate-pulse" : "text-white"
-                  }`}
+                  className={`flex items-center font-mono text-sm ${timeLeft < 10 ? "text-red-400 animate-pulse" : "text-white"
+                    }`}
                 >
                   <Clock
-                    className={`w-3.5 h-3.5 mr-1 ${
-                      timeLeft < 10 ? "text-red-400" : "text-white/70"
-                    }`}
+                    className={`w-3.5 h-3.5 mr-1 ${timeLeft < 10 ? "text-red-400" : "text-white/70"
+                      }`}
                   />
                   {timeLeft} saniye
                 </span>
@@ -367,13 +424,12 @@ const ProductSection: React.FC<ProductSectionProps> = ({
             <div className="flex justify-between items-center mb-1">
               <span className="text-white/80 text-xs">Stok:</span>
               <span
-                className={`flex items-center text-sm ${
-                  activeProductBid.product.stock <= 0
+                className={`flex items-center text-sm ${activeProductBid.product.stock <= 0
                     ? "text-red-400"
                     : activeProductBid.product.stock <= 3
-                    ? "text-orange-400"
-                    : "text-green-400"
-                }`}
+                      ? "text-orange-400"
+                      : "text-green-400"
+                  }`}
               >
                 <Package className="w-3.5 h-3.5 mr-1" />
                 {activeProductBid.product.stock} adet
@@ -444,10 +500,10 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                   {activeProductBid.auctionStatus === "ENDED"
                     ? "Arttırma Bitti"
                     : activeProductBid.auctionStatus === "ACTIVE" && timeLeft === 0
-                    ? "Arttırma Bitti"
-                    : activeProductBid.auctionStatus === "ACTIVE"
-                    ? "Teklif Ver"
-                    : "Teklif Ver (Ön Teklif)"}
+                      ? "Arttırma Bitti"
+                      : activeProductBid.auctionStatus === "ACTIVE"
+                        ? "Teklif Ver"
+                        : "Teklif Ver (Ön Teklif)"}
                 </button>
               ) : (
                 <button
@@ -486,21 +542,41 @@ const ProductSection: React.FC<ProductSectionProps> = ({
                 <>
                   {/* Countdown controls for auction products */}
                   {activeProductBid.auctionStatus === "PENDING" && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleStartCountdown(60)}
-                        disabled={isStartingCountdown}
-                        className="flex-1 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors disabled:opacity-50"
-                      >
-                        {isStartingCountdown ? (
-                          <div className="flex items-center justify-center">
-                            <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                            Başlatılıyor...
-                          </div>
-                        ) : (
-                          `Açık Arttırma Başlat (60s) - ${activeProductBid.highestBidder ? `En yüksek: ${formatPrice(activeProductBid.product.currentPrice)}` : 'Henüz teklif yok'}`
-                        )}
-                      </button>
+                    <div className="flex flex-col gap-2">
+                      {/* Info about current bids */}
+                      <div className="text-xs text-white/70 text-center py-1 bg-black/20 rounded">
+                        {activeProductBid.bidCount > 0
+                          ? `${activeProductBid.bidCount} ön teklif alındı - En yüksek: ${formatPrice(activeProductBid.product.currentPrice)}`
+                          : "Henüz ön teklif yok - İzleyiciler teklif verebilir"}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleStartCountdown(60)}
+                          disabled={isStartingCountdown || isCancellingAuction}
+                          className="flex-1 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+                        >
+                          {isStartingCountdown ? (
+                            <div className="flex items-center justify-center">
+                              <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                              Başlatılıyor...
+                            </div>
+                          ) : (
+                            "Geri Sayımı Başlat (60s)"
+                          )}
+                        </button>
+                        <button
+                          onClick={handleCancelAuction}
+                          disabled={isCancellingAuction || isStartingCountdown}
+                          className="py-2 px-3 bg-red-600/80 text-white text-sm rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+                          title="Açık arttırmayı iptal et"
+                        >
+                          {isCancellingAuction ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <X className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
 

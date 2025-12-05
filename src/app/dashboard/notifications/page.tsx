@@ -5,7 +5,7 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { Bell, CheckCircle, AlertCircle, MessageCircle, RefreshCw, Check, Filter, ChevronRight, Info, ShoppingBag } from 'lucide-react';
+import { Bell, CheckCircle, AlertCircle, MessageCircle, RefreshCw, Check, Filter, ChevronRight, Info, ShoppingBag, Package, Video } from 'lucide-react';
 
 interface Notification {
   id: string;
@@ -136,9 +136,11 @@ export default function NotificationsPage() {
       case 'PURCHASE':
         return <ShoppingBag className="h-6 w-6 text-orange-500" />;
       case 'STREAM_STARTED':
-        return <Bell className="h-6 w-6 text-purple-600" />;
+        return <Video className="h-6 w-6 text-purple-600" />;
       case 'LIVE_STREAM_PURCHASE':
         return <ShoppingBag className="h-6 w-6 text-green-500" />;
+      case 'NEW_PRODUCT':
+        return <Package className="h-6 w-6 text-emerald-500" />;
       default:
         return <Bell className="h-6 w-6 text-gray-500" />;
     }
@@ -161,10 +163,11 @@ export default function NotificationsPage() {
 
   const notificationTypes = [
     { id: 'MESSAGE', label: 'Mesajlar', icon: <MessageCircle className="h-4 w-4" /> },
+    { id: 'NEW_PRODUCT', label: 'Yeni Ürünler', icon: <Package className="h-4 w-4" /> },
     { id: 'BID_WON', label: 'Kazanılanlar', icon: <CheckCircle className="h-4 w-4" /> },
     { id: 'BID_OUTBID', label: 'Teklifler', icon: <AlertCircle className="h-4 w-4" /> },
     { id: 'PURCHASE', label: 'Satın Alımlar', icon: <ShoppingBag className="h-4 w-4" /> },
-    { id: 'STREAM_STARTED', label: 'Canlı Yayınlar', icon: <Bell className="h-4 w-4" /> },
+    { id: 'STREAM_STARTED', label: 'Canlı Yayınlar', icon: <Video className="h-4 w-4" /> },
     { id: 'LIVE_STREAM_PURCHASE', label: 'Canlı Yayın Satışları', icon: <ShoppingBag className="h-4 w-4" /> },
     { id: 'SYSTEM', label: 'Sistem', icon: <Info className="h-4 w-4" /> }
   ];
@@ -383,9 +386,13 @@ export default function NotificationsPage() {
                       ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
                       : notification.type === 'BID_WON'
                         ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                        : notification.type === 'PURCHASE'
+                        : notification.type === 'PURCHASE' || notification.type === 'LIVE_STREAM_PURCHASE'
                           ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                          : 'bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400'
+                          : notification.type === 'NEW_PRODUCT'
+                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : notification.type === 'STREAM_STARTED'
+                              ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-900/30 dark:text-gray-400'
                     } shadow-sm`}>
                     {getNotificationIcon(notification.type)}
                   </div>
@@ -401,6 +408,7 @@ export default function NotificationsPage() {
                       {notification.type === 'PURCHASE' && 'Satın Alma Başarılı'}
                       {notification.type === 'STREAM_STARTED' && 'Yayın Başladı'}
                       {notification.type === 'LIVE_STREAM_PURCHASE' && 'Canlı Yayın Satışı'}
+                      {notification.type === 'NEW_PRODUCT' && 'Yeni Ürün Eklendi'}
                     </h3>
                     <div className="flex items-center gap-2">
                       <time className="text-xs text-[var(--muted-foreground)] whitespace-nowrap px-2 py-1 rounded-full bg-[var(--secondary)]/10">
@@ -424,7 +432,7 @@ export default function NotificationsPage() {
                             ? `/dashboard/messages/${notification.relatedId}`
                             : notification.type === 'BID_WON'
                               ? '/dashboard/won-auctions'
-                              : notification.type === 'BID_OUTBID'
+                              : notification.type === 'BID_OUTBID' || notification.type === 'NEW_PRODUCT'
                                 ? `/products/${notification.relatedId}`
                                 : notification.type === 'STREAM_STARTED'
                                   ? `/live-streams/${notification.relatedId}`
@@ -432,7 +440,7 @@ export default function NotificationsPage() {
                         }
                         className="text-sm text-[var(--primary)] hover:underline flex items-center"
                       >
-                        Detayları Gör <ChevronRight className="h-4 w-4" />
+                        {notification.type === 'NEW_PRODUCT' ? 'Ürüne Git' : notification.type === 'STREAM_STARTED' ? 'Yayına Git' : 'Detayları Gör'} <ChevronRight className="h-4 w-4" />
                       </Link>
                     )}
 

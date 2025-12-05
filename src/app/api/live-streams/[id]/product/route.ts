@@ -368,7 +368,10 @@ export async function PUT(
         // Only allow countdown actions for auction products
         if (!product.isAuctionMode) {
           return NextResponse.json(
-            { error: "Countdown actions are only available for auction products" },
+            {
+              error:
+                "Countdown actions are only available for auction products",
+            },
             { status: 400 }
           );
         }
@@ -384,7 +387,9 @@ export async function PUT(
         });
 
         // Calculate starting price: use highest bid if exists, otherwise use base price
-        const startingPrice = highestBidSoFar ? highestBidSoFar.amount : product.basePrice;
+        const startingPrice = highestBidSoFar
+          ? highestBidSoFar.amount
+          : product.basePrice;
 
         updatedProduct = await prisma.liveStreamProduct.update({
           where: { id: productId },
@@ -407,7 +412,9 @@ export async function PUT(
               duration: duration,
               endTime: endTime.toISOString(),
               startingPrice: startingPrice,
-              highestBidder: highestBidSoFar ? highestBidSoFar.user?.username : null,
+              highestBidder: highestBidSoFar
+                ? highestBidSoFar.user?.username
+                : null,
             });
         }
 
@@ -417,7 +424,10 @@ export async function PUT(
         // Only allow countdown actions for auction products
         if (!product.isAuctionMode) {
           return NextResponse.json(
-            { error: "Countdown actions are only available for auction products" },
+            {
+              error:
+                "Countdown actions are only available for auction products",
+            },
             { status: 400 }
           );
         }
@@ -441,6 +451,75 @@ export async function PUT(
         }
 
         break;
+
+      case "cancel_auction":
+        // Only allow cancel for auction products in PENDING state (countdown hasn't started yet)
+        if (!product.isAuctionMode) {
+          return NextResponse.json(
+            { error: "Bu işlem sadece açık arttırma ürünleri için geçerlidir" },
+            { status: 400 }
+          );
+        }
+
+        // Check if countdown has already started (product has startTime and endTime)
+        if (product.startTime && product.endTime) {
+          return NextResponse.json(
+            {
+              error:
+                "Geri sayım başladıktan sonra iptal edilemez. Lütfen 'Arttırmayı Sonlandır' seçeneğini kullanın.",
+            },
+            { status: 400 }
+          );
+        }
+
+        // Get bid count for this auction
+        const bidCount = await prisma.liveStreamBid.count({
+          where: { liveStreamProductId: productId },
+        });
+
+        // Delete all bids for this product (refund scenario in real app)
+        if (bidCount > 0) {
+          await prisma.liveStreamBid.deleteMany({
+            where: { liveStreamProductId: productId },
+          });
+        }
+
+        // Delete the product
+        await prisma.liveStreamProduct.delete({
+          where: { id: productId },
+        });
+
+        // Emit socket event
+        if ((global as any).socketIO) {
+          (global as any).socketIO
+            .to(`stream:${streamId}`)
+            .emit("auction-cancelled", {
+              streamId,
+              productId,
+              productName: product.title,
+              bidCount: bidCount,
+              timestamp: new Date().toISOString(),
+            });
+        }
+
+        logger.info(
+          `[API][/api/live-streams/${streamId}/product] Auction cancelled`,
+          {
+            userId: user.id,
+            productId,
+            productName: product.title,
+            bidCount,
+          }
+        );
+
+        return NextResponse.json({
+          success: true,
+          message:
+            bidCount > 0
+              ? `Açık arttırma iptal edildi. ${bidCount} teklif silindi.`
+              : "Açık arttırma iptal edildi.",
+          bidCount,
+        });
 
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
