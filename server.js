@@ -550,5 +550,35 @@ app.prepare().then(() => {
     if (DEBUG_SERVER) {
       console.log(`> Ready on http://${hostname}:${port}`);
     }
+
+    // Schedule cleanup of expired scheduled streams every 10 minutes
+    const CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
+    setInterval(async () => {
+      try {
+        const cleanupUrl = `http://${hostname}:${port}/api/cron/cleanup-streams`;
+        if (DEBUG_SERVER) {
+          console.log(`[Cron] Running scheduled stream cleanup...`);
+        }
+        const response = await fetch(cleanupUrl);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.deletedCount > 0) {
+            console.log(`[Cron] Cleaned up ${result.deletedCount} expired scheduled streams`);
+          }
+        }
+      } catch (error) {
+        console.error("[Cron] Stream cleanup failed:", error.message);
+      }
+    }, CLEANUP_INTERVAL);
+
+    // Run initial cleanup after 30 seconds
+    setTimeout(async () => {
+      try {
+        const cleanupUrl = `http://${hostname}:${port}/api/cron/cleanup-streams`;
+        await fetch(cleanupUrl);
+      } catch (error) {
+        console.error("[Cron] Initial stream cleanup failed:", error.message);
+      }
+    }, 30000);
   });
 });

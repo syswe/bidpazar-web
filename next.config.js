@@ -3,25 +3,28 @@ const nextConfig = {
   output: "standalone",
   reactStrictMode: false, // Disable strict mode to prevent double socket connections in development
   images: {
-    domains: [
-      "localhost",
-      "bidpazar.com",
-      "www.bidpazar.com",
-      "images.unsplash.com",
-      "source.unsplash.com",
-      "img.youtube.com",
-      "picsum.photos",
-      "storage.googleapis.com",
-      "192.168.1.5",
-      "192.168.1.100",
-      "cdn.bidpazar.com",
-      "bidpazar-storage.s3.amazonaws.com",
-      "loremflickr.com",
-      "placekitten.com",
-      "meet.bidpazar.com",
-      "live.bidpazar.com",
+    remotePatterns: [
+      { protocol: 'https', hostname: 'bidpazar.com' },
+      { protocol: 'https', hostname: 'www.bidpazar.com' },
+      { protocol: 'https', hostname: 'cdn.bidpazar.com' },
+      { protocol: 'https', hostname: 'live.bidpazar.com' },
+      { protocol: 'https', hostname: 'meet.bidpazar.com' },
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'source.unsplash.com' },
+      { protocol: 'https', hostname: 'img.youtube.com' },
+      { protocol: 'https', hostname: 'picsum.photos' },
+      { protocol: 'https', hostname: 'storage.googleapis.com' },
+      { protocol: 'https', hostname: 'bidpazar-storage.s3.amazonaws.com' },
+      { protocol: 'https', hostname: 'loremflickr.com' },
+      { protocol: 'https', hostname: 'placekitten.com' },
+      { protocol: 'http', hostname: 'localhost' },
+      { protocol: 'http', hostname: '192.168.1.5' },
+      { protocol: 'http', hostname: '192.168.1.100' },
     ],
-    unoptimized: true,
+    // Enable image optimization with specific settings
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    formats: ['image/webp', 'image/avif'],
   },
   // This option has been moved to experimental in latest Next.js
   // Specify any packages that should not be bundled
@@ -65,7 +68,7 @@ const nextConfig = {
 
     return config;
   },
-  // Configure headers for WebSocket support
+  // Configure headers for WebSocket support and caching
   async headers() {
     return [
       {
@@ -86,6 +89,16 @@ const nextConfig = {
           {
             key: "Access-Control-Allow-Credentials",
             value: "true",
+          },
+        ],
+      },
+      {
+        // Cache uploaded images for 1 year (immutable content)
+        source: "/uploads/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
           },
         ],
       },

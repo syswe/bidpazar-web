@@ -272,14 +272,83 @@ export async function DELETE(
       where: { userId },
     });
 
-    // Delete user's products
+    // Delete user's products (first delete product media)
+    const userProducts = await prisma.product.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    
+    for (const product of userProducts) {
+      await prisma.productMedia.deleteMany({
+        where: { productId: product.id },
+      });
+    }
+    
     await prisma.product.deleteMany({
       where: { userId },
     });
 
-    // Delete user's live streams
+    // Delete user's live streams (first delete related data)
+    const userStreams = await prisma.liveStream.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    
+    for (const stream of userStreams) {
+      // Delete live stream products and their bids
+      const streamProducts = await prisma.liveStreamProduct.findMany({
+        where: { liveStreamId: stream.id },
+        select: { id: true },
+      });
+      
+      for (const product of streamProducts) {
+        await prisma.liveStreamBid.deleteMany({
+          where: { liveStreamProductId: product.id },
+        });
+      }
+      
+      await prisma.liveStreamProduct.deleteMany({
+        where: { liveStreamId: stream.id },
+      });
+      
+      // Delete stream analytics, highlights, rewards
+      await prisma.streamAnalytics.deleteMany({
+        where: { liveStreamId: stream.id },
+      });
+      await prisma.streamHighlight.deleteMany({
+        where: { liveStreamId: stream.id },
+      });
+      await prisma.streamReward.deleteMany({
+        where: { liveStreamId: stream.id },
+      });
+    }
+    
     await prisma.liveStream.deleteMany({
       where: { userId },
+    });
+
+    // Delete user's seller requests
+    await prisma.sellerRequest.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user's follow relationships
+    await prisma.follows.deleteMany({
+      where: {
+        OR: [{ followerId: userId }, { followingId: userId }],
+      },
+    });
+
+    // Delete user's live stream bids
+    await prisma.liveStreamBid.deleteMany({
+      where: { userId },
+    });
+
+    // Delete user's orders
+    await prisma.order.deleteMany({
+      where: {
+        OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
     });
 
     // Finally delete the user

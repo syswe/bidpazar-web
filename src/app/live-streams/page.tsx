@@ -39,7 +39,6 @@ export default function LiveStreamsPage() {
   const token = getToken();
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({});
   const isSeller = user?.userType === "SELLER";
 
   useEffect(() => {
@@ -71,8 +70,8 @@ export default function LiveStreamsPage() {
             stream.status === "LIVE" || stream.status === "active"
               ? "LIVE"
               : stream.status === "SCHEDULED" || stream.status === "scheduled"
-              ? "SCHEDULED"
-              : "ENDED",
+                ? "SCHEDULED"
+                : "ENDED",
         }));
 
         // Filter non-ended streams
@@ -95,49 +94,8 @@ export default function LiveStreamsPage() {
     fetchLiveStreams();
   }, [token]);
 
-  useEffect(() => {
-    if (liveStreams.length === 0) return;
-
-    const fetchViewerCounts = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-        const counts: Record<string, number> = {};
-
-        await Promise.all(
-          liveStreams.map(async (stream) => {
-            try {
-              const response = await fetch(
-                `${apiUrl}/live-streams/${stream.id}/viewers`,
-                {
-                  headers: token ? { Authorization: `Bearer ${token}` } : {},
-                }
-              );
-
-              if (response.ok) {
-                const data = await response.json();
-                counts[stream.id] = data.count;
-              }
-            } catch (error) {
-              console.error(
-                `Error fetching viewer count for stream ${stream.id}:`,
-                error
-              );
-            }
-          })
-        );
-
-        setViewerCounts(counts);
-      } catch (error) {
-        console.error("Error fetching viewer counts:", error);
-      }
-    };
-
-    fetchViewerCounts();
-
-    const intervalId = setInterval(fetchViewerCounts, 10000);
-
-    return () => clearInterval(intervalId);
-  }, [liveStreams, token]);
+  // Viewer counts are managed via Socket.IO on the stream page itself
+  // The listing page now shows 0 viewers initially, which updates when users join streams
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "TBA";
@@ -225,7 +183,7 @@ export default function LiveStreamsPage() {
                           </span>
                         </div>
                       )}
-                      
+
                       {/* Status Badge - Sol üst */}
                       <div className="absolute top-2 left-2">
                         {stream.status === "LIVE" ? (
@@ -252,9 +210,7 @@ export default function LiveStreamsPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                           <span className="font-medium">
-                            {viewerCounts[stream.id] !== undefined
-                              ? viewerCounts[stream.id]
-                              : stream._count?.viewers ?? 0}
+                            {stream._count?.viewers ?? 0}
                           </span>
                         </div>
                       </div>
@@ -288,8 +244,8 @@ export default function LiveStreamsPage() {
                           {stream.status === "SCHEDULED"
                             ? formatDate(stream.startTime)
                             : stream.status === "LIVE"
-                            ? "Yayında"
-                            : "Sona Erdi"}
+                              ? "Yayında"
+                              : "Sona Erdi"}
                         </span>
                       </div>
                     </div>
