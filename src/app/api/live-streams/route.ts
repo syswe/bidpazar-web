@@ -188,6 +188,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check stream limits: max 2 scheduled streams, max 1 live stream
+    const existingStreams = await prisma.liveStream.findMany({
+      where: {
+        userId: user.id,
+        status: { in: ["SCHEDULED", "LIVE"] },
+      },
+    });
+
+    const scheduledCount = existingStreams.filter(s => s.status === "SCHEDULED").length;
+    const liveCount = existingStreams.filter(s => s.status === "LIVE").length;
+
+    // Check if user already has max scheduled streams (2)
+    if (scheduledCount >= 2) {
+      logger.warn(`User ${user.id} has reached max scheduled streams limit (2)`);
+      return NextResponse.json(
+        { error: "En fazla 2 yayın planlayabilirsiniz. Mevcut planlanmış yayınlarınızdan birini silmeniz veya sonlandırmanız gerekmektedir." },
+        { status: 400 }
+      );
+    }
+
+    // Check if user already has a live stream (can have scheduled while live is running)
+    if (liveCount >= 1 && scheduledCount >= 1) {
+      logger.warn(`User ${user.id} has 1 live stream and 1 scheduled stream, cannot create more`);
+      return NextResponse.json(
+        { error: "Aktif bir yayınınız varken en fazla 1 yayın planlayabilirsiniz." },
+        { status: 400 }
+      );
+    }
+
     const validatedData = createStreamSchema.parse(body);
 
     // Convert the partial date format to a complete ISO datetime if it exists

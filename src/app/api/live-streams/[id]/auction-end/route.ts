@@ -95,13 +95,36 @@ export async function POST(
     });
 
     // Create notification for winner if exists
+    let orderId: string | null = null;
+    
     if (winner) {
+      // Generate order number
+      const orderNumber = `BP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+      // Create Order record for auction win
+      const order = await prisma.order.create({
+        data: {
+          orderNumber,
+          buyerId: winner.id,
+          sellerId: auction.liveStream.userId,
+          productId: auction.productId,
+          productTitle: auction.product.title,
+          productImage: null, // Regular products don't have direct imageUrl
+          liveStreamId: streamId,
+          price: auction.bids[0].amount,
+          status: "PENDING",
+          type: "LIVE_STREAM_BID",
+        },
+      });
+      orderId = order.id;
+
+      // Notification for winner with order link
       await prisma.notification.create({
         data: {
           userId: winner.id,
           content: `"${auction.liveStream.title}" canlı yayınında "${auction.product.title}" ürünü için açık arttırmayı ${auction.bids[0].amount} TL ile kazandınız.`,
           type: "LIVE_STREAM_PURCHASE",
-          relatedId: auction.liveStream.userId, // Seller ID for winner to message
+          relatedId: order.id,
           isRead: false,
         },
       });
@@ -116,7 +139,7 @@ export async function POST(
           ? `"${auction.liveStream.title}" canlı yayınınızda eklediğiniz "${auction.product.title}" ürünü ${winner.username} tarafından ${auction.bids[0].amount} TL bedelle satın alındı.`
           : `"${auction.liveStream.title}" canlı yayınınızda "${auction.product.title}" ürünü için açık arttırma sona erdi. Hiç teklif gelmedi.`,
         type: "LIVE_STREAM_PURCHASE",
-        relatedId: winner?.id || null, // Winner ID for seller to message (null if no winner)
+        relatedId: orderId,
         isRead: false,
       },
     });

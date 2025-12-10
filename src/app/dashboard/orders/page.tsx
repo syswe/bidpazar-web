@@ -1,25 +1,74 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Image from 'next/image';
+import Link from 'next/link';
+import { Package, Send, CheckCircle, XCircle, Clock, ShoppingBag, Store, RefreshCw, ChevronDown } from 'lucide-react';
 
 interface Order {
   id: string;
   orderNumber: string;
-  date: string;
-  total: number;
-  status: string;
-  items: {
+  buyerId: string;
+  sellerId: string;
+  productId?: string;
+  productTitle: string;
+  productImage?: string;
+  liveStreamProductId?: string;
+  liveStreamId?: string;
+  price: number;
+  status: 'PENDING' | 'SHIPPING' | 'COMPLETED' | 'CANCELLED';
+  type: 'BUY_NOW' | 'LIVE_STREAM_BID' | 'LIVE_STREAM_STOCK';
+  createdAt: string;
+  updatedAt: string;
+  userRole: 'buyer' | 'seller';
+  buyer: {
     id: string;
-    name: string;
-    quantity: number;
-    price: number;
-    imageUrl: string;
-  }[];
+    username: string;
+    name?: string;
+  };
+  seller: {
+    id: string;
+    username: string;
+    name?: string;
+  };
+  otherParty: {
+    id: string;
+    username: string;
+    name?: string;
+  };
 }
+
+const statusConfig = {
+  PENDING: {
+    label: 'Sipariş Alındı',
+    icon: Clock,
+    color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  },
+  SHIPPING: {
+    label: 'Kargoda',
+    icon: Send,
+    color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  },
+  COMPLETED: {
+    label: 'Tamamlandı',
+    icon: CheckCircle,
+    color: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  },
+  CANCELLED: {
+    label: 'İptal Edildi',
+    icon: XCircle,
+    color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  },
+};
+
+const typeLabels: Record<string, string> = {
+  BUY_NOW: 'Hemen Al',
+  LIVE_STREAM_BID: 'Canlı Yayın Açık Artırma',
+  LIVE_STREAM_STOCK: 'Canlı Yayın Satışı',
+};
 
 export default function Orders() {
   const { user } = useAuth();
@@ -27,74 +76,95 @@ export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'buyer' | 'seller'>('buyer');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
 
-  // Load orders when component mounts
   useEffect(() => {
     if (user) {
       fetchOrders();
     }
-  }, [user]);
+  }, [user, activeTab, statusFilter]);
 
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      // In a real implementation, this would fetch from your API
-      // This is just a placeholder
-      const mockOrders: Order[] = [
-        {
-          id: '1',
-          orderNumber: 'BP-2023-001',
-          date: '2023-09-15',
-          total: 1250.00,
-          status: 'Tamamlandı',
-          items: [
-            {
-              id: '101',
-              name: 'Antika Gümüş Kolye',
-              quantity: 1,
-              price: 750.00,
-              imageUrl: 'https://via.placeholder.com/150'
-            },
-            {
-              id: '102',
-              name: 'El Yapımı Seramik Tabak',
-              quantity: 2,
-              price: 250.00,
-              imageUrl: 'https://via.placeholder.com/150'
-            }
-          ]
-        },
-        {
-          id: '2',
-          orderNumber: 'BP-2023-002',
-          date: '2023-10-20',
-          total: 3500.00,
-          status: 'Kargoda',
-          items: [
-            {
-              id: '103',
-              name: 'Vintage Masa Saati',
-              quantity: 1,
-              price: 3500.00,
-              imageUrl: 'https://via.placeholder.com/150'
-            }
-          ]
-        }
-      ];
-      
-      // Simulate API call
-      setTimeout(() => {
-        setOrders(mockOrders);
+
+      const authData = localStorage.getItem('auth');
+      const token = authData ? JSON.parse(authData).token : null;
+
+      if (!token) {
+        setError('Oturumunuz sona ermiş. Lütfen tekrar giriş yapın.');
         setIsLoading(false);
-      }, 500);
-      
-    } catch (error: any) {
-      setError('Siparişler yüklenirken bir hata oluştu.');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set('role', activeTab);
+      if (statusFilter !== 'all') {
+        params.set('status', statusFilter);
+      }
+
+      const response = await fetch(`/api/orders?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Siparişler yüklenirken bir hata oluştu');
+      }
+
+      const data = await response.json();
+      setOrders(data.orders || []);
+    } catch (err: any) {
+      console.error('Error fetching orders:', err);
+      setError(err.message || 'Siparişler yüklenirken bir hata oluştu.');
+    } finally {
       setIsLoading(false);
+    }
+  };
+
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      setUpdatingOrderId(orderId);
+
+      const authData = localStorage.getItem('auth');
+      const token = authData ? JSON.parse(authData).token : null;
+
+      if (!token) {
+        setError('Oturumunuz sona ermiş. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      const response = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Durum güncellenirken bir hata oluştu');
+      }
+
+      // Update local state
+      setOrders(orders.map(order =>
+        order.id === orderId
+          ? { ...order, status: newStatus as Order['status'] }
+          : order
+      ));
+    } catch (err: any) {
+      console.error('Error updating order status:', err);
+      setError(err.message || 'Durum güncellenirken bir hata oluştu.');
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
@@ -103,118 +173,245 @@ export default function Orders() {
     setShowOrderDetails(true);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Tamamlandı':
-        return 'bg-green-100 text-green-800';
-      case 'Kargoda':
-        return 'bg-blue-100 text-blue-800';
-      case 'Beklemede':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'İptal Edildi':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
+
+  const filteredOrders = orders;
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[var(--background)]">
         <div className="max-w-6xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-[var(--foreground)]">Siparişlerim</h1>
+            <h1 className="text-3xl font-bold text-[var(--foreground)] flex items-center gap-3">
+              <Package className="h-8 w-8 text-[var(--accent)]" />
+              Siparişlerim
+            </h1>
             <p className="mt-2 text-sm text-[var(--foreground)] opacity-70">
-              Geçmiş siparişlerinizi ve durumlarını görüntüleyin.
+              Aldığınız ve sattığınız ürünlerin siparişlerini yönetin.
             </p>
           </div>
-          
+
+          {/* Tabs */}
+          <div className="flex items-center gap-2 mb-6">
+            <button
+              onClick={() => setActiveTab('buyer')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all ${activeTab === 'buyer'
+                ? 'bg-[var(--accent)] text-white shadow-md'
+                : 'bg-[var(--secondary)]/30 text-[var(--foreground)] hover:bg-[var(--secondary)]/50'
+                }`}
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Aldığım Ürünler
+            </button>
+            <button
+              onClick={() => setActiveTab('seller')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all ${activeTab === 'seller'
+                ? 'bg-[var(--accent)] text-white shadow-md'
+                : 'bg-[var(--secondary)]/30 text-[var(--foreground)] hover:bg-[var(--secondary)]/50'
+                }`}
+            >
+              <Store className="h-4 w-4" />
+              Sattığım Ürünler
+            </button>
+
+            <div className="ml-auto flex items-center gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+              >
+                <option value="all">Tüm Durumlar</option>
+                <option value="PENDING">Sipariş Alındı</option>
+                <option value="SHIPPING">Kargoda</option>
+                <option value="COMPLETED">Tamamlandı</option>
+                <option value="CANCELLED">İptal Edildi</option>
+              </select>
+
+              <button
+                onClick={fetchOrders}
+                className="p-2.5 rounded-lg bg-[var(--secondary)]/30 text-[var(--foreground)] hover:bg-[var(--secondary)]/50"
+                title="Yenile"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
           {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md border border-red-200">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded-md border border-red-200 dark:border-red-800">
               {error}
+              <button
+                onClick={() => setError(null)}
+                className="ml-4 text-sm underline"
+              >
+                Kapat
+              </button>
             </div>
           )}
-          
+
           {isLoading ? (
             <div className="bg-[var(--background)] p-12 rounded-2xl border border-[var(--border)] shadow-sm text-center">
               <div className="inline-block w-8 h-8 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-4"></div>
               <p className="text-[var(--foreground)] font-medium">Siparişleriniz yükleniyor...</p>
             </div>
-          ) : orders.length === 0 ? (
+          ) : filteredOrders.length === 0 ? (
             <div className="bg-[var(--background)] p-12 rounded-2xl border border-[var(--border)] shadow-sm text-center">
               <div className="w-16 h-16 bg-[var(--muted)] rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                </svg>
+                {activeTab === 'buyer' ? (
+                  <ShoppingBag className="h-8 w-8 text-[var(--accent)]" />
+                ) : (
+                  <Store className="h-8 w-8 text-[var(--accent)]" />
+                )}
               </div>
-              <h3 className="text-xl font-semibold text-[var(--foreground)] mb-2">Henüz siparişiniz bulunmuyor</h3>
+              <h3 className="text-xl font-semibold text-[var(--foreground)] mb-2">
+                {activeTab === 'buyer' ? 'Henüz satın aldığınız ürün bulunmuyor' : 'Henüz sattığınız ürün bulunmuyor'}
+              </h3>
               <p className="text-[var(--foreground)] opacity-70 mb-6 max-w-md mx-auto">
-                Ürünlerimizi keşfedin ve ilk siparişinizi oluşturun.
+                {activeTab === 'buyer'
+                  ? 'Ürünlerimizi keşfedin ve ilk alışverişinizi yapın.'
+                  : 'Ürünlerinizi satışa çıkarın ve siparişlerinizi buradan takip edin.'}
               </p>
               <button
                 onClick={() => router.push('/products')}
                 className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg hover:shadow-lg transition-all inline-flex items-center"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-                </svg>
-                Alışverişe Başla
+                <Package className="h-5 w-5 mr-2" />
+                {activeTab === 'buyer' ? 'Alışverişe Başla' : 'Ürün Ekle'}
               </button>
             </div>
           ) : (
             <div className="bg-[var(--background)] rounded-2xl border border-[var(--border)] shadow-sm overflow-hidden">
-              <table className="min-w-full divide-y divide-[var(--border)]">
-                <thead className="bg-[var(--muted)]">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
-                      Sipariş No
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
-                      Tarih
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
-                      Tutar
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
-                      Durum
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
-                      İşlemler
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-[var(--background)] divide-y divide-[var(--border)]">
-                  {orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-[var(--muted)]">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--foreground)]">
-                        {order.orderNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--foreground)]">
-                        {new Date(order.date).toLocaleDateString('tr-TR')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--foreground)]">
-                        {order.total.toLocaleString('tr-TR')} ₺
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}`}>
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--foreground)]">
-                        <button
-                          onClick={() => handleViewOrderDetails(order)}
-                          className="text-[var(--accent)] hover:text-[var(--accent)] hover:underline"
-                        >
-                          Detaylar
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-[var(--border)]">
+                  <thead className="bg-[var(--muted)]">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        Ürün
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        {activeTab === 'buyer' ? 'Satıcı' : 'Alıcı'}
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        Tutar
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        Tarih
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        Durum
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-[var(--foreground)] uppercase tracking-wider">
+                        İşlemler
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="bg-[var(--background)] divide-y divide-[var(--border)]">
+                    {filteredOrders.map((order) => {
+                      const StatusIcon = statusConfig[order.status].icon;
+                      return (
+                        <tr key={order.id} className="hover:bg-[var(--muted)]">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--secondary)]">
+                                {order.productImage ? (
+                                  <Image
+                                    src={order.productImage}
+                                    alt={order.productTitle}
+                                    width={48}
+                                    height={48}
+                                    className="h-full w-full object-cover"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center text-[var(--muted-foreground)]">
+                                    <Package className="h-6 w-6" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-[var(--foreground)]">
+                                  {order.productTitle}
+                                </div>
+                                <div className="text-xs text-[var(--muted-foreground)]">
+                                  {typeLabels[order.type]} • {order.orderNumber}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-[var(--foreground)]">
+                              {order.otherParty.name || order.otherParty.username}
+                            </div>
+                            <div className="text-xs text-[var(--muted-foreground)]">
+                              @{order.otherParty.username}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[var(--foreground)]">
+                            {order.price.toLocaleString('tr-TR')} ₺
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--foreground)]">
+                            {formatDate(order.createdAt)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {activeTab === 'seller' ? (
+                              <div className="relative">
+                                <select
+                                  value={order.status}
+                                  onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                                  disabled={updatingOrderId === order.id}
+                                  className={`appearance-none pl-8 pr-8 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${statusConfig[order.status].color} ${updatingOrderId === order.id ? 'opacity-50 cursor-wait' : ''
+                                    }`}
+                                >
+                                  <option value="PENDING">Sipariş Alındı</option>
+                                  <option value="SHIPPING">Kargoda</option>
+                                  <option value="COMPLETED">Tamamlandı</option>
+                                  <option value="CANCELLED">İptal Edildi</option>
+                                </select>
+                                <StatusIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" />
+                                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" />
+                              </div>
+                            ) : (
+                              <span className={`px-3 py-1.5 inline-flex items-center gap-1.5 text-xs font-semibold rounded-full ${statusConfig[order.status].color}`}>
+                                <StatusIcon className="h-4 w-4" />
+                                {statusConfig[order.status].label}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleViewOrderDetails(order)}
+                                className="text-[var(--accent)] hover:underline"
+                              >
+                                Detaylar
+                              </button>
+                              {order.productId && (
+                                <Link
+                                  href={`/products/${order.productId}`}
+                                  className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                                >
+                                  Ürüne Git
+                                </Link>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-          
+
           <div className="mt-8">
             <button
               onClick={() => router.back()}
@@ -228,76 +425,103 @@ export default function Orders() {
           </div>
         </div>
       </div>
-      
+
       {/* Order Details Modal */}
       {showOrderDetails && selectedOrder && (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" aria-hidden="true"></div>
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              aria-hidden="true"
+              onClick={() => setShowOrderDetails(false)}
+            ></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className="inline-block align-bottom bg-[var(--background)] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full">
-              <div className="bg-[var(--background)] px-4 pt-5 pb-4 sm:p-6">
-                <div className="sm:flex sm:items-start">
-                  <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg leading-6 font-medium text-[var(--foreground)]" id="modal-title">
-                        Sipariş Detayları - {selectedOrder.orderNumber}
-                      </h3>
-                      <span className={`px-2 py-1 text-xs leading-5 font-semibold rounded-full ${getStatusColor(selectedOrder.status)}`}>
-                        {selectedOrder.status}
-                      </span>
+            <div className="inline-block align-bottom bg-[var(--background)] rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-[var(--background)] px-6 pt-6 pb-4">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]" id="modal-title">
+                      Sipariş Detayları
+                    </h3>
+                    <p className="text-sm text-[var(--muted-foreground)]">{selectedOrder.orderNumber}</p>
+                  </div>
+                  <span className={`px-3 py-1.5 inline-flex items-center gap-1.5 text-xs font-semibold rounded-full ${statusConfig[selectedOrder.status].color}`}>
+                    {React.createElement(statusConfig[selectedOrder.status].icon, { className: 'h-4 w-4' })}
+                    {statusConfig[selectedOrder.status].label}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Product */}
+                  <div className="flex items-start gap-4 p-4 bg-[var(--muted)]/50 rounded-lg">
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--secondary)]">
+                      {selectedOrder.productImage ? (
+                        <Image
+                          src={selectedOrder.productImage}
+                          alt={selectedOrder.productTitle}
+                          width={64}
+                          height={64}
+                          className="h-full w-full object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-[var(--muted-foreground)]">
+                          <Package className="h-8 w-8" />
+                        </div>
+                      )}
                     </div>
-                    
-                    <div className="mb-4 flex justify-between text-sm">
-                      <span className="text-[var(--foreground)] opacity-70">Sipariş Tarihi:</span>
-                      <span className="text-[var(--foreground)]">{new Date(selectedOrder.date).toLocaleDateString('tr-TR')}</span>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-[var(--foreground)]">{selectedOrder.productTitle}</h4>
+                      <p className="text-sm text-[var(--muted-foreground)]">{typeLabels[selectedOrder.type]}</p>
+                      <p className="text-lg font-semibold text-[var(--accent)] mt-1">
+                        {selectedOrder.price.toLocaleString('tr-TR')} ₺
+                      </p>
                     </div>
-                    
-                    <div className="border-t border-[var(--border)] py-4">
-                      <h4 className="font-medium text-[var(--foreground)] mb-3">Ürünler</h4>
-                      <div className="space-y-3">
-                        {selectedOrder.items.map(item => (
-                          <div key={item.id} className="flex items-center py-2">
-                            <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--secondary)]">
-                              <Image
-                                src={item.imageUrl}
-                                alt={item.name}
-                                width={64}
-                                height={64}
-                                className="h-full w-full object-cover object-center"
-                                unoptimized={true}
-                              />
-                            </div>
-                            <div className="ml-4 flex-1">
-                              <h5 className="text-sm font-medium text-[var(--foreground)]">{item.name}</h5>
-                              <div className="flex justify-between text-sm mt-1">
-                                <span className="text-[var(--foreground)] opacity-70">
-                                  {item.quantity} x {item.price.toLocaleString('tr-TR')} ₺
-                                </span>
-                                <span className="font-medium text-[var(--foreground)]">
-                                  {(item.quantity * item.price).toLocaleString('tr-TR')} ₺
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-[var(--muted-foreground)]">Satıcı</p>
+                      <p className="font-medium text-[var(--foreground)]">
+                        {selectedOrder.seller.name || selectedOrder.seller.username}
+                      </p>
                     </div>
-                    
-                    <div className="border-t border-[var(--border)] py-4">
-                      <div className="flex justify-between font-medium">
-                        <span className="text-[var(--foreground)]">Toplam Tutar</span>
-                        <span className="text-[var(--accent)]">{selectedOrder.total.toLocaleString('tr-TR')} ₺</span>
-                      </div>
+                    <div>
+                      <p className="text-[var(--muted-foreground)]">Alıcı</p>
+                      <p className="font-medium text-[var(--foreground)]">
+                        {selectedOrder.buyer.name || selectedOrder.buyer.username}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[var(--muted-foreground)]">Sipariş Tarihi</p>
+                      <p className="font-medium text-[var(--foreground)]">
+                        {formatDate(selectedOrder.createdAt)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[var(--muted-foreground)]">Son Güncelleme</p>
+                      <p className="font-medium text-[var(--foreground)]">
+                        {formatDate(selectedOrder.updatedAt)}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="bg-[var(--background)] px-4 py-3 sm:px-6 flex justify-end">
+
+              <div className="bg-[var(--muted)]/30 px-6 py-4 flex justify-end gap-3">
+                {selectedOrder.productId && (
+                  <Link
+                    href={`/products/${selectedOrder.productId}`}
+                    className="px-4 py-2 text-sm font-medium text-[var(--foreground)] bg-[var(--background)] border border-[var(--border)] rounded-lg hover:bg-[var(--secondary)]/50"
+                  >
+                    Ürüne Git
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowOrderDetails(false)}
-                  className="inline-flex justify-center rounded-md border border-[var(--border)] shadow-sm px-4 py-2 bg-[var(--background)] text-base font-medium text-[var(--foreground)] hover:bg-[var(--secondary)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)] sm:text-sm"
+                  className="px-4 py-2 text-sm font-medium text-white bg-[var(--accent)] rounded-lg hover:opacity-90"
                 >
                   Kapat
                 </button>
@@ -308,4 +532,4 @@ export default function Orders() {
       )}
     </ProtectedRoute>
   );
-} 
+}

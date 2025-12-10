@@ -39,12 +39,16 @@ export async function POST(
       );
     }
 
-    // Get the product
+    // Get the product with media
     const product = await prisma.product.findUnique({
       where: { id: productId },
       include: {
         user: {
           select: { id: true, username: true, email: true, name: true },
+        },
+        media: {
+          take: 1,
+          select: { url: true },
         },
       },
     });
@@ -122,14 +126,32 @@ export async function POST(
         });
       }
 
-      // Create a purchase record (you might want to create a Purchase model)
-      // For now, we'll create a notification for the seller
+      // Generate order number
+      const orderNumber = `BP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+      const productImage = product.media?.[0]?.url || null;
+
+      // Create Order record
+      const order = await tx.order.create({
+        data: {
+          orderNumber,
+          buyerId: user.id,
+          sellerId: product.userId,
+          productId: product.id,
+          productTitle: product.title,
+          productImage,
+          price: product.buyNowPrice ?? 0,
+          status: "PENDING",
+          type: "BUY_NOW",
+        },
+      });
+
+      // Create notification for seller with order link
       await tx.notification.create({
         data: {
           userId: product.userId,
           content: `${user.username} kullanıcısı "${product.title}" ürününüzü ${product.buyNowPrice} ₺ karşılığında satın aldı.`,
           type: "PURCHASE",
-          relatedId: productId,
+          relatedId: order.id,
         },
       });
 
@@ -149,18 +171,18 @@ export async function POST(
           id: product.id,
           title: product.title,
         },
-        price: product.buyNowPrice ?? 0, // Default to 0 if buyNowPrice is null
+        price: product.buyNowPrice ?? 0,
         context: "buy-now",
         skipBuyerNotification: true,
       });
 
-      // Create notification for buyer with link to conversation
+      // Create notification for buyer with order link
       await tx.notification.create({
         data: {
           userId: user.id,
-          content: `"${product.title}" ürününü başarıyla satın aldınız. Hemen satıcı ile iletişime geçin.`,
+          content: `"${product.title}" ürününü başarıyla satın aldınız. Siparişlerim sayfasından takip edebilirsiniz.`,
           type: "PURCHASE",
-          relatedId: conversationId,
+          relatedId: order.id,
         },
       });
 

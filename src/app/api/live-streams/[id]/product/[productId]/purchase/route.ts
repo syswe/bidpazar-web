@@ -92,8 +92,8 @@ export async function POST(
       );
     }
 
-    // Create the purchase record (you might want to create a separate Purchase model)
-    // For now, we'll just update the stock and create a record
+    // Create the purchase record and order
+    // Update the stock and create Order record
     const updatedProduct = await prisma.liveStreamProduct.update({
       where: { id: productId },
       data: {
@@ -105,15 +105,36 @@ export async function POST(
       },
     });
 
-    // Create a purchase record (you might want to create a separate Purchase model)
-    // For now, we'll log the purchase
+    const totalPrice = product.currentPrice * quantity;
+
+    // Generate order number
+    const orderNumber = `BP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    // Create Order record
+    const order = await prisma.order.create({
+      data: {
+        orderNumber,
+        buyerId: user.id,
+        sellerId: product.liveStream.userId,
+        liveStreamProductId: productId,
+        liveStreamId: streamId,
+        productTitle: product.title,
+        productImage: product.imageUrl,
+        price: totalPrice,
+        status: "PENDING",
+        type: "LIVE_STREAM_STOCK",
+      },
+    });
+
+    // Log the purchase
     logger.info(
       `[API][/api/live-streams/${streamId}/product/${productId}/purchase] Product purchased`,
       {
         userId: user.id,
         productId,
         quantity,
-        totalPrice: product.currentPrice * quantity,
+        totalPrice,
+        orderId: order.id,
         remainingStock: updatedProduct.stock,
       }
     );
@@ -126,33 +147,31 @@ export async function POST(
         userId: user.id,
         username: user.username,
         quantity,
-        totalPrice: product.currentPrice * quantity,
+        totalPrice,
         remainingStock: updatedProduct.stock,
         timestamp: new Date().toISOString(),
       });
     }
 
-    // Create notifications for buyer and seller
-    const totalPrice = product.currentPrice * quantity;
-    
-    // Notification for buyer (link to seller for messaging)
+    // Create notifications for buyer and seller with order link
+    // Notification for buyer
     await prisma.notification.create({
       data: {
         userId: user.id,
-        content: `"${product.liveStream.title}" canlı yayınında "${product.title}" ürününün (${quantity} adet, ${totalPrice} TL) satın alımı gerçekleşti.`,
+        content: `"${product.liveStream.title}" canlı yayınında "${product.title}" ürününü (${quantity} adet, ${totalPrice} TL) başarıyla satın aldınız.`,
         type: 'LIVE_STREAM_PURCHASE',
-        relatedId: product.liveStream.userId, // Seller ID for buyer to message
+        relatedId: order.id,
         isRead: false,
       },
     });
 
-    // Notification for seller (link to buyer for messaging)
+    // Notification for seller
     await prisma.notification.create({
       data: {
         userId: product.liveStream.userId,
-        content: `"${product.liveStream.title}" canlı yayınınızda eklediğiniz "${product.title}" ürünü ${user.username} tarafından ${totalPrice} TL bedelle satın alındı.`,
+        content: `"${product.liveStream.title}" canlı yayınında "${product.title}" ürünü ${user.username} tarafından ${totalPrice} TL bedelle satın alındı.`,
         type: 'LIVE_STREAM_PURCHASE',
-        relatedId: user.id, // Buyer ID for seller to message
+        relatedId: order.id,
         isRead: false,
       },
     });

@@ -131,7 +131,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Stream not found" }, { status: 404 });
     }
 
-    if (stream.userId !== user.id) {
+    // Check if user is authorized (admin or stream owner)
+    const isAuthorized = user.isAdmin || stream.userId === user.id;
+
+    if (!isAuthorized) {
       return NextResponse.json(
         { error: "Unauthorized to delete this stream" },
         { status: 403 }

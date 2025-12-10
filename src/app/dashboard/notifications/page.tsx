@@ -428,19 +428,21 @@ export default function NotificationsPage() {
                     {notification.relatedId && notification.type !== 'AUCTION_ENDED' && (
                       <Link
                         href={
-                          notification.type === 'MESSAGE' || notification.type === 'PURCHASE' || notification.type === 'LIVE_STREAM_PURCHASE'
+                          notification.type === 'MESSAGE'
                             ? `/dashboard/messages/${notification.relatedId}`
-                            : notification.type === 'BID_WON'
-                              ? '/dashboard/won-auctions'
-                              : notification.type === 'BID_OUTBID' || notification.type === 'NEW_PRODUCT'
-                                ? `/products/${notification.relatedId}`
-                                : notification.type === 'STREAM_STARTED'
-                                  ? `/live-streams/${notification.relatedId}`
-                                  : '#'
+                            : notification.type === 'PURCHASE' || notification.type === 'LIVE_STREAM_PURCHASE' || notification.type === 'ORDER_STATUS'
+                              ? `/dashboard/orders`
+                              : notification.type === 'BID_WON'
+                                ? '/dashboard/won-auctions'
+                                : notification.type === 'BID_OUTBID' || notification.type === 'NEW_PRODUCT'
+                                  ? `/products/${notification.relatedId}`
+                                  : notification.type === 'STREAM_STARTED'
+                                    ? `/live-streams/${notification.relatedId}`
+                                    : '#'
                         }
                         className="text-sm text-[var(--primary)] hover:underline flex items-center"
                       >
-                        {notification.type === 'NEW_PRODUCT' ? 'Ürüne Git' : notification.type === 'STREAM_STARTED' ? 'Yayına Git' : 'Detayları Gör'} <ChevronRight className="h-4 w-4" />
+                        {notification.type === 'NEW_PRODUCT' ? 'Ürüne Git' : notification.type === 'STREAM_STARTED' ? 'Yayına Git' : notification.type === 'PURCHASE' || notification.type === 'LIVE_STREAM_PURCHASE' || notification.type === 'ORDER_STATUS' ? 'Siparişlere Git' : 'Detayları Gör'} <ChevronRight className="h-4 w-4" />
                       </Link>
                     )}
 

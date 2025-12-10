@@ -54,6 +54,10 @@ model User {
   // Follow system
   followers        Follows[]          @relation("following")
   following        Follows[]          @relation("follower")
+  
+  // Order system
+  buyerOrders      Order[]            @relation("BuyerOrders")
+  sellerOrders     Order[]            @relation("SellerOrders")
 }
 
 model Follows {
@@ -470,4 +474,42 @@ enum StoryType {
   TEXT
   IMAGE
   VIDEO
+}
+
+model Order {
+  id                  String      @id @default(cuid())
+  orderNumber         String      @unique
+  buyerId             String
+  sellerId            String
+  productId           String?     // For regular product purchases
+  productTitle        String      // Store product title for reference
+  productImage        String?     // Store product image URL
+  liveStreamProductId String?     // For live stream purchases
+  liveStreamId        String?     // Reference to live stream if applicable
+  price               Float
+  status              OrderStatus @default(PENDING)
+  type                OrderType   @default(BUY_NOW)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  
+  buyer               User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller              User        @relation("SellerOrders", fields: [sellerId], references: [id])
+  
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum OrderStatus {
+  PENDING     // Sipariş Alındı
+  SHIPPING    // Kargoda
+  COMPLETED   // Tamamlandı
+  CANCELLED   // İptal Edildi
+}
+
+enum OrderType {
+  BUY_NOW           // Regular product buy-now
+  LIVE_STREAM_BID   // Live stream auction win
+  LIVE_STREAM_STOCK // Live stream stock purchase
 }

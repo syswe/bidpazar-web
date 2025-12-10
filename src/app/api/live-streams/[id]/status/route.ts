@@ -122,6 +122,27 @@ export async function POST(
       return NextResponse.json({ error: "Stream not found" }, { status: 404 });
     }
 
+    // Check if trying to go LIVE and user already has an active live stream
+    if (status === "LIVE" && stream.status !== "LIVE") {
+      const existingLiveStream = await prisma.liveStream.findFirst({
+        where: {
+          userId: stream.userId,
+          status: "LIVE",
+          id: { not: id }, // Exclude current stream
+        },
+      });
+
+      if (existingLiveStream) {
+        logger.warn(
+          `User ${stream.userId} already has a live stream: ${existingLiveStream.id}`
+        );
+        return NextResponse.json(
+          { error: "Aynı anda sadece 1 yayın açabilirsiniz. Önce mevcut yayınınızı sonlandırın." },
+          { status: 400 }
+        );
+      }
+    }
+
     // Update stream status
     const updatedStream = await prisma.liveStream.update({
       where: { id },
