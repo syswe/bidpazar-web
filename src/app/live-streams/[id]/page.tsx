@@ -326,23 +326,27 @@ export default function LiveStreamPage() {
         {/* Debug Info for Error State */}
         <AuthDebugInfo />
 
-        <div className="text-center space-y-4">
-          <p className="text-red-500">Error: {error || streamDetailsError}</p>
-          <div className="space-y-2">
+        <div className="text-center space-y-4 max-w-lg mx-4">
+          <div className="bg-red-900/50 border border-red-500/50 rounded-xl p-6 text-left">
+            <pre className="text-red-200 whitespace-pre-wrap font-sans text-sm leading-relaxed">
+              {error || streamDetailsError}
+            </pre>
+          </div>
+          <div className="space-y-2 flex flex-col sm:flex-row gap-2 justify-center">
             <button
               onClick={() => {
                 setError(null);
                 window.location.reload();
               }}
-              className="px-4 py-2 bg-green-600 rounded hover:bg-green-700 transition-colors mr-2"
+              className="px-6 py-3 bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium"
             >
-              Try Again
+              Tekrar Dene
             </button>
             <button
               onClick={() => router.push("/live-streams")}
-              className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+              className="px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              Back to Streams
+              Yayınlara Dön
             </button>
           </div>
         </div>
@@ -402,32 +406,141 @@ export default function LiveStreamPage() {
         onError={(error: any) => {
           console.error("LiveKit room error:", error);
           const browserInfo = getBrowserInfo();
+          const errorMessage = (error.message || error.toString()).toLowerCase();
 
-          // Handle specific WebRTC connection issues with browser-specific messages
-          if (error.message?.includes("could not establish pc connection")) {
-            if (browserInfo.isFirefox) {
-              setError(
-                "Firefox WebRTC bağlantı hatası: Tarayıcı ayarlarınızı kontrol edin veya Chrome/Edge deneyin."
-              );
-            } else {
-              setError(
-                "WebRTC bağlantısı kurulamadı. İnternet bağlantınızı kontrol edin ve tekrar deneyin."
-              );
-            }
-          } else if (error.message?.includes("AudioContext")) {
+          // Cihaz bulunamadı hatası
+          if (errorMessage.includes('notfounderror') ||
+            errorMessage.includes('device not found') ||
+            errorMessage.includes('requested device not found')) {
             setError(
-              "Ses hatası: Sayfaya tıklayın ve ses iznini verin, sonra tekrar deneyin."
+              `🎥 Kamera veya Mikrofon Bulunamadı\n\n` +
+              `Bilgisayarınıza bağlı bir kamera veya mikrofon tespit edilemedi.\n\n` +
+              `Çözüm:\n` +
+              `• Kamera/mikrofonun bilgisayara bağlı olduğunu kontrol edin\n` +
+              `• USB cihazları çıkarıp tekrar takın\n` +
+              `• Başka bir uygulama kamerayı kullanıyorsa kapatın\n` +
+              `• Cihaz yöneticisinden cihazların çalıştığını doğrulayın`
             );
-          } else if (error.message?.includes("getUserMedia")) {
-            setError(
-              "Kamera/mikrofon erişim hatası: Tarayıcı izinlerini kontrol edin."
-            );
-          } else {
-            setError(
-              `Bağlantı başarısız (${browserInfo.name}): ${error.message}`
-            );
+            return;
           }
-          // Don't redirect on error, let user choose what to do
+
+          // İzin reddedildi hatası  
+          if (errorMessage.includes('notallowederror') ||
+            errorMessage.includes('permission denied') ||
+            errorMessage.includes('permission dismissed')) {
+            setError(
+              `🔒 Kamera/Mikrofon İzni Gerekli\n\n` +
+              `Tarayıcınız kamera veya mikrofona erişim izni vermedi.\n\n` +
+              `Çözüm:\n` +
+              `• Adres çubuğundaki 🔒 veya kamera simgesine tıklayın\n` +
+              `• "Kamera" ve "Mikrofon" için "İzin Ver" seçin\n` +
+              `• Sayfayı yenileyin ve tekrar deneyin\n` +
+              `• Chrome: Ayarlar > Gizlilik ve Güvenlik > Site Ayarları`
+            );
+            return;
+          }
+
+          // Cihaz kullanımda hatası
+          if (errorMessage.includes('notreadableerror') ||
+            errorMessage.includes('could not start video source') ||
+            errorMessage.includes('device in use')) {
+            setError(
+              `⚠️ Kamera/Mikrofon Başka Uygulama Tarafından Kullanılıyor\n\n` +
+              `Cihazlarınız başka bir program tarafından kullanılıyor olabilir.\n\n` +
+              `Çözüm:\n` +
+              `• Zoom, Skype, Discord gibi uygulamaları kapatın\n` +
+              `• Aynı tarayıcıda açık diğer video/sesli görüşme sekmelerini kapatın\n` +
+              `• Bilgisayarınızı yeniden başlatın`
+            );
+            return;
+          }
+
+          // Bağlantı koptu/kesildi hatası
+          if (errorMessage.includes('disconnect') ||
+            errorMessage.includes('connection closed') ||
+            errorMessage.includes('initiated disconnect')) {
+            setError(
+              `🔌 Bağlantı Kesildi\n\n` +
+              `Sunucu ile bağlantı koptu. Bu genellikle ağ problemlerinden kaynaklanır.\n\n` +
+              `Çözüm:\n` +
+              `• İnternet bağlantınızı kontrol edin\n` +
+              `• Wi-Fi yerine kablolu bağlantı deneyin\n` +
+              `• VPN kullanıyorsanız kapatmayı deneyin\n` +
+              `• "Tekrar Dene" butonuna tıklayın`
+            );
+            return;
+          }
+
+          // WebSocket hatası
+          if (errorMessage.includes('websocket') ||
+            errorMessage.includes('ws://') ||
+            errorMessage.includes('wss://')) {
+            setError(
+              `🌐 Sunucu Bağlantı Hatası\n\n` +
+              `Yayın sunucusuna bağlanılamadı.\n\n` +
+              `Çözüm:\n` +
+              `• İnternet bağlantınızı kontrol edin\n` +
+              `• Birkaç dakika bekleyip tekrar deneyin\n` +
+              `• Güvenlik duvarı veya antivirüs yazılımını geçici olarak kapatın\n` +
+              `• Farklı bir tarayıcı deneyin (Chrome veya Edge önerilir)`
+            );
+            return;
+          }
+
+          // ICE/WebRTC bağlantı hatası
+          if (errorMessage.includes('ice') ||
+            errorMessage.includes('could not establish pc connection') ||
+            errorMessage.includes('peer connection')) {
+            setError(
+              `🔗 WebRTC Bağlantı Hatası\n\n` +
+              `Video aktarımı için gerekli bağlantı kurulamadı.\n\n` +
+              `Çözüm:\n` +
+              `• VPN kullanıyorsanız kapatın\n` +
+              `• Şirket ağındaysanız IT departmanına başvurun\n` +
+              `• Kısıtlayıcı güvenlik duvarlarını kontrol edin\n` +
+              `• ${browserInfo.isFirefox ? 'Chrome veya Edge tarayıcısını deneyin' : 'Sayfayı yenileyin'}`
+            );
+            return;
+          }
+
+          // Ses/Audio hatası
+          if (errorMessage.includes('audio') ||
+            errorMessage.includes('audiocontext')) {
+            setError(
+              `🔊 Ses Sistemi Hatası\n\n` +
+              `Tarayıcınızın ses sistemi başlatılamadı.\n\n` +
+              `Çözüm:\n` +
+              `• Sayfaya bir kez tıklayın (ses izni için gerekli)\n` +
+              `• Tarayıcınızın ses ayarlarını kontrol edin\n` +
+              `• Sayfayı yenileyin ve tekrar deneyin`
+            );
+            return;
+          }
+
+          // Media/getUserMedia hatası
+          if (errorMessage.includes('getusermedia') ||
+            errorMessage.includes('media')) {
+            setError(
+              `📹 Medya Erişim Hatası\n\n` +
+              `Kamera veya mikrofona erişilemedi.\n\n` +
+              `Çözüm:\n` +
+              `• Tarayıcı izinlerini kontrol edin\n` +
+              `• Cihazların düzgün bağlı olduğundan emin olun\n` +
+              `• Başka uygulamalar cihazları kullanıyorsa kapatın`
+            );
+            return;
+          }
+
+          // Genel/Bilinmeyen hata
+          setError(
+            `❌ Yayın Bağlantı Hatası (${browserInfo.name})\n\n` +
+            `Beklenmeyen bir hata oluştu: ${error.message || 'Bilinmeyen hata'}\n\n` +
+            `Çözüm:\n` +
+            `• Sayfayı yenileyin\n` +
+            `• İnternet bağlantınızı kontrol edin\n` +
+            `• Kamera/mikrofon izinlerini kontrol edin\n` +
+            `• Farklı bir tarayıcı deneyin`
+          );
         }}
       >
         <CustomLiveStreamUI
