@@ -59,6 +59,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") as StreamStatus | null;
     const userId = searchParams.get("userId");
     const onlyActive = searchParams.get("onlyActive") === "true"; // New parameter for homepage
+    const slim = searchParams.get("slim") === "true"; // Optimized response for listing pages
 
     // Build the where clause with proper typing
     const where: Prisma.LiveStreamWhereInput = {};
@@ -75,6 +76,46 @@ export async function GET(request: Request) {
       where.status = "LIVE"; // Only get LIVE streams for homepage
     }
 
+    // Slim mode: optimized for listing pages - only return essential data with counts
+    if (slim) {
+      const streams = await prisma.liveStream.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          thumbnailUrl: true,
+          status: true,
+          startTime: true,
+          endTime: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              listings: true,
+              viewers: true,
+            },
+          },
+        },
+        orderBy: [
+          { status: "asc" }, // LIVE streams first
+          { createdAt: "desc" },
+        ],
+      });
+
+      logger.info(`API GET /api/live-streams (slim) returned ${streams.length} streams`);
+      return NextResponse.json(streams);
+    }
+
+    // Full mode: include listings with product details (for stream detail pages)
     const streams = await prisma.liveStream.findMany({
       where,
       include: {

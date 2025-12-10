@@ -130,8 +130,8 @@ export default function BidModal({ isOpen, onClose, product }: BidModalProps) {
                 src={imageUrl}
                 alt={product.title}
                 fill
+                sizes="80px"
                 className="object-cover"
-                unoptimized={true}
               />
             </div>
             <div className="flex-1 min-w-0">

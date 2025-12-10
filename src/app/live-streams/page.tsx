@@ -42,14 +42,20 @@ export default function LiveStreamsPage() {
   const isSeller = user?.userType === "SELLER";
 
   useEffect(() => {
+    // Prevent double-fetching in React Strict Mode and Next.js hydration
+    const abortController = new AbortController();
+
     const fetchLiveStreams = async () => {
       try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-        console.log("Fetching live streams from:", `${apiUrl}/live-streams`);
+        // Use slim=true for listing page - only fetches essential data with counts
+        // This reduces response size from ~6MB to ~100KB
+        const url = `${apiUrl}/live-streams?slim=true`;
 
-        const response = await fetch(`${apiUrl}/live-streams`, {
+        const response = await fetch(url, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-          next: { revalidate: 60 },
+          signal: abortController.signal,
+          cache: 'no-store', // Ensure fresh data
         });
 
         if (!response.ok) {
@@ -61,7 +67,6 @@ export default function LiveStreamsPage() {
         }
 
         const data = await response.json();
-        console.log("Received live streams data:", data);
 
         // Map API status values to UI status values
         const mappedStreams = data.map((stream: any) => ({
@@ -79,19 +84,29 @@ export default function LiveStreamsPage() {
           (stream: LiveStream) => stream.status !== "ENDED"
         );
 
-        console.log("Filtered active streams:", activeStreams);
         setLiveStreams(activeStreams);
-      } catch (error) {
+      } catch (error: any) {
+        // Don't show error if request was aborted (component unmounted)
+        if (error.name === 'AbortError') {
+          return;
+        }
         console.error("Error fetching live streams:", error);
         toast.error(
-          "Failed to load live streams. Please check browser console for details."
+          "Yayınlar yüklenirken bir hata oluştu."
         );
       } finally {
-        setLoading(false);
+        if (!abortController.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchLiveStreams();
+
+    // Cleanup: abort the request if component unmounts (prevents double fetch)
+    return () => {
+      abortController.abort();
+    };
   }, [token]);
 
   // Viewer counts are managed via Socket.IO on the stream page itself
@@ -173,7 +188,6 @@ export default function LiveStreamsPage() {
                           fill
                           sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
                           className="object-cover transition-transform duration-500 group-hover:scale-105"
-                          unoptimized={true}
                           priority={index < 4}
                         />
                       ) : (

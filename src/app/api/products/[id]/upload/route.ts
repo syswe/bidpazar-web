@@ -5,6 +5,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/lib/logger';
+import { convertToWebP, isSupportedImageFormat } from '@/lib/image-utils';
 
 export async function POST(
   request: Request,
@@ -135,11 +136,62 @@ export async function POST(
 
     for (const file of files) {
       const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
+      let buffer: Buffer = Buffer.from(bytes) as Buffer;
+      let filename: string;
+      let mediaType: 'image' | 'video';
 
-      // Generate unique filename
-      const extension = file.name.split('.').pop();
-      const filename = `${uuidv4()}.${extension}`;
+      // Check if this is an image that should be converted to WebP
+      if (file.type.startsWith('image/') && isSupportedImageFormat(file.type)) {
+        try {
+          logger.debug('Converting image to WebP', {
+            productId: id,
+            originalName: file.name,
+            originalSize: buffer.length,
+            mimeType: file.type,
+          });
+
+          const conversionResult = await convertToWebP(buffer, {
+            quality: 85,
+            maxWidth: 1920,
+            maxHeight: 1920,
+          });
+
+          buffer = conversionResult.buffer;
+          filename = `${uuidv4()}.webp`;
+          mediaType = 'image';
+
+          logger.info('Image converted to WebP successfully', {
+            productId: id,
+            originalName: file.name,
+            originalSize: conversionResult.originalSize,
+            convertedSize: conversionResult.convertedSize,
+            compressionRatio: `${conversionResult.compressionRatio}%`,
+            dimensions: `${conversionResult.width}x${conversionResult.height}`,
+            newFilename: filename,
+          });
+        } catch (conversionError: any) {
+          // If conversion fails, save original file
+          logger.warn('WebP conversion failed, saving original file', {
+            productId: id,
+            originalName: file.name,
+            error: conversionError.message,
+          });
+          const extension = file.name.split('.').pop();
+          filename = `${uuidv4()}.${extension}`;
+          mediaType = 'image';
+        }
+      } else if (file.type.startsWith('video/')) {
+        // Video files - save as-is
+        const extension = file.name.split('.').pop();
+        filename = `${uuidv4()}.${extension}`;
+        mediaType = 'video';
+      } else {
+        // Other file types - save as-is
+        const extension = file.name.split('.').pop();
+        filename = `${uuidv4()}.${extension}`;
+        mediaType = file.type.startsWith('image/') ? 'image' : 'video';
+      }
+
       const path = join(uploadsDir, filename);
 
       logger.debug('Writing file to disk', { 
@@ -164,7 +216,7 @@ export async function POST(
         data: {
           productId: id,
           url: `/uploads/${filename}`,
-          type: file.type.startsWith('image/') ? 'image' : 'video',
+          type: mediaType,
         },
       });
 

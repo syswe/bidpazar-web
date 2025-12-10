@@ -96,8 +96,8 @@ export default function FeaturedAuctionCard({ product }: FeaturedAuctionCardProp
             src={imageUrl}
             alt={product.title}
             fill
+            sizes="(max-width: 768px) 50vw, 33vw"
             className="object-cover group-hover:scale-110 transition-transform duration-500"
-            unoptimized={true}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[var(--secondary)] to-[var(--muted)]">

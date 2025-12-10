@@ -121,8 +121,8 @@ export default function BuyNowModal({ isOpen, onClose, product }: BuyNowModalPro
                 src={imageUrl}
                 alt={product.title}
                 fill
+                sizes="96px"
                 className="object-cover"
-                unoptimized={true}
               />
             </div>
             <div className="flex-1 min-w-0">

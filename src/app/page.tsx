@@ -165,8 +165,8 @@ const StoryViewer = ({
                     src={src}
                     alt="Story"
                     fill
+                    sizes="(max-width: 768px) 100vw, 500px"
                     className="object-contain"
-                    unoptimized={true}
                   />
                 );
               })()
@@ -371,8 +371,8 @@ const StoryCreateModal = ({ isOpen, onClose, onCreateStory }: {
                     src={imagePreview}
                     alt="Story preview"
                     fill
+                    sizes="400px"
                     className="object-cover"
-                    unoptimized={true}
                   />
                   <button
                     type="button"
@@ -860,8 +860,8 @@ export default function Home() {
                                     src={src}
                                     alt={(story.user?.username || story.user?.name || 'Hikaye') + ' hikayesi'}
                                     fill
+                                    sizes="64px"
                                     className="object-cover rounded-full"
-                                    unoptimized={true}
                                   />
                                 );
                               })()}
@@ -983,8 +983,8 @@ export default function Home() {
                         src={stream.thumbnailUrl}
                         alt={stream.title}
                         fill
+                        sizes="(max-width: 768px) 100vw, 350px"
                         className="object-cover"
-                        unoptimized={true}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">

@@ -28,11 +28,11 @@ export default function WonAuctions() {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Fetch real data from API
       const auctions = await getUserWonAuctions();
       setWonAuctions(auctions);
-      
+
     } catch (error: any) {
       setError(error.message || 'Kazanılan ihaleler yüklenirken bir hata oluştu.');
     } finally {
@@ -88,13 +88,13 @@ export default function WonAuctions() {
               Açık artırmalarda kazandığınız ürünleri ve durumlarını görüntüleyin.
             </p>
           </div>
-          
+
           {error && (
             <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md border border-red-200">
               {error}
             </div>
           )}
-          
+
           {isLoading ? (
             <div className="bg-[var(--background)] p-12 rounded-2xl border border-[var(--border)] shadow-sm text-center">
               <div className="inline-block w-8 h-8 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -145,10 +145,9 @@ export default function WonAuctions() {
                           width={96}
                           height={96}
                           className="h-full w-full object-cover object-center"
-                          unoptimized={true}
                         />
                       </div>
-                      
+
                       <div className="flex-1 mt-4 lg:mt-0 lg:ml-6">
                         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-3">
                           <h3 className="text-lg font-medium text-[var(--foreground)]">
@@ -165,7 +164,7 @@ export default function WonAuctions() {
                             )}
                           </div>
                         </div>
-                        
+
                         <div className="flex flex-col space-y-1 text-sm text-[var(--foreground)] opacity-80 mb-3">
                           <p>Kazanılan Tarih: {formatDate(auction.winDate)}</p>
                           <p>Satıcı: {auction.seller.name} (@{auction.seller.username})</p>
@@ -173,7 +172,7 @@ export default function WonAuctions() {
                             Kazanılan Teklif: {auction.winningBid.toLocaleString('tr-TR')} ₺
                           </p>
                         </div>
-                        
+
                         <div className="flex flex-wrap gap-2 mt-4">
                           <button
                             onClick={() => handleViewDetails(auction)}
@@ -181,7 +180,7 @@ export default function WonAuctions() {
                           >
                             Detaylar
                           </button>
-                          
+
                           {!auction.isPaid && (
                             <button
                               onClick={() => handleProceedToPayment(auction)}
@@ -190,14 +189,14 @@ export default function WonAuctions() {
                               Ödeme Yap
                             </button>
                           )}
-                          
+
                           <button
                             onClick={() => handleContactSeller(auction)}
                             className="px-3 py-1 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm"
                           >
                             Satıcı ile İletişime Geç
                           </button>
-                          
+
                           {auction.isLiveStream && (
                             <Link
                               href={`/live-streams/${auction.streamId}`}
@@ -214,7 +213,7 @@ export default function WonAuctions() {
               ))}
             </div>
           )}
-          
+
           <div className="mt-8">
             <button
               onClick={() => router.back()}
@@ -228,7 +227,7 @@ export default function WonAuctions() {
           </div>
         </div>
       </div>
-      
+
       {/* Auction Details Modal */}
       {showDetails && selectedAuction && (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -254,7 +253,7 @@ export default function WonAuctions() {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center mb-6">
                       <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--secondary)]">
                         <Image
@@ -263,7 +262,6 @@ export default function WonAuctions() {
                           width={80}
                           height={80}
                           className="h-full w-full object-cover object-center"
-                          unoptimized={true}
                         />
                       </div>
                       <div className="ml-4">
@@ -271,7 +269,7 @@ export default function WonAuctions() {
                         <p className="text-sm text-[var(--foreground)] opacity-70">Ürün ID: {selectedAuction.productId}</p>
                       </div>
                     </div>
-                    
+
                     <div className="border-t border-[var(--border)] py-4 space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-[var(--foreground)] opacity-70">İhale ID:</span>
@@ -298,19 +296,19 @@ export default function WonAuctions() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="border-t border-[var(--border)] py-4">
                       <div className="flex justify-between font-medium">
                         <span className="text-[var(--foreground)]">Kazanılan Teklif</span>
                         <span className="text-[var(--accent)]">{selectedAuction.winningBid.toLocaleString('tr-TR')} ₺</span>
                       </div>
                     </div>
-                    
+
                     <div className="border-t border-[var(--border)] pt-4 mt-4">
                       <p className="text-xs text-[var(--foreground)] opacity-70 mb-2">
                         Not: Satın aldığınız ürün ile ilgili tüm soru ve sorunlarınız için satıcı ile iletişime geçebilirsiniz.
                       </p>
-                      
+
                       <div className="flex flex-wrap gap-2 mt-3">
                         {!selectedAuction.isPaid && (
                           <button
@@ -323,7 +321,7 @@ export default function WonAuctions() {
                             Ödeme Yap
                           </button>
                         )}
-                        
+
                         <button
                           onClick={() => {
                             handleContactSeller(selectedAuction);
@@ -333,7 +331,7 @@ export default function WonAuctions() {
                         >
                           Satıcı ile İletişime Geç
                         </button>
-                        
+
                         {selectedAuction.isLiveStream && selectedAuction.streamId && (
                           <Link
                             href={`/live-streams/${selectedAuction.streamId}`}

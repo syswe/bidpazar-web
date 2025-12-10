@@ -328,7 +328,6 @@ export default function Orders() {
                                     width={48}
                                     height={48}
                                     className="h-full w-full object-cover"
-                                    unoptimized
                                   />
                                 ) : (
                                   <div className="h-full w-full flex items-center justify-center text-[var(--muted-foreground)]">
@@ -462,7 +461,6 @@ export default function Orders() {
                           width={64}
                           height={64}
                           className="h-full w-full object-cover"
-                          unoptimized
                         />
                       ) : (
                         <div className="h-full w-full flex items-center justify-center text-[var(--muted-foreground)]">

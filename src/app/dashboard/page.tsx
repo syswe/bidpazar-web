@@ -418,8 +418,8 @@ export default function Dashboard() {
                             src={product.images[0].url}
                             alt={product.title}
                             fill
+                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                             className="object-cover transition-transform group-hover:scale-105"
-                            unoptimized={true}
                           />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">

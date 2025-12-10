@@ -518,8 +518,8 @@ export default function ProductDetailPage() {
                     src={product.images[0].url}
                     alt={product.title}
                     fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-contain"
-                    unoptimized={true}
                   />
                 </div>
               )}
@@ -579,8 +579,8 @@ export default function ProductDetailPage() {
                     src={product.images[0].url}
                     alt={product.title}
                     fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-contain"
-                    unoptimized={true}
                   />
                 </div>
               )}
@@ -645,8 +645,9 @@ export default function ProductDetailPage() {
                   src={product.images[activeImageIndex].url}
                   alt={product.title}
                   fill
+                  sizes="(max-width: 768px) 100vw, 60vw"
                   className="object-contain p-2 sm:p-4"
-                  unoptimized={true}
+                  priority
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
@@ -676,8 +677,8 @@ export default function ProductDetailPage() {
                       src={image.url}
                       alt={`${product.title} - Görsel ${index + 1}`}
                       fill
+                      sizes="96px"
                       className="object-cover"
-                      unoptimized={true}
                     />
                   </button>
                 ))}

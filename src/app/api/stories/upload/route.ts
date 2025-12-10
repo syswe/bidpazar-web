@@ -4,6 +4,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/lib/logger';
+import { convertToWebP, isSupportedImageFormat } from '@/lib/image-utils';
 
 export async function POST(request: Request) {
   try {
@@ -103,11 +104,50 @@ export async function POST(request: Request) {
     logger.debug('Uploads directory path', { uploadsDir });
 
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    let buffer: Buffer = Buffer.from(bytes) as Buffer;
+    let filename: string;
 
-    // Generate unique filename
-    const extension = file.name.split('.').pop();
-    const filename = `${uuidv4()}.${extension}`;
+    // Convert image to WebP if supported
+    if (isSupportedImageFormat(file.type)) {
+      try {
+        logger.debug('Converting story image to WebP', {
+          originalName: file.name,
+          originalSize: buffer.length,
+          mimeType: file.type,
+        });
+
+        const conversionResult = await convertToWebP(buffer, {
+          quality: 85,
+          maxWidth: 1080,  // Story images optimized for mobile
+          maxHeight: 1920,
+        });
+
+        buffer = conversionResult.buffer;
+        filename = `${uuidv4()}.webp`;
+
+        logger.info('Story image converted to WebP successfully', {
+          originalName: file.name,
+          originalSize: conversionResult.originalSize,
+          convertedSize: conversionResult.convertedSize,
+          compressionRatio: `${conversionResult.compressionRatio}%`,
+          dimensions: `${conversionResult.width}x${conversionResult.height}`,
+          newFilename: filename,
+        });
+      } catch (conversionError: any) {
+        // If conversion fails, save original file
+        logger.warn('WebP conversion failed, saving original file', {
+          originalName: file.name,
+          error: conversionError.message,
+        });
+        const extension = file.name.split('.').pop();
+        filename = `${uuidv4()}.${extension}`;
+      }
+    } else {
+      // Non-image or unsupported format - save as-is
+      const extension = file.name.split('.').pop();
+      filename = `${uuidv4()}.${extension}`;
+    }
+
     const path = join(uploadsDir, filename);
 
     logger.debug('Writing story file to disk', { 
@@ -126,7 +166,7 @@ export async function POST(request: Request) {
     logger.info('Story file uploaded successfully', { 
       fileName: filename,
       mediaUrl,
-      fileSize: file.size,
+      fileSize: buffer.length,
       userId: user.id
     });
 
