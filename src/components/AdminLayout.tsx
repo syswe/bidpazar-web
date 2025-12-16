@@ -28,11 +28,11 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       return;
     }
 
-    console.log('Admin verification - Auth state:', { 
-      isAuthenticated, 
-      isLoading, 
-      user, 
-      isAdmin: user?.isAdmin 
+    console.log('Admin verification - Auth state:', {
+      isAuthenticated,
+      isLoading,
+      user,
+      isAdmin: user?.isAdmin
     });
 
     // If not authenticated, redirect to sign-in
@@ -62,10 +62,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         // User is admin according to context, double-check with backend
         console.log('Admin verification - Context says user is admin, checking with backend');
         setIsVerifying(true);
-        
+
         // Add timestamp to prevent cache
         const timestamp = new Date().getTime();
-        
+
         validateToken()
           .then(validatedUser => {
             // If validateToken returns null (network error) but user context shows admin,
@@ -76,7 +76,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               setIsVerifying(false);
               return;
             }
-            
+
             console.log('Admin verification - Backend response:', validatedUser);
             if (validatedUser?.isAdmin) {
               console.log('Admin verification - Backend confirmed admin status');
@@ -85,7 +85,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               // Backend says not admin, redirect
               console.log('Admin verification - Backend denied admin status, redirecting');
               console.log('Admin verification - Expected true, but got:', validatedUser?.isAdmin);
-              
+
               // If the backend returned a valid user but without admin privileges,
               // this means the user may have lost admin privileges since login
               if (validatedUser) {
@@ -100,7 +100,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           .catch((error) => {
             // Validation failed, but don't immediately redirect
             console.error('Admin verification - Backend validation failed:', error);
-            
+
             // Give a 2nd chance if user is admin in context - better UX for network issues
             if (user.isAdmin) {
               console.log('Admin verification - Using local admin status after backend error');
@@ -126,7 +126,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       setVerificationAttempted(true);
     }
   }, [isAuthenticated, isLoading, user, router, adminVerified, verificationAttempted]);
-  
+
   // Add a manual reset function
   useEffect(() => {
     // Add a global function to force reset login state in case of issues
@@ -138,7 +138,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         window.location.href = '/sign-in?redirect=/admin';
       }
     };
-    
+
     // Add a debug function to check admin state
     (window as any).debugAdminAuth = () => {
       const authData = localStorage.getItem('auth');
@@ -152,7 +152,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         verificationAttempted
       });
     };
-    
+
     return () => {
       // Clean up when component unmounts
       (window as any).resetAdminAuth = undefined;
@@ -167,7 +167,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-300">
-            {isVerifying ? 'Verifying admin privileges...' : 'Loading...'}
+            {isVerifying ? 'Yönetici yetkileri doğrulanıyor...' : 'Yükleniyor...'}
           </p>
         </div>
       </div>
@@ -208,7 +208,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
                     />
                   </svg>
-                  Dashboard
+                  Panel
                 </Link>
                 <Link
                   href="/admin/users"

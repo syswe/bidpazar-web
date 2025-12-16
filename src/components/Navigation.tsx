@@ -45,25 +45,25 @@ export default function Navigation() {
               href="/products"
               className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Products
+              Ürünler
             </Link>
             <Link
               href="/categories"
               className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Categories
+              Kategoriler
             </Link>
             <Link
               href="/auctions"
               className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Auctions
+              Açık Artırmalar
             </Link>
             <Link
               href="/about"
               className="text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              About
+              Hakkımızda
             </Link>
 
             {isAuthenticated ? (
@@ -72,7 +72,7 @@ export default function Navigation() {
                   className="flex items-center text-[var(--foreground)] hover:text-[var(--primary)]"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                 >
-                  <span className="mr-1">{user?.username || 'Account'}</span>
+                  <span className="mr-1">{user?.username || 'Hesap'}</span>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4"
@@ -96,31 +96,31 @@ export default function Navigation() {
                     href="/dashboard"
                     className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
-                    Dashboard
+                    Panel
                   </Link>
                   <Link
                     href="/dashboard/messages"
                     className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
-                    Messages
+                    Mesajlar
                   </Link>
                   <Link
                     href="/products/create"
                     className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
-                    Create Listing
+                    İlan Oluştur
                   </Link>
                   <Link
                     href="/profile"
                     className="block px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
-                    Profile
+                    Profil
                   </Link>
                   <button
                     onClick={logout}
                     className="block w-full text-left px-4 py-2 text-[var(--foreground)] hover:bg-[var(--secondary)]"
                   >
-                    Logout
+                    Çıkış Yap
                   </button>
                 </div>
               </div>
@@ -130,13 +130,13 @@ export default function Navigation() {
                   href="/sign-in"
                   className="px-4 py-2 rounded-md text-[var(--foreground)] hover:bg-[var(--secondary)]"
                 >
-                  Sign In
+                  Giriş Yap
                 </Link>
                 <Link
                   href="/sign-up"
                   className="px-4 py-2 bg-[var(--primary)] text-white rounded-md hover:bg-[var(--primary-hover)]"
                 >
-                  Sign Up
+                  Kayıt Ol
                 </Link>
               </div>
             )}
@@ -182,25 +182,25 @@ export default function Navigation() {
               href="/products"
               className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Products
+              Ürünler
             </Link>
             <Link
               href="/categories"
               className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Categories
+              Kategoriler
             </Link>
             <Link
               href="/auctions"
               className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              Auctions
+              Açık Artırmalar
             </Link>
             <Link
               href="/about"
               className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
             >
-              About
+              Hakkımızda
             </Link>
 
             {isAuthenticated ? (
@@ -209,31 +209,31 @@ export default function Navigation() {
                   href="/dashboard"
                   className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
-                  Dashboard
+                  Panel
                 </Link>
                 <Link
                   href="/dashboard/messages"
                   className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
-                  Messages
+                  Mesajlar
                 </Link>
                 <Link
                   href="/products/create"
                   className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
-                  Create Listing
+                  İlan Oluştur
                 </Link>
                 <Link
                   href="/profile"
                   className="block py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
-                  Profile
+                  Profil
                 </Link>
                 <button
                   onClick={logout}
                   className="block w-full text-left py-2 text-[var(--foreground)] hover:text-[var(--primary)]"
                 >
-                  Logout
+                  Çıkış Yap
                 </button>
               </>
             ) : (
@@ -242,13 +242,13 @@ export default function Navigation() {
                   href="/sign-in"
                   className="block py-2 text-center rounded-md bg-[var(--secondary)] text-[var(--foreground)]"
                 >
-                  Sign In
+                  Giriş Yap
                 </Link>
                 <Link
                   href="/sign-up"
                   className="block py-2 text-center bg-[var(--primary)] text-white rounded-md"
                 >
-                  Sign Up
+                  Kayıt Ol
                 </Link>
               </div>
             )}

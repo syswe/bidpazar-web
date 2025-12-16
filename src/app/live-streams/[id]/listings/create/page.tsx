@@ -25,11 +25,11 @@ export default function CreateListingPage() {
   useEffect(() => {
     // Redirect if not authenticated
     if (!isAuthenticated || !token) {
-      toast.error("You must be logged in to add listings");
+      toast.error("Ürün eklemek için giriş yapmalısınız");
       router.push(`/live-streams/${id}`);
       return;
     }
-    
+
     setLoading(false);
   }, [id, isAuthenticated, token, router]);
 
@@ -39,12 +39,12 @@ export default function CreateListingPage() {
     const backendApiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
 
     if (!productName) {
-      toast.error("Please enter a product name");
+      toast.error("Lütfen ürün adı girin");
       return;
     }
 
     if (!startPrice || parseFloat(startPrice) <= 0) {
-      toast.error("Please enter a valid starting price");
+      toast.error("Lütfen geçerli bir başlangıç fiyatı girin");
       return;
     }
 
@@ -71,7 +71,7 @@ export default function CreateListingPage() {
 
       const responseText = await response.text();
       console.log(`Simplified API response status: ${response.status}, body:`, responseText);
-      
+
       let responseData;
       try {
         responseData = responseText ? JSON.parse(responseText) : {};
@@ -100,7 +100,7 @@ export default function CreateListingPage() {
 
         const fallbackText = await fallbackResponse.text();
         console.log(`Fallback API response status: ${fallbackResponse.status}, body:`, fallbackText);
-        
+
         let fallbackData;
         try {
           fallbackData = fallbackText ? JSON.parse(fallbackText) : {};
@@ -111,21 +111,21 @@ export default function CreateListingPage() {
 
         if (!fallbackResponse.ok) {
           console.error("Fallback API error response:", fallbackData);
-          throw new Error(fallbackData.message || "Failed to create listing");
+          throw new Error(fallbackData.message || "Ürün listesi oluşturulamadı");
         }
 
         console.log("Listing created with fallback method:", fallbackData);
-        toast.success("Listing added to stream");
+        toast.success("Ürün yayına eklendi");
         router.push(`/live-streams/${id}`);
         return;
       }
 
       console.log("Listing created successfully:", responseData);
-      toast.success("Listing added to stream");
+      toast.success("Ürün yayına eklendi");
       router.push(`/live-streams/${id}`);
     } catch (error) {
       console.error("Error creating listing:", error);
-      toast.error("Failed to add listing to stream");
+      toast.error("Ürün yayına eklenemedi");
     } finally {
       setSubmitting(false);
     }
@@ -145,13 +145,13 @@ export default function CreateListingPage() {
         <Link href={`/live-streams/${id}`} className="mr-4">
           <ArrowLeft className="h-6 w-6" />
         </Link>
-        <h1 className="text-2xl font-bold">Add Item to Stream</h1>
+        <h1 className="text-2xl font-bold">Yayına Ürün Ekle</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <label htmlFor="productName" className="block text-sm font-medium">
-            Ürün Adı (Product Name)
+            Ürün Adı
           </label>
           <input
             type="text"
@@ -165,7 +165,7 @@ export default function CreateListingPage() {
 
         <div className="space-y-2">
           <label htmlFor="startPrice" className="block text-sm font-medium">
-            Açılış Fiyatı (Starting Price)
+            Açılış Fiyatı
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2">$</span>
@@ -188,7 +188,7 @@ export default function CreateListingPage() {
           className="w-full bg-primary text-primary-foreground py-2 rounded-md flex items-center justify-center disabled:opacity-50"
         >
           {submitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-          {submitting ? "Adding..." : "Add to Stream"}
+          {submitting ? "Ekleniyor..." : "Yayına Ekle"}
         </button>
       </form>
     </div>

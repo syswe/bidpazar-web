@@ -241,9 +241,9 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
 
               {/* My Products Button for SELLERS only. */}
               {user.userType === 'SELLER' && (
-                <Link href="/dashboard/products" style={secondaryButtonStyle} onClick={onClose}>
+                <Link href="/dashboard/orders" style={secondaryButtonStyle} onClick={onClose}>
                   <ShoppingBag size={16} />
-                  Ürünlerim
+                  Siparişlerim
                 </Link>
               )}
 
@@ -251,12 +251,6 @@ const MobileSidebar = ({ isOpen, onClose }: MobileSidebarProps) => {
               <Link href="/dashboard/messages" style={secondaryButtonStyle} onClick={onClose}>
                 <MessageCircle size={16} />
                 Mesajlarım
-              </Link>
-
-              {/* Won Auctions Button for all users */}
-              <Link href="/dashboard/won-auctions" style={secondaryButtonStyle} onClick={onClose}>
-                <Trophy size={16} />
-                Kazandıklarım
               </Link>
 
               {/* Notifications Button for all users */}
