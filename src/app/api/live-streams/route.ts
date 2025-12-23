@@ -73,7 +73,8 @@ export async function GET(request: Request) {
     }
     
     if (onlyActive) {
-      where.status = "LIVE"; // Only get LIVE streams for homepage
+      // Get both LIVE and SCHEDULED streams for homepage (exclude ENDED/CANCELLED)
+      where.status = { in: ["LIVE", "SCHEDULED"] };
     }
 
     // Slim mode: optimized for listing pages - only return essential data with counts

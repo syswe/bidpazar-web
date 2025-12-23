@@ -21,6 +21,7 @@ import {
   useTracks,
   MediaDeviceMenu,
   DisconnectButton,
+  TrackToggle,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Track, Room } from "livekit-client";
@@ -928,20 +929,23 @@ function CustomLiveStreamUI({
       <div className="absolute bottom-0 left-0 right-0 p-4 z-10 flex justify-center bg-gradient-to-t from-black/70 to-transparent">
         <div className="flex items-center space-x-4">
           {isStreamer ? (
-            // Full controls for streamers
+            // Full controls for streamers - Turkish labels
             <>
-              <ControlBar
-                controls={{
-                  microphone: true,
-                  camera: true,
-                  screenShare: true,
-                  chat: false,
-                  leave: true,
-                }}
-              />
-              <div className="flex items-center space-x-2">
-                <MediaDeviceMenu kind="videoinput" />
+              <div className="lk-control-bar flex items-center gap-2">
+                <TrackToggle source={Track.Source.Microphone} showIcon={true}>
+                  Mikrofon
+                </TrackToggle>
                 <MediaDeviceMenu kind="audioinput" />
+                <TrackToggle source={Track.Source.Camera} showIcon={true}>
+                  Kamera
+                </TrackToggle>
+                <MediaDeviceMenu kind="videoinput" />
+                <TrackToggle source={Track.Source.ScreenShare} captureOptions={{ audio: true, selfBrowserSurface: 'include' }} showIcon={true}>
+                  Ekran Paylaş
+                </TrackToggle>
+                <DisconnectButton>
+                  Yayını Bitir
+                </DisconnectButton>
               </div>
             </>
           ) : isAuthenticated ? (

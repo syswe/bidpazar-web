@@ -78,8 +78,8 @@ export default function SellersPage() {
             <button
               onClick={() => setFilter('all')}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${filter === 'all'
-                  ? 'bg-[var(--accent)] text-white shadow-md'
-                  : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
+                ? 'bg-[var(--accent)] text-white shadow-md'
+                : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
                 }`}
             >
               <Users className="h-4 w-4 inline mr-2" />
@@ -88,8 +88,8 @@ export default function SellersPage() {
             <button
               onClick={() => setFilter('popular')}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${filter === 'popular'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
                 }`}
             >
               <TrendingUp className="h-4 w-4 inline mr-2" />
@@ -98,8 +98,8 @@ export default function SellersPage() {
             <button
               onClick={() => setFilter('favorite')}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${filter === 'favorite'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--muted)]'
                 }`}
             >
               <Store className="h-4 w-4 inline mr-2" />

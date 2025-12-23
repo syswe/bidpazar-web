@@ -1026,3 +1026,41 @@ iframe {
     animation: none !important;
   }
 }
+
+/* LiveKit Custom Control Bar - Match button sizes */
+.lk-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Make MediaDeviceMenu (dropdown) buttons match the height of TrackToggle buttons */
+.lk-control-bar .lk-device-menu,
+.lk-control-bar .lk-button-group-menu {
+  height: 100%;
+}
+
+.lk-control-bar .lk-device-menu .lk-button,
+.lk-control-bar .lk-button-group-menu button,
+.lk-control-bar > button[class*="lk-device-menu"],
+.lk-control-bar .lk-device-menu button {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Ensure all buttons in control bar have consistent sizing */
+.lk-control-bar button {
+  min-height: 44px;
+}
+
+/* Style the dropdown arrow buttons to match */
+.lk-control-bar .lk-button-group > button:last-child,
+.lk-control-bar [class*="MenuToggle"] {
+  height: 44px !important;
+  min-height: 44px !important;
+  border-radius: 0.5rem !important;
+}

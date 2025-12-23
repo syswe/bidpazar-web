@@ -269,6 +269,7 @@ export async function POST(req: NextRequest) {
         password: hashedPassword,
         name: body.name || null,
         isAdmin: body.isAdmin || false,
+        userType: body.userType || "MEMBER", // Default to MEMBER if not specified
         isVerified: true, // Admin-created users are automatically verified
       },
     });

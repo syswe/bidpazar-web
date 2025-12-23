@@ -37,6 +37,7 @@ export default function AdminUsersPage() {
     name: "",
     password: "",
     isAdmin: false,
+    userType: "MEMBER" as "MEMBER" | "SELLER",
   });
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] =
     useState(false);
@@ -150,6 +151,56 @@ export default function AdminUsersPage() {
     } catch (err) {
       console.error('Badge güncelleme işlemi başarısız:', err);
       alert('Badge güncelleme işlemi başarısız oldu.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleToggleUserType = async (userId: string, currentType: string) => {
+    if (actionInProgress) return;
+
+    const newType = currentType === "SELLER" ? "MEMBER" : "SELLER";
+    const confirmMessage = newType === "SELLER"
+      ? "Bu kullanıcıyı satıcı yapmak istediğinize emin misiniz?"
+      : "Bu kullanıcının satıcı yetkisini kaldırmak istediğinize emin misiniz?";
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      setActionInProgress(userId);
+
+      const authData = localStorage.getItem('auth');
+      const token = authData ? JSON.parse(authData).token : null;
+
+      if (!token) {
+        alert('Oturumunuz sona ermiş. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ userType: newType })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update user type');
+      }
+
+      // Update the user in state
+      setUsers(users.map((user) =>
+        user.id === userId
+          ? { ...user, userType: newType }
+          : user
+      ));
+
+      alert(newType === "SELLER" ? "Kullanıcı satıcı yapıldı." : "Satıcı yetkisi kaldırıldı.");
+    } catch (err) {
+      console.error('User type güncelleme işlemi başarısız:', err);
+      alert('Kullanıcı tipi güncelleme işlemi başarısız oldu.');
     } finally {
       setActionInProgress(null);
     }
@@ -275,6 +326,7 @@ export default function AdminUsersPage() {
         name: "",
         password: "",
         isAdmin: false,
+        userType: "MEMBER",
       });
     } catch (err) {
       console.error("Kullanıcı oluşturma işlemi başarısız:", err);
@@ -344,6 +396,9 @@ export default function AdminUsersPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Durum
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Tip
+                    </th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Badges
                     </th>
@@ -404,6 +459,27 @@ export default function AdminUsersPage() {
                               Doğrulanmamış
                             </span>
                           )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(user as any).userType === 'SELLER'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                            }`}>
+                            {(user as any).userType === 'SELLER' ? '🏪 Satıcı' : '👤 Üye'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleUserType(user.id, (user as any).userType || 'MEMBER')}
+                            disabled={actionInProgress === user.id}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${(user as any).userType === 'SELLER'
+                              ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900 dark:text-orange-300'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300'
+                              } ${actionInProgress === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {(user as any).userType === 'SELLER' ? 'Üyeliğe Çevir' : 'Satıcı Yap'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -594,6 +670,21 @@ export default function AdminUsersPage() {
                   required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Kullanıcı Tipi
+                </label>
+                <select
+                  value={newUser.userType}
+                  onChange={(e) =>
+                    setNewUser({ ...newUser, userType: e.target.value as "MEMBER" | "SELLER" })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="MEMBER">👤 Üye (MEMBER)</option>
+                  <option value="SELLER">🏪 Satıcı (SELLER)</option>
+                </select>
+              </div>
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -749,8 +840,8 @@ export default function AdminUsersPage() {
                 onClick={handleGrantQuota}
                 disabled={quotaAmount <= 0 || actionInProgress === quotaUserId}
                 className={`px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 ${quotaAmount <= 0 || actionInProgress === quotaUserId
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
                   }`}
               >
                 {actionInProgress === quotaUserId ? "Yükleniyor..." : "Yükle"}

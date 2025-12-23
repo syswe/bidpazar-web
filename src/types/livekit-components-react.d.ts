@@ -9,6 +9,7 @@ declare module "@livekit/components-react" {
   export const RoomAudioRenderer: React.ComponentType<any>;
   export const MediaDeviceMenu: React.ComponentType<any>;
   export const DisconnectButton: React.ComponentType<any>;
+  export const TrackToggle: React.ComponentType<any>;
   export function useLocalParticipant(): any;
   export function useRoomContext(): any;
   export function useTracks(sources?: any, options?: any): any;
