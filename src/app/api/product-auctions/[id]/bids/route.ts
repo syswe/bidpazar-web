@@ -197,7 +197,7 @@ export async function POST(
       );
     }
     
-    const validation = validateBidAmount(auction.currentPrice, validatedData.amount);
+    const validation = validateBidAmount(auction.currentPrice, validatedData.amount, auction.startPrice);
     
     if (!validation.isValid) {
       logger.warn('Bid amount does not meet minimum increment requirements', { 

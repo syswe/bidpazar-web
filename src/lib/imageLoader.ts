@@ -22,7 +22,14 @@ interface ImageLoaderProps {
 export default function imageLoader({ src, width, quality }: ImageLoaderProps): string {
   // 1. STRATEJİ: Yerel Uploads (Nginx Static Serve)
   // Bu dosyalar zaten WebP ve diskte mevcut. Next.js işlemci yormasın.
+  // Hem relative path (/uploads/...) hem de full URL (https://bidpazar.com/uploads/...) desteklenir.
   if (src.startsWith('/uploads/')) {
+    return src;
+  }
+  
+  // Full URL'lerde bidpazar.com/uploads/ path'ini kontrol et
+  // Bu URL'ler zaten optimize edilmiş WebP formatında, doğrudan döndür
+  if (src.includes('bidpazar.com/uploads/')) {
     return src;
   }
 

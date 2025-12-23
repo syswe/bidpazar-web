@@ -217,11 +217,24 @@ export default function ProductDetailPage() {
       return;
     }
 
-    const minimumBidAmount = calculateMinimumBidAmount(auction.currentPrice);
-    if (amount < minimumBidAmount) {
-      const increment = calculateMinimumBidIncrement(auction.currentPrice);
-      setAuctionError(`Teklif en az ${minimumBidAmount} TL olmalıdır (${increment} TL artış)`);
-      return;
+    // İlk teklif istisnası: Eğer henüz teklif verilmemişse (currentPrice === startPrice),
+    // kullanıcı başlangıç fiyatından teklif verebilir
+    const isFirstBid = auction.currentPrice === auction.startPrice;
+
+    if (isFirstBid) {
+      // İlk teklif için başlangıç fiyatı veya daha yüksek kabul edilir
+      if (amount < auction.startPrice) {
+        setAuctionError(`İlk teklif en az ${auction.startPrice} TL olmalıdır`);
+        return;
+      }
+    } else {
+      // Sonraki teklifler için normal artış kuralları uygulanır
+      const minimumBidAmount = calculateMinimumBidAmount(auction.currentPrice);
+      if (amount < minimumBidAmount) {
+        const increment = calculateMinimumBidIncrement(auction.currentPrice);
+        setAuctionError(`Teklif en az ${minimumBidAmount} TL olmalıdır (${increment} TL artış)`);
+        return;
+      }
     }
 
     setPendingBidAmount(bidAmount);
