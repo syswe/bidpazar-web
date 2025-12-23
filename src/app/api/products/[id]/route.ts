@@ -259,20 +259,81 @@ export async function DELETE(
       );
     }
 
-    // Delete product media first
-    logger.debug('Deleting product media', { productId: id });
-    const mediaDeleteResult = await prisma.productMedia.deleteMany({
-      where: { productId: id },
-    });
-    logger.debug('Media deletion result', { 
-      productId: id, 
-      deletedCount: mediaDeleteResult.count 
-    });
+    // Use a transaction to ensure all related records are deleted properly
+    await prisma.$transaction(async (tx) => {
+      // 1. Get all ProductAuctions for this product
+      const productAuctions = await tx.productAuction.findMany({
+        where: { productId: id },
+        select: { id: true, winningBidId: true }
+      });
+      const productAuctionIds = productAuctions.map(pa => pa.id);
+      
+      logger.debug('Found product auctions', { productId: id, count: productAuctionIds.length });
 
-    // Delete the product
-    logger.debug('Deleting product', { productId: id });
-    await prisma.product.delete({
-      where: { id },
+      // 2. Clear winningBidId references in ProductAuctions to avoid circular reference issues
+      if (productAuctionIds.length > 0) {
+        await tx.productAuction.updateMany({
+          where: { id: { in: productAuctionIds } },
+          data: { winningBidId: null }
+        });
+        
+        // 3. Delete all bids related to product auctions
+        const bidsDeleted = await tx.bid.deleteMany({
+          where: { productAuctionId: { in: productAuctionIds } }
+        });
+        logger.debug('Deleted bids from product auctions', { productId: id, count: bidsDeleted.count });
+
+        // 4. Delete all product auctions
+        await tx.productAuction.deleteMany({
+          where: { productId: id }
+        });
+        logger.debug('Deleted product auctions', { productId: id, count: productAuctionIds.length });
+      }
+
+      // 5. Get all AuctionListings for this product
+      const auctionListings = await tx.auctionListing.findMany({
+        where: { productId: id },
+        select: { id: true, winningBidId: true }
+      });
+      const listingIds = auctionListings.map(al => al.id);
+      
+      logger.debug('Found auction listings', { productId: id, count: listingIds.length });
+
+      // 6. Clear winningBidId references in AuctionListings
+      if (listingIds.length > 0) {
+        await tx.auctionListing.updateMany({
+          where: { id: { in: listingIds } },
+          data: { winningBidId: null }
+        });
+        
+        // 7. Delete all bids related to auction listings
+        const listingBidsDeleted = await tx.bid.deleteMany({
+          where: { listingId: { in: listingIds } }
+        });
+        logger.debug('Deleted bids from auction listings', { productId: id, count: listingBidsDeleted.count });
+
+        // 8. Delete all auction listings
+        await tx.auctionListing.deleteMany({
+          where: { productId: id }
+        });
+        logger.debug('Deleted auction listings', { productId: id, count: listingIds.length });
+      }
+
+      // 9. Delete product media
+      logger.debug('Deleting product media', { productId: id });
+      const mediaDeleteResult = await tx.productMedia.deleteMany({
+        where: { productId: id },
+      });
+      logger.debug('Media deletion result', { 
+        productId: id, 
+        deletedCount: mediaDeleteResult.count 
+      });
+
+      // 10. Delete the product
+      logger.debug('Deleting product', { productId: id });
+      await tx.product.delete({
+        where: { id },
+      });
     });
 
     logger.info('Product deleted successfully', { 

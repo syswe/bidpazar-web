@@ -21,7 +21,7 @@ import ProductGrid from "@/components/ProductGrid";
 import FeaturedAuctionCard from "@/components/FeaturedAuctionCard";
 import PopularStreamerCard from "@/components/PopularStreamerCard";
 import FavoriteSellerCard from "@/components/FavoriteSellerCard";
-import { X, ChevronRight, Clock, TrendingUp, Award, Users, Heart, Eye, ChevronDown, Video, Bookmark, Plus, ChevronLeft, Upload, ImageIcon } from "lucide-react";
+import { X, ChevronRight, Clock, TrendingUp, Award, Users, Heart, Eye, ChevronDown, Video, Bookmark, Plus, ChevronLeft, Upload, ImageIcon, Calendar } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { toast } from "sonner";
 
@@ -971,67 +971,119 @@ export default function Home() {
             </div>
           ) : liveStreams.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-              {liveStreams.map(stream => (
-                <Link
-                  href={`/live-streams/${stream.id}`}
-                  key={stream.id}
-                  className="rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--background)] hover:shadow-md transition group cursor-pointer"
-                >
-                  <div className="relative h-32 md:h-48 bg-[var(--secondary)]">
-                    {stream.thumbnailUrl ? (
-                      <Image
-                        src={stream.thumbnailUrl}
-                        alt={stream.title}
-                        fill
-                        sizes="(max-width: 768px) 100vw, 350px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Yayın Görseli</span>
+              {liveStreams.map(stream => {
+                const isLive = stream.status === 'LIVE';
+                const isScheduled = stream.status === 'SCHEDULED';
+
+                // Format scheduled start time
+                const formatScheduledTime = (startTime: string | undefined) => {
+                  if (!startTime) return '';
+                  const date = new Date(startTime);
+                  const now = new Date();
+                  const isToday = date.toDateString() === now.toDateString();
+                  const tomorrow = new Date(now);
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  const isTomorrow = date.toDateString() === tomorrow.toDateString();
+
+                  const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+                  if (isToday) return `Bugün ${timeStr}`;
+                  if (isTomorrow) return `Yarın ${timeStr}`;
+                  return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                };
+
+                return (
+                  <Link
+                    href={`/live-streams/${stream.id}`}
+                    key={stream.id}
+                    className={`rounded-xl overflow-hidden border bg-[var(--background)] hover:shadow-md transition group cursor-pointer ${isScheduled
+                      ? 'border-amber-500/50'
+                      : 'border-[var(--border)]'
+                      }`}
+                  >
+                    <div className="relative h-32 md:h-48 bg-[var(--secondary)]">
+                      {stream.thumbnailUrl ? (
+                        <Image
+                          src={stream.thumbnailUrl}
+                          alt={stream.title}
+                          fill
+                          sizes="(max-width: 768px) 100vw, 350px"
+                          className={`object-cover ${isScheduled ? 'opacity-80' : ''}`}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[var(--foreground)] text-opacity-70 text-xs md:text-sm">Yayın Görseli</span>
+                        </div>
+                      )}
+
+                      {/* Live Badge - Only show for LIVE streams */}
+                      {isLive && (
+                        <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                          <span className="mr-1 flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-white opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
+                          </span>
+                          CANLI
+                        </div>
+                      )}
+
+                      {/* Scheduled Badge - Show for SCHEDULED streams */}
+                      {isScheduled && (
+                        <div className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          PLANLI
+                        </div>
+                      )}
+
+                      {/* Viewer Count - Only show for LIVE streams */}
+                      {isLive && (
+                        <div className="absolute top-2 right-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                          <Eye className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
+                          {stream.viewerCount || 0}
+                        </div>
+                      )}
+
+                      {/* Scheduled Time Badge - Show for SCHEDULED streams */}
+                      {isScheduled && stream.startTime && (
+                        <div className="absolute top-2 right-2 bg-amber-500/90 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
+                          <Calendar className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
+                          {formatScheduledTime(stream.startTime)}
+                        </div>
+                      )}
+
+                      {/* Play Button Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-30">
+                        <div className="bg-white bg-opacity-90 rounded-full p-2 md:p-3">
+                          <Video className="h-4 w-4 md:h-8 md:w-8 text-[var(--accent)]" />
+                        </div>
                       </div>
-                    )}
 
-                    {/* Live Badge */}
-                    <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
-                      <span className="mr-1 flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-white opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
-                      </span>
-                      CANLI
+                      {/* Scheduled Overlay - Semi-transparent overlay for scheduled streams */}
+                      {isScheduled && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-amber-900/40 to-transparent pointer-events-none" />
+                      )}
                     </div>
 
-                    {/* Viewer Count */}
-                    <div className="absolute top-2 right-2 bg-black bg-opacity-60 text-white text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded-md flex items-center">
-                      <Eye className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5 md:mr-1" />
-                      {stream.viewerCount || 0}
-                    </div>
-
-                    {/* Play Button Overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-30">
-                      <div className="bg-white bg-opacity-90 rounded-full p-2 md:p-3">
-                        <Video className="h-4 w-4 md:h-8 md:w-8 text-[var(--accent)]" />
+                    <div className="p-3 md:p-4">
+                      <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{stream.title}</h3>
+                      <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{stream.user?.username || stream.user?.name || 'Anonim Yayıncı'}</p>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-[var(--foreground)] opacity-70">
+                          {stream.listings && stream.listings.length > 0 ? `${stream.listings.length} ürün` : 'Henüz ürün yok'}
+                        </span>
+                        <span className={`font-bold text-xs md:text-sm ${isScheduled ? 'text-amber-500' : 'text-[var(--primary)]'}`}>
+                          {isScheduled
+                            ? 'Yakında'
+                            : stream.listings && stream.listings.length > 0 && stream.listings[0].product
+                              ? `${formatPrice(stream.listings[0].product.price)} ₺`
+                              : 'Başladı'
+                          }
+                        </span>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="p-3 md:p-4">
-                    <h3 className="font-semibold text-[var(--foreground)] text-xs md:text-base mb-1 truncate group-hover:text-[var(--accent)] transition-colors">{stream.title}</h3>
-                    <p className="text-xs md:text-sm text-[var(--foreground)] opacity-80 mb-2 md:mb-3">{stream.user?.username || stream.user?.name || 'Anonim Yayıncı'}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[var(--foreground)] opacity-70">
-                        {stream.listings && stream.listings.length > 0 ? `${stream.listings.length} ürün` : 'Henüz ürün yok'}
-                      </span>
-                      <span className="font-bold text-[var(--primary)] text-xs md:text-sm">
-                        {stream.listings && stream.listings.length > 0 && stream.listings[0].product
-                          ? `${formatPrice(stream.listings[0].product.price)} ₺`
-                          : 'Başlıyor'
-                        }
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8 md:py-12 bg-[var(--muted)] rounded-xl">

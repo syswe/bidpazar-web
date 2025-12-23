@@ -3,6 +3,8 @@ const nextConfig = {
   output: "standalone",
   reactStrictMode: false, // Disable strict mode to prevent double socket connections in development
   images: {
+    // Use custom loader to bypass optimization for /uploads/ paths
+    loaderFile: './src/lib/imageLoader.ts',
     remotePatterns: [
       { protocol: 'https', hostname: 'bidpazar.com' },
       { protocol: 'https', hostname: 'www.bidpazar.com' },
