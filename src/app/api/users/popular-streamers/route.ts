@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         name: true,
         isVerified: true,
         userType: true,
+        profileImageUrl: true,
         createdAt: true,
         _count: {
           select: {
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
       name: streamer.name,
       isVerified: streamer.isVerified,
       userType: streamer.userType,
+      profileImageUrl: streamer.profileImageUrl,
       totalStreams: streamer._count.liveStreams,
       totalProducts: streamer._count.products,
       isLive: streamer.liveStreams.length > 0 && streamer.liveStreams[0].status === 'LIVE',

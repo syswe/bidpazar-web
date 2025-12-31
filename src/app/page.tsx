@@ -167,6 +167,7 @@ const StoryViewer = ({
                     fill
                     sizes="(max-width: 768px) 100vw, 500px"
                     className="object-contain"
+                    unoptimized
                   />
                 );
               })()
@@ -862,6 +863,7 @@ export default function Home() {
                                     fill
                                     sizes="64px"
                                     className="object-cover rounded-full"
+                                    unoptimized
                                   />
                                 );
                               })()}

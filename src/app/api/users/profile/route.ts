@@ -9,6 +9,7 @@ const updateProfileSchema = z.object({
   username: z.string().min(3, 'Kullanıcı adı en az 3 karakter olmalıdır').optional(),
   name: z.string().min(2, 'İsim en az 2 karakter olmalıdır').optional(),
   email: z.string().email('Geçerli bir e-posta adresi giriniz').optional(),
+  bio: z.string().max(500, 'Açıklama en fazla 500 karakter olabilir').optional(),
   currentPassword: z.string().optional(),
   newPassword: z.string()
     .min(8, 'Şifre en az 8 karakter olmalıdır')
@@ -47,6 +48,9 @@ export async function GET(request: Request) {
         phoneNumber: true,
         isVerified: true,
         isAdmin: true,
+        profileImageUrl: true,
+        bio: true,
+        userType: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -156,14 +160,14 @@ export async function PUT(request: Request) {
     }
 
     // Update user profile
-    const updateData: any = {
-      ...(validatedData.username && { username: validatedData.username }),
-      ...(validatedData.name && { name: validatedData.name }),
-      ...(validatedData.email && { email: validatedData.email }),
-      ...(validatedData.newPassword && {
-        password: await bcrypt.hash(validatedData.newPassword, 10),
-      }),
-    };
+    const updateData: Record<string, string | undefined> = {};
+    if (validatedData.username) updateData.username = validatedData.username;
+    if (validatedData.name) updateData.name = validatedData.name;
+    if (validatedData.email) updateData.email = validatedData.email;
+    if (validatedData.bio !== undefined) updateData.bio = validatedData.bio;
+    if (validatedData.newPassword) {
+      updateData.password = await bcrypt.hash(validatedData.newPassword, 10);
+    }
 
     const updatedProfile = await prisma.user.update({
       where: { id: user.id },
@@ -176,6 +180,9 @@ export async function PUT(request: Request) {
         phoneNumber: true,
         isVerified: true,
         isAdmin: true,
+        profileImageUrl: true,
+        bio: true,
+        userType: true,
         createdAt: true,
         updatedAt: true,
       },

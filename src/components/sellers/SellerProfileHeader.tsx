@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, CheckCircle, Package, Users, UserPlus, Star, Shield } from 'lucide-react';
+import Image from 'next/image';
+import { Calendar, CheckCircle, Package, Users, UserPlus, Star, Shield, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { getToken } from '@/lib/frontend-auth';
 
@@ -13,6 +14,8 @@ interface SellerProfileHeaderProps {
     isVerified: boolean;
     isPopularStreamer?: boolean;
     isFavoriteSeller?: boolean;
+    profileImageUrl?: string | null;
+    bio?: string | null;
     createdAt: string;
     followersCount: number;
     followingCount: number;
@@ -92,10 +95,20 @@ export default function SellerProfileHeader({ seller, currentUser }: SellerProfi
                 <div className="flex flex-col sm:flex-row items-center gap-6">
                   {/* Avatar */}
                   <div className="relative flex-shrink-0">
-                    <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] flex items-center justify-center shadow-lg ring-4 ring-[var(--background)] ring-offset-2 ring-offset-[var(--card-background)]">
-                      <span className="text-4xl sm:text-5xl font-bold text-white">
-                        {initial}
-                      </span>
+                    <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--primary)] flex items-center justify-center shadow-lg ring-4 ring-[var(--background)] ring-offset-2 ring-offset-[var(--card-background)]">
+                      {seller.profileImageUrl ? (
+                        <Image
+                          src={seller.profileImageUrl}
+                          alt={displayName}
+                          fill
+                          sizes="128px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <span className="text-4xl sm:text-5xl font-bold text-white">
+                          {initial}
+                        </span>
+                      )}
                     </div>
                     {seller.isVerified && (
                       <div className="absolute -bottom-2 -right-2 bg-gradient-to-br from-blue-500 to-blue-600 text-white p-2 rounded-xl shadow-lg border-2 border-[var(--card-background)]" title="Doğrulanmış Satıcı">
@@ -140,6 +153,19 @@ export default function SellerProfileHeader({ seller, currentUser }: SellerProfi
                         <span>Katılım: {new Date(seller.createdAt).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</span>
                       </div>
                     </div>
+
+                    {/* Bio Section */}
+                    {seller.bio && (
+                      <div className="mt-4 p-3 bg-[var(--secondary)]/50 rounded-lg border border-[var(--border)]">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Info className="w-4 h-4 text-[var(--accent)]" />
+                          <span className="text-xs font-medium text-[var(--muted-foreground)]">Hakkında</span>
+                        </div>
+                        <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                          {seller.bio}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Follow Button */}

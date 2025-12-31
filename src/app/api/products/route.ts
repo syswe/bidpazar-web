@@ -165,9 +165,15 @@ export async function POST(request: Request) {
     }
 
     logger.debug("Validating product data", { userId: user.id });
+    // Parse buyNowPrice properly - handle empty string, null, undefined cases
+    const parsedBuyNowPrice = body.buyNowPrice !== undefined && body.buyNowPrice !== null && body.buyNowPrice !== '' 
+      ? Number(body.buyNowPrice) 
+      : undefined;
+    
     const validatedData = createProductSchema.parse({
       ...body,
       price: Number(body.price),
+      buyNowPrice: parsedBuyNowPrice,
     });
 
     // Check and reset monthly quotas if needed (for SELLER users)

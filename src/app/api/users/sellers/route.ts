@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
         userType: true,
         isPopularStreamer: true,
         isFavoriteSeller: true,
+        profileImageUrl: true,
         createdAt: true,
         _count: {
           select: {
@@ -87,6 +88,7 @@ export async function GET(req: NextRequest) {
       userType: seller.userType,
       isPopularStreamer: seller.isPopularStreamer,
       isFavoriteSeller: seller.isFavoriteSeller,
+      profileImageUrl: seller.profileImageUrl,
       totalProducts: seller._count.products,
       activeProducts: seller.products.length,
       totalStreams: seller._count.liveStreams,

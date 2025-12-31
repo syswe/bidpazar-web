@@ -13,6 +13,8 @@ interface Seller {
   isVerified: boolean;
   isPopularStreamer?: boolean;
   isFavoriteSeller?: boolean;
+  profileImageUrl?: string | null;
+  bio?: string | null;
   createdAt: string;
   followersCount: number;
   followingCount: number;

@@ -21,6 +21,8 @@ model User {
   videoDeviceId      String?
   audioDeviceId      String?
   points             Int                @default(0)
+  profileImageUrl    String?            // Profile photo URL
+  bio                String?            // User bio/description
   isPopularStreamer  Boolean            @default(false)
   isFavoriteSeller   Boolean            @default(false)
   createdAt          DateTime           @default(now())

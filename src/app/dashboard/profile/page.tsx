@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { useAuth } from '@/components/AuthProvider';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { deleteAccount } from '@/lib/frontend-auth';
+import { deleteAccount, getToken } from '@/lib/frontend-auth';
+import { User, Upload, X } from 'lucide-react';
 
 export default function ProfileEdit() {
   const { user, refreshAuthState } = useAuth();
@@ -12,20 +14,27 @@ export default function ProfileEdit() {
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Account deletion state
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     username: '',
     email: '',
-    phoneNumber: ''
+    phoneNumber: '',
+    bio: ''
   });
+
+  // Profile image state
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load user data when available
   useEffect(() => {
@@ -34,12 +43,14 @@ export default function ProfileEdit() {
         name: user.name || '',
         username: user.username || '',
         email: user.email || '',
-        phoneNumber: user.phoneNumber || ''
+        phoneNumber: user.phoneNumber || '',
+        bio: (user as { bio?: string }).bio || ''
       });
+      setProfileImage((user as { profileImageUrl?: string }).profileImageUrl || null);
     }
   }, [user]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -47,16 +58,75 @@ export default function ProfileEdit() {
     }));
   };
 
+  // Handle profile image selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Dosya boyutu en fazla 5MB olabilir.');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError('Sadece resim dosyaları kabul edilir.');
+        return;
+      }
+      setImageFile(file);
+      setProfileImage(URL.createObjectURL(file));
+    }
+  };
+
+  // Handle profile image upload
+  const handleImageUpload = async () => {
+    if (!imageFile) return;
+
+    try {
+      setIsUploadingImage(true);
+      setError(null);
+
+      const token = getToken();
+      if (!token) {
+        throw new Error('Oturum bilgisi bulunamadı.');
+      }
+
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', imageFile);
+
+      const response = await fetch('/api/users/profile/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formDataUpload
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Profil fotoğrafı yüklenirken bir hata oluştu.');
+      }
+
+      setProfileImage(data.user.profileImageUrl);
+      setImageFile(null);
+      setSuccess('Profil fotoğrafı başarıyla yüklendi.');
+      await refreshAuthState();
+    } catch (error: unknown) {
+      const err = error as Error;
+      setError(err.message || 'Profil fotoğrafı yüklenirken bir hata oluştu.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!user?.id) return;
-    
+
     try {
       setIsLoading(true);
       setError(null);
       setSuccess(null);
-      
+
       const response = await fetch('/api/user/profile', {
         method: 'PUT',
         headers: {
@@ -66,21 +136,22 @@ export default function ProfileEdit() {
           name: formData.name,
           username: formData.username,
           email: formData.email,
-          phoneNumber: formData.phoneNumber
+          phoneNumber: formData.phoneNumber,
+          bio: formData.bio
         }),
         credentials: 'include',
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Profil güncellenirken bir hata oluştu.');
       }
-      
+
       setSuccess('Profiliniz başarıyla güncellendi.');
       // Refresh auth state to update user data
       await refreshAuthState();
-      
+
     } catch (error: any) {
       setError(error.message || 'Profil güncellenirken bir hata oluştu.');
     } finally {
@@ -91,18 +162,18 @@ export default function ProfileEdit() {
   // Function to handle account deletion
   const handleDeleteAccount = async () => {
     const expectedText = 'hesabımın silineceğinin farkındayım ve silmek istiyorum';
-    
+
     if (deleteConfirmationText.toLowerCase() !== expectedText.toLowerCase()) {
       setDeleteAccountError('Lütfen onay metnini tam olarak yazın.');
       return;
     }
-    
+
     try {
       setIsDeletingAccount(true);
       setDeleteAccountError(null);
-      
+
       await deleteAccount();
-      
+
       // Redirect to home page after successful deletion
       router.push('/');
     } catch (error: any) {
@@ -122,22 +193,88 @@ export default function ProfileEdit() {
               Kişisel bilgilerinizi güncelleyebilirsiniz.
             </p>
           </div>
-          
+
           <div className="bg-[var(--background)] p-8 rounded-2xl border border-[var(--border)] shadow-sm">
             {success && (
               <div className="mb-6 p-4 bg-green-50 text-green-800 rounded-md border border-green-200">
                 {success}
               </div>
             )}
-            
+
             {error && (
               <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md border border-red-200">
                 {error}
               </div>
             )}
-            
+
             <form onSubmit={handleSubmit}>
               <div className="space-y-6">
+                {/* Profile Photo Section */}
+                <div className="pb-6 border-b border-[var(--border)]">
+                  <h3 className="text-lg font-medium text-[var(--foreground)] mb-4">Profil Fotoğrafı</h3>
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <div className="w-24 h-24 rounded-full overflow-hidden bg-[var(--secondary)] border-2 border-[var(--border)]">
+                        {profileImage ? (
+                          <Image
+                            src={profileImage}
+                            alt="Profil fotoğrafı"
+                            fill
+                            sizes="96px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <User className="w-12 h-12 text-[var(--foreground)] opacity-30" />
+                          </div>
+                        )}
+                      </div>
+                      {imageFile && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageFile(null);
+                            setProfileImage((user as { profileImageUrl?: string })?.profileImageUrl || null);
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2 bg-[var(--secondary)] border border-[var(--border)] text-[var(--foreground)] rounded-md hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors text-sm flex items-center gap-2"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Fotoğraf Seç
+                      </button>
+                      {imageFile && (
+                        <button
+                          type="button"
+                          onClick={handleImageUpload}
+                          disabled={isUploadingImage}
+                          className="px-4 py-2 bg-[var(--accent)] text-white rounded-md hover:opacity-90 transition-colors text-sm"
+                        >
+                          {isUploadingImage ? 'Yükleniyor...' : 'Fotoğrafı Kaydet'}
+                        </button>
+                      )}
+                      <p className="text-xs text-[var(--foreground)] opacity-60">
+                        JPG, PNG veya GIF. Max 5MB.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                   <div>
                     <label htmlFor="name" className="block text-sm font-medium text-[var(--foreground)]">
@@ -152,7 +289,7 @@ export default function ProfileEdit() {
                       className="mt-1 block w-full bg-[var(--background)] border border-[var(--border)] rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                     />
                   </div>
-                  
+
                   <div>
                     <label htmlFor="username" className="block text-sm font-medium text-[var(--foreground)]">
                       Kullanıcı Adı
@@ -166,7 +303,7 @@ export default function ProfileEdit() {
                       className="mt-1 block w-full bg-[var(--background)] border border-[var(--border)] rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                     />
                   </div>
-                  
+
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-[var(--foreground)]">
                       E-posta Adresi
@@ -180,7 +317,7 @@ export default function ProfileEdit() {
                       className="mt-1 block w-full bg-[var(--background)] border border-[var(--border)] rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                     />
                   </div>
-                  
+
                   <div>
                     <label htmlFor="phoneNumber" className="block text-sm font-medium text-[var(--foreground)]">
                       Telefon Numarası
@@ -195,7 +332,28 @@ export default function ProfileEdit() {
                     />
                   </div>
                 </div>
-                
+
+                {/* Bio/Description Field */}
+                <div>
+                  <label htmlFor="bio" className="block text-sm font-medium text-[var(--foreground)]">
+                    Açıklama / Hakkımda
+                    {user?.userType === 'SELLER' && <span className="text-xs text-[var(--foreground)] opacity-60 ml-2">(Satıcı profilinizde görünecek)</span>}
+                  </label>
+                  <textarea
+                    name="bio"
+                    id="bio"
+                    value={formData.bio}
+                    onChange={handleChange}
+                    rows={4}
+                    maxLength={500}
+                    placeholder="Kendiniz hakkında kısa bir açıklama yazın..."
+                    className="mt-1 block w-full bg-[var(--background)] border border-[var(--border)] rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)] resize-none"
+                  />
+                  <p className="mt-1 text-xs text-[var(--foreground)] opacity-60">
+                    {formData.bio.length}/500 karakter
+                  </p>
+                </div>
+
                 <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-[var(--border)]">
                   <button
                     type="button"
@@ -271,14 +429,14 @@ export default function ProfileEdit() {
                           <li>Mesajlarınız ve yayın geçmişiniz silinecek</li>
                           <li>Bu hesapla tekrar giriş yapamazsınız</li>
                         </ul>
-                        
+
                         <p className="text-sm text-red-600 font-medium mb-3">
                           Devam etmek için aşağıdaki metni tam olarak yazın:
                         </p>
                         <p className="text-sm text-[var(--foreground)] font-mono bg-gray-100 p-2 rounded mb-3">
                           hesabımın silineceğinin farkındayım ve silmek istiyorum
                         </p>
-                        
+
                         <div className="mt-4">
                           <input
                             type="text"
@@ -288,7 +446,7 @@ export default function ProfileEdit() {
                             className="w-full px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 text-[var(--foreground)] bg-[var(--background)] text-sm"
                           />
                         </div>
-                        
+
                         {deleteAccountError && (
                           <div className="mt-2 p-2 bg-red-100 text-red-800 rounded-md text-sm">
                             {deleteAccountError}

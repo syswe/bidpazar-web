@@ -12,6 +12,7 @@ interface Seller {
   isVerified: boolean;
   isPopularStreamer?: boolean;
   isFavoriteSeller?: boolean;
+  profileImageUrl?: string | null;
   totalProducts: number;
   activeProducts: number;
   totalStreams?: number;

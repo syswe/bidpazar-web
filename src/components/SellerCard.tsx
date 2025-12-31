@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Star, Package, CheckCircle, TrendingUp, Video, Users } from 'lucide-react';
 
 interface SellerCardProps {
@@ -11,6 +12,7 @@ interface SellerCardProps {
     isVerified: boolean;
     isPopularStreamer?: boolean;
     isFavoriteSeller?: boolean;
+    profileImageUrl?: string | null;
     totalProducts: number;
     activeProducts: number;
     totalStreams?: number;
@@ -49,10 +51,20 @@ export default function SellerCard({ seller }: SellerCardProps) {
 
           {/* Avatar */}
           <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-xl bg-gradient-to-br from-white to-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-              <span className="text-3xl md:text-4xl font-bold text-purple-600">
-                {initial}
-              </span>
+            <div className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-xl bg-gradient-to-br from-white to-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 overflow-hidden">
+              {seller.profileImageUrl ? (
+                <Image
+                  src={seller.profileImageUrl}
+                  alt={displayName}
+                  fill
+                  sizes="96px"
+                  className="object-cover"
+                />
+              ) : (
+                <span className="text-3xl md:text-4xl font-bold text-purple-600">
+                  {initial}
+                </span>
+              )}
             </div>
           </div>
 
@@ -71,12 +83,22 @@ export default function SellerCard({ seller }: SellerCardProps) {
             <div className="relative">
               {/* Avatar */}
               <div className={`w-16 h-16 md:w-20 md:h-20 rounded-full ${isFavorite
-                  ? 'bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600'
-                  : 'bg-gradient-to-br from-[var(--accent)] to-[var(--primary)]'
-                } text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                <span className="text-2xl md:text-3xl font-bold">
-                  {initial}
-                </span>
+                ? 'bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600'
+                : 'bg-gradient-to-br from-[var(--accent)] to-[var(--primary)]'
+                } text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300 overflow-hidden`}>
+                {seller.profileImageUrl ? (
+                  <Image
+                    src={seller.profileImageUrl}
+                    alt={displayName}
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl md:text-3xl font-bold">
+                    {initial}
+                  </span>
+                )}
               </div>
               {/* Star Badge for Favorite */}
               {isFavorite && (
@@ -154,10 +176,10 @@ export default function SellerCard({ seller }: SellerCardProps) {
 
         {/* CTA Button */}
         <button className={`w-full py-2 text-sm font-medium rounded-xl transition-all duration-300 shadow-md hover:shadow-lg ${isPopular
-            ? 'border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white'
-            : isFavorite
-              ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700'
-              : 'border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white'
+          ? 'border-2 border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white'
+          : isFavorite
+            ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700'
+            : 'border-2 border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white'
           }`}>
           {isPopular && seller.isLive ? 'Canlı Yayına Katıl' : 'Ürünleri Görüntüle'}
         </button>

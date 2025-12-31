@@ -100,13 +100,23 @@ export function validateBidAmount(currentPrice: number, bidAmount: number, start
   increment: number;
   error?: string;
 } {
-  // Handle first bid exception
-  if (startPrice && currentPrice === startPrice && bidAmount === startPrice) {
-    return {
-      isValid: true,
-      minimumAmount: startPrice,
-      increment: 0
-    };
+  // Handle first bid exception: when no bids yet (currentPrice === startPrice),
+  // bid amount only needs to be >= startPrice
+  if (startPrice && currentPrice === startPrice) {
+    if (bidAmount >= startPrice) {
+      return {
+        isValid: true,
+        minimumAmount: startPrice,
+        increment: 0
+      };
+    } else {
+      return {
+        isValid: false,
+        minimumAmount: startPrice,
+        increment: 0,
+        error: `İlk teklif en az ${startPrice} TL olmalıdır`
+      };
+    }
   }
   
   const increment = calculateMinimumBidIncrement(currentPrice);

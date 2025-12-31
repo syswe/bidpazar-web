@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         name: true,
         isVerified: true,
         userType: true,
+        profileImageUrl: true,
         createdAt: true,
         _count: {
           select: {
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
       name: seller.name || seller.username,
       isVerified: seller.isVerified,
       userType: seller.userType,
+      profileImageUrl: seller.profileImageUrl,
       totalProducts: seller._count.products,
       activeProducts: seller.products.length,
       totalStreams: seller._count.liveStreams,

@@ -42,6 +42,8 @@ export async function GET(
         userType: true,
         isPopularStreamer: true,
         isFavoriteSeller: true,
+        profileImageUrl: true,
+        bio: true,
         createdAt: true,
         updatedAt: true,
         _count: {
