@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Loader2, Send, LogIn, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { io, Socket } from "socket.io-client";
+import { filterText, containsProfanity } from "@/lib/contentFilter";
 
 interface ChatMessage {
   id?: string;
@@ -376,9 +377,20 @@ export default function StreamChat({
 
     if (!newMessage.trim()) return;
 
+    // Apply profanity filter BEFORE sending
+    const filteredMessage = filterText(newMessage.trim());
+    const hasProfanity = containsProfanity(newMessage.trim());
+
+    // If profanity was detected, show warning and send filtered version
+    if (hasProfanity) {
+      toast.warning("Mesajınız uygunsuz kelimeler içerdiği için filtrelendi.", {
+        duration: 3000,
+      });
+    }
+
     // If parent provided onSendMessage handler, use it
     if (onSendMessage) {
-      onSendMessage(newMessage.trim());
+      onSendMessage(filteredMessage);
       setNewMessage("");
       return;
     }
@@ -401,7 +413,7 @@ export default function StreamChat({
         streamId,
         userId: currentUserId,
         username: currentUsername,
-        message: newMessage.trim(),
+        message: filteredMessage, // Send filtered message
       });
 
       setNewMessage("");
@@ -449,13 +461,11 @@ export default function StreamChat({
       {/* Messages Area - Transparent background */}
       <div
         ref={chatContainerRef}
-        className={`flex flex-col justify-end space-y-1 transition-all duration-300 ${
-          isMobile ? "cursor-pointer" : "cursor-default"
-        } ${
-          isHovered
+        className={`flex flex-col justify-end space-y-1 transition-all duration-300 ${isMobile ? "cursor-pointer" : "cursor-default"
+          } ${isHovered
             ? "max-h-96 overflow-y-scroll scrollbar-thin scrollbar-thumb-white/30 scrollbar-track-transparent"
             : "max-h-20 overflow-hidden"
-        }`}
+          }`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
@@ -491,9 +501,8 @@ export default function StreamChat({
           return (
             <div
               key={messageId}
-              className={`text-sm transition-opacity duration-500 ${
-                isFading ? "opacity-0" : "opacity-100"
-              }`}
+              className={`text-sm transition-opacity duration-500 ${isFading ? "opacity-0" : "opacity-100"
+                }`}
               style={{
                 textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
               }}

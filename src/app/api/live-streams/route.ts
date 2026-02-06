@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { getUserFromTokenInNode } from "@/lib/auth";
+import { getUserModerationStatus } from "@/lib/moderation-service";
 
 // Constants
 const STREAM_STATUS = ["SCHEDULED", "LIVE", "ENDED", "CANCELLED"] as const;
@@ -227,6 +228,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized - Invalid token" },
         { status: 401 }
+      );
+    }
+
+    // Check user's moderation status
+    const moderationStatus = await getUserModerationStatus(user.id);
+    if (!moderationStatus.canStream) {
+      if (moderationStatus.isBanned) {
+        logger.warn(`User ${user.id} is permanently banned and cannot create streams`);
+        return NextResponse.json(
+          { error: "Hesabınız yasaklanmıştır ve yayın oluşturamazsınız." },
+          { status: 403 }
+        );
+      }
+      if (moderationStatus.isSuspended && moderationStatus.expiresAt) {
+        const expiryDate = new Date(moderationStatus.expiresAt).toLocaleString('tr-TR');
+        logger.warn(`User ${user.id} is suspended until ${expiryDate}`);
+        return NextResponse.json(
+          { 
+            error: `Hesabınız ${expiryDate} tarihine kadar askıya alınmıştır.`,
+            suspendedUntil: moderationStatus.expiresAt 
+          },
+          { status: 403 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Moderasyon kısıtlaması nedeniyle yayın oluşturamazsınız." },
+        { status: 403 }
       );
     }
 

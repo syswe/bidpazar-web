@@ -9,6 +9,7 @@ import BidModal from './BidModal';
 import BuyNowModal from './BuyNowModal';
 import { Clock } from 'lucide-react';
 import { calculateMinimumBidAmount } from '@/lib/utils';
+import ContentMenu from './ContentMenu';
 
 interface ProductCardProps {
   product: Product;
@@ -84,6 +85,24 @@ export default function ProductCard({ product }: ProductCardProps) {
               </span>
             </div>
           )}
+
+          {/* Content Menu - Sağ üst */}
+          <div className="absolute top-2 right-2 z-10" onClick={(e) => e.preventDefault()}>
+            <ContentMenu
+              contentType="PRODUCT"
+              contentId={product.id}
+              showShare={true}
+              onShare={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: product.title,
+                    text: `Check out this product: ${product.title}`,
+                    url: window.location.origin + `/products/${product.id}`,
+                  });
+                }
+              }}
+            />
+          </div>
         </div>
 
         {/* Ürün Bilgileri */}

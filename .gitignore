@@ -37,9 +37,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# mobile-app
-/bidpazar-mobile
-/bpmobile
 
 public/uploads/*
 uploads/*
+
+# openspec
+.agent
+.cursor
+openspec
+bpmobile 

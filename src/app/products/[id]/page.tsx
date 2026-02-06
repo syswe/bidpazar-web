@@ -12,6 +12,7 @@ import BidConfirmationModal from '@/components/BidConfirmationModal';
 import { calculateMinimumBidAmount, calculateMinimumBidIncrement, calculateNextBidAmount } from '@/lib/utils';
 import { analytics } from '@/components/GoogleTagManager';
 import { getToken } from '@/lib/frontend-auth';
+import ReportButton from '@/components/ReportButton';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -726,13 +727,23 @@ export default function ProductDetailPage() {
           {/* Product Info */}
           <div className="w-full lg:w-2/5">
             <div className="bg-[var(--card-background)] rounded-2xl border border-[var(--border)] p-4 sm:p-6 lg:p-8 premium-shadow">
-              <div className="flex flex-col">
-                <span className="text-xs sm:text-sm text-[var(--accent)] font-medium mb-2">
-                  {product?.category?.name || 'Kategorisiz Ürün'}
-                </span>
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[var(--foreground)] mb-2 line-clamp-2">
-                  {product?.title}
-                </h1>
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col">
+                  <span className="text-xs sm:text-sm text-[var(--accent)] font-medium mb-2">
+                    {product?.category?.name || 'Kategorisiz Ürün'}
+                  </span>
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[var(--foreground)] mb-2 line-clamp-2">
+                    {product?.title}
+                  </h1>
+                </div>
+                {product && (
+                  <ReportButton
+                    contentType="PRODUCT"
+                    contentId={product.id}
+                    variant="icon"
+                    className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors"
+                  />
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">

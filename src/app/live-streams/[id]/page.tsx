@@ -889,6 +889,7 @@ function CustomLiveStreamUI({
       {/* Right Side Actions - TikTok/Instagram style */}
       <div className="absolute right-4 bottom-32 z-10 flex flex-col space-y-4">
         <StreamActions
+          streamId={streamDetails.id}
           onLike={onLike}
           onShare={onShare}
           likeCount={likeCount}

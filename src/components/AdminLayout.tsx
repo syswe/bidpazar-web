@@ -310,6 +310,53 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   </svg>
                   Satıcı Başvuruları
                 </Link>
+                <Link
+                  href="/admin/moderation"
+                  className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg
+                    className="mr-3 h-6 w-6 text-gray-500 dark:text-gray-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
+                    />
+                  </svg>
+                  Moderasyon
+                </Link>
+                {/* Moderasyon Alt Menüsü */}
+                <div className="ml-11 space-y-1">
+                  <Link
+                    href="/admin/moderation/analytics"
+                    className="group flex items-center px-2 py-1.5 text-xs font-medium rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    📊 Analitikler
+                  </Link>
+                  <Link
+                    href="/admin/moderation/filters"
+                    className="group flex items-center px-2 py-1.5 text-xs font-medium rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    🔒 Filtreler
+                  </Link>
+                  <Link
+                    href="/admin/moderation/violations"
+                    className="group flex items-center px-2 py-1.5 text-xs font-medium rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    ⚠️ İhlaller
+                  </Link>
+                  <Link
+                    href="/admin/moderation/appeals"
+                    className="group flex items-center px-2 py-1.5 text-xs font-medium rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    📝 İtirazlar
+                  </Link>
+                </div>
                 <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                   <Link
                     href="/"

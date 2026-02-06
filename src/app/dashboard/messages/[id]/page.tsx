@@ -13,10 +13,11 @@ import {
   Conversation as ApiConversationType,
 } from "@/lib/api";
 import MessageComponent from "@/components/MessageComponent";
-import { Send, ArrowLeft, Loader2, AlertCircle, Lightbulb } from "lucide-react";
+import { Send, ArrowLeft, Loader2, AlertCircle, Lightbulb, Settings } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import ReportButton from "@/components/ReportButton";
 
 interface ConversationState extends ApiConversationType {
   otherParticipant?: {
@@ -78,6 +79,18 @@ export default function ConversationPage() {
   } | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [hasUsedSuggestion, setHasUsedSuggestion] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+
+  // Close menu when clicking outside (simple implementation)
+  useEffect(() => {
+    const handleClickOutside = () => setShowMenu(false);
+    if (showMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showMenu]);
 
   // Parse product info from URL
   useEffect(() => {
@@ -567,6 +580,28 @@ export default function ConversationPage() {
           ) : null}
           Yenile
         </Button>
+
+        {/* Actions Menu */}
+        <div className="relative ml-2" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowMenu(!showMenu)}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+
+          <div className={`absolute right-0 top-10 w-48 bg-white border border-gray-200 rounded shadow-lg z-50 py-1 ${showMenu ? '' : 'hidden'}`}>
+            {conversation?.id && (
+              <ReportButton
+                contentType="DIRECT_MESSAGE"
+                contentId={conversation.id}
+                variant="menu-item"
+                label="Sohbeti Bildir"
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Messages container */}

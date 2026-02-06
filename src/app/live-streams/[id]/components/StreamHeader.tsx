@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Play, Clock, Radio, X } from 'lucide-react';
 import { LiveStreamDetails } from '../hooks/useStreamDetails';
+import ContentMenu from '@/components/ContentMenu';
 
 interface StreamHeaderProps {
   streamDetails: LiveStreamDetails;
@@ -10,8 +11,8 @@ interface StreamHeaderProps {
   isUpdatingStatus?: boolean;
 }
 
-const StreamHeader: React.FC<StreamHeaderProps> = ({ 
-  streamDetails, 
+const StreamHeader: React.FC<StreamHeaderProps> = ({
+  streamDetails,
   onBackClick,
   isStreamer = false,
   onStatusChange,
@@ -61,15 +62,26 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
     }).format(date);
   };
 
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: streamDetails.title || 'Canlı Yayın',
+        text: `${streamDetails.title || 'Canlı Yayın'} - Bidpazar'da canlı yayında!`,
+        url: window.location.href,
+      });
+    }
+  };
+
   return (
     <div className="p-4 flex items-center">
-      <button 
+      <button
+        type="button"
         onClick={onBackClick}
         className="w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white mr-3 hover:bg-black/50 transition-colors"
       >
         <ArrowLeft size={18} />
       </button>
-      
+
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <h1 className="text-white font-medium text-lg line-clamp-1">
@@ -77,13 +89,13 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
           </h1>
           {getStatusBadge()}
         </div>
-        
+
         <div className="flex items-center text-white/70 text-xs mt-0.5">
           <span>{streamDetails.user?.name || streamDetails.user?.username}</span>
           <span className="mx-1.5">•</span>
           <span>
-            {streamDetails.status === 'SCHEDULED' 
-              ? `Başlangıç: ${formatDate(streamDetails.startTime)}` 
+            {streamDetails.status === 'SCHEDULED'
+              ? `Başlangıç: ${formatDate(streamDetails.startTime)}`
               : streamDetails.status === 'LIVE'
                 ? 'Canlı Yayında'
                 : streamDetails.status === 'ENDED'
@@ -92,6 +104,16 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Content Menu for non-streamers */}
+      {!isStreamer && (
+        <ContentMenu
+          contentType="STREAM"
+          contentId={streamDetails.id}
+          showShare={true}
+          onShare={handleShare}
+        />
+      )}
 
       {/* Status management buttons for streamers */}
       {isStreamer && onStatusChange && (
@@ -102,6 +124,7 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
             <>
               {streamDetails.status === 'SCHEDULED' && (
                 <button
+                  type="button"
                   onClick={() => onStatusChange('STARTING')}
                   className="p-1.5 rounded bg-yellow-500 text-white text-xs flex items-center"
                   title="Start stream"
@@ -109,9 +132,10 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
                   <Clock className="w-3 h-3 mr-1" /> Başla
                 </button>
               )}
-              
+
               {streamDetails.status === 'STARTING' && (
                 <button
+                  type="button"
                   onClick={() => onStatusChange('LIVE')}
                   className="p-1.5 rounded bg-red-500 text-white text-xs flex items-center"
                   title="Go live"
@@ -119,9 +143,10 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
                   <Radio className="w-3 h-3 mr-1" /> Canlı Yayın
                 </button>
               )}
-              
+
               {streamDetails.status === 'LIVE' && (
                 <button
+                  type="button"
                   onClick={() => onStatusChange('ENDED')}
                   className="p-1.5 rounded bg-gray-500 text-white text-xs flex items-center"
                   title="End stream"
@@ -129,9 +154,10 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
                   <X className="w-3 h-3 mr-1" /> Bitir
                 </button>
               )}
-              
+
               {streamDetails.status === 'ENDED' && (
                 <button
+                  type="button"
                   onClick={() => onStatusChange('SCHEDULED')}
                   className="p-1.5 rounded bg-blue-500 text-white text-xs flex items-center"
                   title="Schedule again"
@@ -147,4 +173,4 @@ const StreamHeader: React.FC<StreamHeaderProps> = ({
   );
 };
 
-export default StreamHeader; 
+export default StreamHeader;

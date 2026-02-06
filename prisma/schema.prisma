@@ -60,6 +60,15 @@ model User {
   // Order system
   buyerOrders      Order[]            @relation("BuyerOrders")
   sellerOrders     Order[]            @relation("SellerOrders")
+  
+  // Moderation system
+  contentReports      ContentReport[]    @relation("ReportedBy")
+  moderatorActions    ModerationAction[] @relation("ModeratorActions")
+  receivedModerations ModerationAction[] @relation("ModeratedUser")
+  userViolations      UserViolation[]    @relation("UserViolations")
+  userAppeals         UserAppeal[]       @relation("UserAppeals")
+  reviewedAppeals     UserAppeal[]       @relation("AppealReviewer")
+  createdFilters      ContentFilter[]    @relation("FilterCreator")
 }
 
 model Follows {
@@ -514,4 +523,149 @@ enum OrderType {
   BUY_NOW           // Regular product buy-now
   LIVE_STREAM_BID   // Live stream auction win
   LIVE_STREAM_STOCK // Live stream stock purchase
+}
+
+// ===== Content Moderation System =====
+
+enum ReportContentType {
+  STREAM
+  PRODUCT
+  CHAT_MESSAGE
+  STORY
+  DIRECT_MESSAGE
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  HATE_SPEECH
+  VIOLENCE
+  ILLEGAL_CONTENT
+  FRAUD
+  INAPPROPRIATE
+  COPYRIGHT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationActionType {
+  REMOVE_CONTENT
+  HIDE_CONTENT
+  WARN_USER
+  SUSPEND_USER
+  BAN_USER
+  RESTORE_CONTENT
+  DISMISS_REPORT
+}
+
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ContentReport {
+  id               String            @id @default(cuid())
+  reporterUserId   String
+  contentType      ReportContentType
+  contentId        String
+  reason           ReportReason
+  description      String?
+  status           ReportStatus      @default(PENDING)
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  reporter         User              @relation("ReportedBy", fields: [reporterUserId], references: [id])
+  actions          ModerationAction[]
+  
+  @@index([status, createdAt])
+  @@index([contentType, contentId])
+  @@index([reporterUserId])
+}
+
+model ModerationAction {
+  id                 String                @id @default(cuid())
+  reportId           String?
+  actionType         ModerationActionType
+  targetUserId       String?
+  targetContentType  ReportContentType?
+  targetContentId    String?
+  moderatorUserId    String
+  reason             String
+  notes              String?
+  expiresAt          DateTime?
+  createdAt          DateTime              @default(now())
+  
+  report             ContentReport?        @relation(fields: [reportId], references: [id])
+  moderator          User                  @relation("ModeratorActions", fields: [moderatorUserId], references: [id])
+  targetUser         User?                 @relation("ModeratedUser", fields: [targetUserId], references: [id])
+  violations         UserViolation[]       @relation("ViolationAction")
+  appeal             UserAppeal?           @relation("AppealedAction")
+  
+  @@index([targetUserId])
+  @@index([moderatorUserId])
+  @@index([createdAt])
+}
+
+model ContentFilter {
+  id               String              @id @default(cuid())
+  name             String
+  pattern          String
+  contentTypes     ReportContentType[]
+  action           String              // BLOCK, FLAG, WARN
+  severity         Int                 @default(1)
+  isActive         Boolean             @default(true)
+  createdBy        String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  
+  creator          User                @relation("FilterCreator", fields: [createdBy], references: [id])
+  
+  @@index([isActive])
+  @@index([createdBy])
+}
+
+model UserViolation {
+  id                  String            @id @default(cuid())
+  userId              String
+  moderationActionId  String
+  violationType       ReportReason
+  severity            Int
+  isActive            Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  
+  user                User              @relation("UserViolations", fields: [userId], references: [id])
+  action              ModerationAction  @relation("ViolationAction", fields: [moderationActionId], references: [id])
+  
+  @@index([userId, isActive])
+  @@index([createdAt])
+}
+
+model UserAppeal {
+  id                  String            @id @default(cuid())
+  userId              String
+  moderationActionId  String            @unique
+  reason              String
+  status              AppealStatus      @default(PENDING)
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  reviewNotes         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  
+  user                User              @relation("UserAppeals", fields: [userId], references: [id])
+  action              ModerationAction  @relation("AppealedAction", fields: [moderationActionId], references: [id])
+  reviewer            User?             @relation("AppealReviewer", fields: [reviewedBy], references: [id])
+  
+  @@index([status])
+  @@index([userId])
+  @@index([createdAt])
 }
